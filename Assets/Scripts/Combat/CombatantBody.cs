@@ -7,7 +7,9 @@ namespace AlchemistsArsenal.Combat
     /// <summary>
     /// Reference <see cref="ICombatant"/> + <see cref="IDamageable"/> component for
     /// adventurers and monsters. Reads position/velocity straight off its
-    /// Rigidbody2D and (for monsters) registers with <see cref="MonsterRegistry"/>.
+    /// Rigidbody2D, registers with the right side's registry, and (if a sibling
+    /// <see cref="IElementalWardProvider"/> is present) applies elemental damage
+    /// reduction while a ward is active.
     /// </summary>
     [RequireComponent(typeof(Rigidbody2D))]
     public class CombatantBody : MonoBehaviour, ICombatant, IDamageable
@@ -18,6 +20,7 @@ namespace AlchemistsArsenal.Combat
         [SerializeField] private int currentHP = -1; // -1 => start at maxHP
 
         private Rigidbody2D _rb;
+        private IElementalWardProvider _ward; // optional
 
         public int CurrentHP => currentHP;
         public int MaxHP => maxHP;
@@ -29,20 +32,26 @@ namespace AlchemistsArsenal.Combat
 
         public event Action<CombatantBody> OnDied;
 
+        /// <summary>Raised on every applied hit (after mitigation) with the amount actually dealt.</summary>
+        public event Action<DamageInfo> OnDamaged;
+
         private void Awake()
         {
             _rb = GetComponent<Rigidbody2D>();
+            _ward = GetComponent<IElementalWardProvider>();
             if (currentHP < 0) currentHP = maxHP;
         }
 
         private void OnEnable()
         {
             if (team == Team.Monster) MonsterRegistry.Register(this);
+            else AdventurerRegistry.Register(this);
         }
 
         private void OnDisable()
         {
             if (team == Team.Monster) MonsterRegistry.Unregister(this);
+            else AdventurerRegistry.Unregister(this);
         }
 
         /// <summary>Copy stats from a <see cref="MonsterData"/> definition (spawn-time).</summary>
@@ -58,11 +67,19 @@ namespace AlchemistsArsenal.Combat
         {
             if (!IsAlive) return;
 
-            currentHP = Mathf.Max(0, currentHP - Mathf.Max(0, info.Amount));
+            int amount = Mathf.Max(0, info.Amount);
+            if (_ward != null && _ward.HasActiveWard && _ward.WardElement == info.Element)
+                amount = Mathf.RoundToInt(amount * Mathf.Clamp01(_ward.WardMultiplier));
+
+            currentHP = Mathf.Max(0, currentHP - amount);
+
+            OnDamaged?.Invoke(new DamageInfo(amount, info.Element, info.SourcePoint, info.Source));
+
             if (currentHP > 0) return;
 
             OnDied?.Invoke(this);
             if (team == Team.Monster) MonsterRegistry.Unregister(this);
+            else AdventurerRegistry.Unregister(this);
         }
     }
 }
