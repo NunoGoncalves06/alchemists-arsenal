@@ -26,13 +26,21 @@ namespace AlchemistsArsenal.Combat
         /// <summary>Seconds the boss has been in its current phase.</summary>
         public readonly float TimeInPhase;
 
+        /// <summary>True while a ward is latched from a recent hard-threshold crossing.</summary>
+        public readonly bool WardLatched;
+
+        /// <summary>Element the latched ward defends against (meaningful only when <see cref="WardLatched"/>).</summary>
+        public readonly ElementType WardElement;
+
         public BossPhaseContext(
             float healthFraction,
             ElementType dominantThreat,
             float dominantThreatPressure01,
             float timeSinceLastHit,
             float recentDamageSpike01,
-            float timeInPhase)
+            float timeInPhase,
+            bool wardLatched = false,
+            ElementType wardElement = default)
         {
             HealthFraction = healthFraction;
             DominantThreat = dominantThreat;
@@ -40,6 +48,8 @@ namespace AlchemistsArsenal.Combat
             TimeSinceLastHit = timeSinceLastHit;
             RecentDamageSpike01 = recentDamageSpike01;
             TimeInPhase = timeInPhase;
+            WardLatched = wardLatched;
+            WardElement = wardElement;
         }
     }
 }

@@ -27,5 +27,17 @@ namespace AlchemistsArsenal.Data
         public int MaxHealth => maxHealth;
         public float MoveSpeed => moveSpeed;
         public float Mass => mass;
+
+        /// <summary>Build a monster archetype in code (bootstrap / tests / generators).</summary>
+        public static MonsterData Create(string name, ElementType element, int maxHealth, float moveSpeed = 2f)
+        {
+            var m = CreateInstance<MonsterData>();
+            m.name = name;
+            m.displayName = name;
+            m.element = element;
+            m.maxHealth = maxHealth;
+            m.moveSpeed = moveSpeed;
+            return m;
+        }
     }
 }

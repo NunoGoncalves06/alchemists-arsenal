@@ -29,6 +29,14 @@ namespace AlchemistsArsenal.Combat.Considerations
         public float Weight => weight;
         public string Description => description;
 
+        /// <summary>Set the response curve + weight in code (bootstrap / generators).</summary>
+        public void Configure(AnimationCurve curve, float weight, string description = null)
+        {
+            if (curve != null) responseCurve = curve;
+            this.weight = weight;
+            if (description != null) this.description = description;
+        }
+
         /// <summary>
         /// Raw, un-curved input for this axis. Implementations must return a value
         /// in [0, 1] (it is clamped anyway).

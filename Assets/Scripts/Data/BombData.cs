@@ -43,5 +43,24 @@ namespace AlchemistsArsenal.Data
         public float MinSafeRange => minSafeRange;
         public float MaxRange => Mathf.Max(maxRange, idealRange);
         public float CooldownSeconds => cooldownSeconds;
+
+        /// <summary>Build a bomb in code (bootstrap / tests / generators).</summary>
+        public static BombData Create(string name, ElementType element, int baseDamage,
+            float blastRadius = 2.5f, float throwSpeed = 12f, float idealRange = 6f,
+            float minSafeRange = 2f, float maxRange = 12f, float cooldownSeconds = 1.5f)
+        {
+            var b = CreateInstance<BombData>();
+            b.name = name;
+            b.displayName = name;
+            b.element = element;
+            b.baseDamage = baseDamage;
+            b.blastRadius = blastRadius;
+            b.throwSpeed = throwSpeed;
+            b.idealRange = idealRange;
+            b.minSafeRange = minSafeRange;
+            b.maxRange = maxRange;
+            b.cooldownSeconds = cooldownSeconds;
+            return b;
+        }
     }
 }

@@ -23,5 +23,17 @@ namespace AlchemistsArsenal.Data
         [SerializeField] private BombSlot[] slots = new BombSlot[0];
 
         public IReadOnlyList<BombSlot> Slots => slots;
+
+        /// <summary>Build a loadout in code (bootstrap / tests / generators).</summary>
+        public void SetSlots(params BombSlot[] newSlots) => slots = newSlots ?? new BombSlot[0];
+
+        public static AdventurerLoadout Create(params BombSlot[] slots)
+        {
+            var lo = CreateInstance<AdventurerLoadout>();
+            lo.SetSlots(slots);
+            return lo;
+        }
+
+        public static BombSlot Slot(BombData bomb, int count) => new BombSlot { bomb = bomb, count = count };
     }
 }

@@ -21,7 +21,8 @@ namespace AlchemistsArsenal.Combat
         [Header("Detonation")]
         [SerializeField] private float arriveRadius = 0.35f;
         [SerializeField] private float maxLifetime = 6f;
-        [SerializeField] private LayerMask detonationMask = ~0;
+        [Tooltip("Leave 0 to auto-resolve to the project's combat layers (see CombatLayers).")]
+        [SerializeField] private LayerMask detonationMask = 0;
 
         [Header("Knockback")]
         [SerializeField] private float knockbackImpulse = 9f;
@@ -52,7 +53,7 @@ namespace AlchemistsArsenal.Combat
             _thrower = request.Thrower;
             _targetPos = request.TargetPosition;
             _quality01 = request.PotionQuality01;
-            detonationMask = mask;
+            detonationMask = CombatLayers.Effective(mask);
             _spawnTime = Time.time;
 
             if (_rb == null) _rb = GetComponent<Rigidbody2D>();

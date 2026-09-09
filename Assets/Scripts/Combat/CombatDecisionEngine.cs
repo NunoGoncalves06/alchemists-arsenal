@@ -7,13 +7,16 @@ using AlchemistsArsenal.Combat.Considerations;
 namespace AlchemistsArsenal.Combat
 {
     /// <summary>
-    /// Pure decision logic for the adventurer utility AI — no MonoBehaviour, no
-    /// scene access, no side effects. Given the world state it enumerates every
-    /// (ready bomb × live monster) pair, scores each with <see cref="UtilityScorer"/>,
-    /// and returns the best throw above the threshold.
+    /// Decision logic for the adventurer utility AI. Deterministic given its
+    /// arguments — no MonoBehaviour, no singletons, no <c>GetComponent</c>, no side
+    /// effects. It enumerates every (ready bomb × live monster) pair, scores each
+    /// with <see cref="UtilityScorer"/>, and returns the best throw above the
+    /// threshold.
     ///
-    /// Kept separate from the controller so it is trivially unit-testable and so the
-    /// "scoring is separate from action execution" rule is structural, not a promise.
+    /// Ward state is passed in as plain data: the optional <c>wardResolver</c>
+    /// delegate maps a target to a <see cref="WardSnapshot"/>. The engine never
+    /// touches a scene component itself; the caller (a MonoBehaviour) does the
+    /// resolving.
     /// </summary>
     public static class CombatDecisionEngine
     {
@@ -49,7 +52,7 @@ namespace AlchemistsArsenal.Combat
             out BombThrowRequest request,
             out ScoredCandidate best,
             List<ScoredCandidate> breakdown = null,
-            Func<ICombatant, IElementalWardProvider> wardLookup = null)
+            Func<ICombatant, WardSnapshot> wardResolver = null)
         {
             request = default;
             best = default;
@@ -66,9 +69,9 @@ namespace AlchemistsArsenal.Combat
                     continue;
 
                 // Resolve the target's ward once, not per bomb.
-                IElementalWardProvider ward = wardLookup?.Invoke(target);
-                bool warded = ward != null && ward.HasActiveWard;
-                ElementType wardElement = warded ? ward.WardElement : default;
+                WardSnapshot ward = wardResolver != null ? wardResolver(target) : WardSnapshot.None;
+                bool warded = ward.Active;
+                ElementType wardElement = ward.Element;
 
                 float distance = Vector2.Distance(self.Position, target.Position);
                 float closingSpeed = ClosingSpeed(self, target);

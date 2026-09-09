@@ -20,8 +20,8 @@ namespace AlchemistsArsenal.Combat
         [Tooltip("Optional spawn point. Falls back to the request's Origin.")]
         [SerializeField] private Transform muzzle;
 
-        [Tooltip("Layers the detonation overlap check considers.")]
-        [SerializeField] private LayerMask detonationMask = ~0;
+        [Tooltip("Leave 0 to auto-resolve to the project's combat layers (see CombatLayers).")]
+        [SerializeField] private LayerMask detonationMask = 0;
 
         private void Reset() => controller = GetComponentInParent<UtilityAI_CombatController>();
 
@@ -40,6 +40,14 @@ namespace AlchemistsArsenal.Combat
             if (controller != null) controller.OnBombThrowRequested -= Launch;
         }
 
+        /// <summary>Wire the launcher in code (bootstrap).</summary>
+        public void Configure(UtilityAI_CombatController controller, ElementalMatrix matrix, LayerMask mask = default)
+        {
+            this.controller = controller;
+            elementalMatrix = matrix;
+            if (mask.value != 0) detonationMask = mask;
+        }
+
         public void Launch(BombThrowRequest request)
         {
             if (request.Bomb == null) return;
@@ -56,12 +64,22 @@ namespace AlchemistsArsenal.Combat
 
             // No prefab assigned — build a minimal projectile at runtime.
             var go = new GameObject("BombProjectile2D");
+            go.SetActive(false);
+            go.transform.position = origin;
+
             var rb = go.AddComponent<Rigidbody2D>();
-            rb.position = origin;                 // physics-space placement, not transform
             rb.gravityScale = 1f;
+
             var col = go.AddComponent<CircleCollider2D>();
-            col.radius = 0.15f;
-            return go.AddComponent<BombProjectile2D>();
+            col.radius = 0.16f;
+            col.isTrigger = true;
+
+            PlaceholderArt.AddRenderer(go, PlaceholderArt.Shape.Disc, new Color(0.95f, 0.9f, 0.5f), 8);
+            go.transform.localScale = Vector3.one * 0.5f;
+
+            var projectile = go.AddComponent<BombProjectile2D>();
+            go.SetActive(true);
+            return projectile;
         }
     }
 }
