@@ -20,6 +20,14 @@ namespace AlchemistsArsenal.Combat.Considerations
         public float Weight => weight;
         public string Description => description;
 
+        /// <summary>Set the response curve + weight in code (bootstrap / generators).</summary>
+        public void Configure(AnimationCurve curve, float weight, string description = null)
+        {
+            if (curve != null) responseCurve = curve;
+            this.weight = weight;
+            if (description != null) this.description = description;
+        }
+
         protected abstract float GetRawScore(in BossPhaseContext context);
 
         public float Score(in BossPhaseContext context)

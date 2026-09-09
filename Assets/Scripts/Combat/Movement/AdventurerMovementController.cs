@@ -7,28 +7,32 @@ namespace AlchemistsArsenal.Combat
     /// <summary>
     /// Physics-driven positioning FSM for an adventurer. Complements
     /// <see cref="UtilityAI_CombatController"/> (which decides <em>what</em> to
-    /// throw) by deciding <em>where to stand</em>: close to ideal bomb range,
-    /// backing off when hurt or crowded.
+    /// throw) by deciding <em>where to stand</em>.
     ///
-    /// All motion is <see cref="Rigidbody2D"/> steering force — no transform writes.
-    /// The state selection is deliberate FSM sequencing, not a utility decision.
+    /// Approach → Reposition → Throw → Retreat. Reposition is the key state: once in
+    /// range it strafes toward the ideal-range shell (from either side) instead of
+    /// freezing wherever contact first happened, so throws land in the bomb's sweet
+    /// spot. All motion is <see cref="Rigidbody2D"/> steering force — no transform
+    /// writes. State selection is deliberate FSM sequencing, not a utility decision.
     /// </summary>
     [RequireComponent(typeof(Rigidbody2D))]
     [RequireComponent(typeof(CombatantBody))]
     public class AdventurerMovementController : MonoBehaviour
     {
-        public enum MoveState { Approach, Throw, Retreat }
+        public enum MoveState { Approach, Reposition, Throw, Retreat }
 
         [Header("Steering")]
         [Min(0f)] [SerializeField] private float moveSpeed = 3.5f;
         [Min(0f)] [SerializeField] private float steerAccel = 18f;
         [Min(0f)] [SerializeField] private float maxSteerForce = 28f;
 
-        [Header("Spacing (falls back to these if no loadout is set)")]
+        [Header("Spacing (auto-filled from the loadout if one is set)")]
         [SerializeField] private AdventurerLoadout loadout;
         [Min(0f)] [SerializeField] private float idealRange = 6f;
         [Min(0f)] [SerializeField] private float minSafeRange = 2.5f;
         [Min(0f)] [SerializeField] private float maxRange = 11f;
+        [Tooltip("Distance from idealRange within which the adventurer holds and throws.")]
+        [Min(0.1f)] [SerializeField] private float throwTolerance = 1.5f;
 
         [Header("Retreat")]
         [Range(0f, 1f)] [SerializeField] private float retreatHealthFraction = 0.3f;
@@ -71,7 +75,8 @@ namespace AlchemistsArsenal.Combat
             float d = Vector2.Distance(_rb.position, target.Position);
 
             if (hp <= retreatHealthFraction || d < minSafeRange) return MoveState.Retreat;
-            if (d <= maxRange) return MoveState.Throw;
+            if (Mathf.Abs(d - idealRange) <= throwTolerance) return MoveState.Throw;
+            if (d <= maxRange) return MoveState.Reposition;
             return MoveState.Approach;
         }
 
@@ -91,7 +96,9 @@ namespace AlchemistsArsenal.Combat
                 case MoveState.Throw:
                     return Vector2.zero; // brake and hold the firing line
 
-                default: // Approach — arrive at the ideal-range shell
+                // Approach + Reposition: seek the ideal-range shell. `gap` is
+                // positive when too far (move in), negative when too close (back off).
+                default:
                     float gap = d - idealRange;
                     float speed = Mathf.Clamp(gap, -moveSpeed, moveSpeed);
                     return dir * speed;
@@ -126,7 +133,7 @@ namespace AlchemistsArsenal.Combat
             for (int i = 0; i < list.Count; i++)
             {
                 ICombatant c = list[i];
-                if (c == null || !c.IsAlive) continue;
+                if (c == null || !c.IsAlive || c.Team != Team.Monster) continue;
                 float sq = ((Vector2)c.Position - from).sqrMagnitude;
                 if (sq < bestSqr) { bestSqr = sq; best = c; }
             }

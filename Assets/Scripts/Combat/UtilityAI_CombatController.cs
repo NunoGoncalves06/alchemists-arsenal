@@ -141,17 +141,19 @@ namespace AlchemistsArsenal.Combat
         private static string DescribeTarget(ICombatant target) =>
             target is Component c ? c.name : "target";
 
-        // Feedback loop: let the scorer see whether the target is warding an element.
-        private static IElementalWardProvider ResolveWard(ICombatant target) =>
-            target is Component comp ? comp.GetComponent<IElementalWardProvider>() : null;
+        // Feedback loop: resolve the target's ward into plain data for the pure engine.
+        private static WardSnapshot ResolveWard(ICombatant target) =>
+            target is Component comp
+                ? WardSnapshot.From(comp.GetComponent<IElementalWardProvider>())
+                : WardSnapshot.None;
 
-        /// <summary>Test seam — inject a combatant + loadout without a full scene.</summary>
-        public void ConfigureForTest(
-            ICombatant self, AdventurerLoadout testLoadout,
+        /// <summary>Wire the controller in code (bootstrap / tests).</summary>
+        public void Configure(
+            ICombatant self, AdventurerLoadout loadout,
             ElementalMatrix matrix, List<UtilityConsideration> axes)
         {
             _self = self;
-            loadout = testLoadout;
+            this.loadout = loadout;
             elementalMatrix = matrix;
             considerations = axes;
             RebuildAmmo();

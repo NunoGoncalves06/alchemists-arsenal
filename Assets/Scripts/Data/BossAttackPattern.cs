@@ -34,5 +34,22 @@ namespace AlchemistsArsenal.Data
         public float WindupSeconds => windupSeconds;
         public float RecoverySeconds => recoverySeconds;
         public float CooldownSeconds => cooldownSeconds;
+
+        public static BossAttackPattern Create(string name, ElementType element, int damage,
+            float range, float areaRadius, float windup, float recovery, float cooldown, float knockback)
+        {
+            var a = CreateInstance<BossAttackPattern>();
+            a.name = name;
+            a.displayName = name;
+            a.element = element;
+            a.damage = damage;
+            a.range = range;
+            a.areaRadius = areaRadius;
+            a.windupSeconds = windup;
+            a.recoverySeconds = recovery;
+            a.cooldownSeconds = cooldown;
+            a.knockback = knockback;
+            return a;
+        }
     }
 }

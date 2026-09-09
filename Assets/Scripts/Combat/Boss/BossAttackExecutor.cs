@@ -10,8 +10,15 @@ namespace AlchemistsArsenal.Combat
     /// </summary>
     public class BossAttackExecutor : MonoBehaviour
     {
-        [SerializeField] private LayerMask targetMask = ~0;
+        [Tooltip("Leave 0 to auto-resolve to the project's combat layers (see CombatLayers).")]
+        [SerializeField] private LayerMask targetMask = 0;
         [SerializeField] private ElementalMatrix elementalMatrix;
+
+        public void Configure(ElementalMatrix matrix, LayerMask mask = default)
+        {
+            elementalMatrix = matrix;
+            if (mask.value != 0) targetMask = mask;
+        }
 
         private bool _pending;
         private BossAttackPattern _pattern;
@@ -41,7 +48,8 @@ namespace AlchemistsArsenal.Combat
             BossAttackPattern pattern = _pattern;
             Vector2 epicenter = _impact;
 
-            Collider2D[] hits = Physics2D.OverlapCircleAll(epicenter, pattern.AreaRadius, targetMask);
+            Collider2D[] hits = Physics2D.OverlapCircleAll(
+                epicenter, pattern.AreaRadius, CombatLayers.Effective(targetMask));
             for (int i = 0; i < hits.Length; i++)
             {
                 Collider2D hit = hits[i];

@@ -19,6 +19,11 @@ namespace AlchemistsArsenal.Combat
         [Min(1)] [SerializeField] private int maxHP = 60;
         [SerializeField] private int currentHP = -1; // -1 => start at maxHP
 
+        [Header("Death")]
+        [SerializeField] private bool destroyOnDeath = true;
+        [Tooltip("Seconds the corpse lingers (for a death fade) before the GameObject is destroyed.")]
+        [Min(0f)] [SerializeField] private float deathLingerSeconds = 1.2f;
+
         private Rigidbody2D _rb;
         private IElementalWardProvider _ward; // optional
 
@@ -54,13 +59,23 @@ namespace AlchemistsArsenal.Combat
             else AdventurerRegistry.Unregister(this);
         }
 
+        /// <summary>
+        /// Set the combatant's identity at spawn. Call this while the GameObject is
+        /// still inactive (before Awake/OnEnable) so registry routing is correct.
+        /// </summary>
+        public void Initialise(Team team, ElementType element, int maxHp)
+        {
+            this.team = team;
+            this.element = element;
+            maxHP = Mathf.Max(1, maxHp);
+            currentHP = maxHP;
+        }
+
         /// <summary>Copy stats from a <see cref="MonsterData"/> definition (spawn-time).</summary>
         public void InitialiseFrom(MonsterData data)
         {
             if (data == null) return;
-            element = data.Element;
-            maxHP = data.MaxHealth;
-            currentHP = data.MaxHealth;
+            Initialise(Team.Monster, data.Element, data.MaxHealth);
         }
 
         public void ApplyDamage(in DamageInfo info)
@@ -77,9 +92,11 @@ namespace AlchemistsArsenal.Combat
 
             if (currentHP > 0) return;
 
+            // Stay in the roster (with IsAlive == false) until the GameObject is
+            // actually gone — consumers all filter on IsAlive, and expedition
+            // win/lose needs to see that a spawned side is fully down.
             OnDied?.Invoke(this);
-            if (team == Team.Monster) MonsterRegistry.Unregister(this);
-            else AdventurerRegistry.Unregister(this);
+            if (destroyOnDeath) Destroy(gameObject, deathLingerSeconds);
         }
     }
 }

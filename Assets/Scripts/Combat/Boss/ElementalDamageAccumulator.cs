@@ -7,30 +7,47 @@ namespace AlchemistsArsenal.Combat
     /// <summary>
     /// Listens to <see cref="CombatantBody.OnDamaged"/> and builds up per-element
     /// "pressure" that decays over time — so only <em>sustained</em> elemental
-    /// damage escalates. Publishes hard-threshold edges (for the boss's forced ward)
-    /// and exposes soft signals (pressure 0..1, recent spike, dominant threat) for
-    /// utility weighting.
+    /// damage escalates.
+    ///
+    /// Soft signals (<see cref="GetPressure01"/>, <see cref="RecentSpike01"/>,
+    /// <see cref="DominantThreat"/>) feed the boss phase scorer. When an element
+    /// crosses its hard threshold a <see cref="WardLatchActive"/> latch is armed for
+    /// <see cref="wardLatchSeconds"/>; the boss's ElementalWard phase is scored on
+    /// that latch, so there is no separate override code path.
     /// </summary>
     [RequireComponent(typeof(CombatantBody))]
     public class ElementalDamageAccumulator : MonoBehaviour
     {
         [SerializeField] private ElementalThreatProfile profile;
+
         [Tooltip("Recent-window damage decays this many times faster than the main pool.")]
         [Min(1f)] [SerializeField] private float recentWindowDecayScale = 4f;
 
+        [Tooltip("How long a ward stays latched after its element crosses the hard threshold.")]
+        [Min(0f)] [SerializeField] private float wardLatchSeconds = 6f;
+
         private static readonly int ElementCount = Enum.GetValues(typeof(ElementType)).Length;
 
-        private readonly float[] _pressure = new float[Enum.GetValues(typeof(ElementType)).Length];
-        private readonly float[] _recent = new float[Enum.GetValues(typeof(ElementType)).Length];
-        private readonly bool[] _overHard = new bool[Enum.GetValues(typeof(ElementType)).Length];
+        private readonly float[] _pressure = new float[ElementCount];
+        private readonly float[] _recent = new float[ElementCount];
+        private readonly bool[] _overHard = new bool[ElementCount];
 
         private CombatantBody _body;
         private float _lastHitTime = -999f;
+
+        private float _wardLatchUntil = -1f;
+        private ElementType _wardLatchElement = ElementType.Water;
 
         public event Action<ElementType> OnHardThresholdCrossed;
         public event Action<ElementType> OnHardThresholdCleared;
 
         public float TimeSinceLastHit => Time.time - _lastHitTime;
+
+        /// <summary>True while a ward is latched from a recent hard-threshold crossing.</summary>
+        public bool WardLatchActive => Time.time < _wardLatchUntil;
+
+        /// <summary>The element the boss should ward with (only meaningful while latched).</summary>
+        public ElementType WardLatchElement => _wardLatchElement;
 
         private void Awake() => _body = GetComponent<CombatantBody>();
 
@@ -73,6 +90,8 @@ namespace AlchemistsArsenal.Combat
                 if (over && !_overHard[e])
                 {
                     _overHard[e] = true;
+                    _wardLatchElement = CounterWardFor(element);
+                    _wardLatchUntil = Time.time + wardLatchSeconds;
                     OnHardThresholdCrossed?.Invoke(element);
                 }
                 else if (!over && _overHard[e])
@@ -97,28 +116,34 @@ namespace AlchemistsArsenal.Combat
 
         public bool IsOverHard(ElementType element) => _overHard[(int)element];
 
-        public ElementType DominantThreat
+        /// <summary>Highest current per-element pressure. Also reports the raw amount.</summary>
+        public ElementType GetDominantThreat(out float pressure)
         {
-            get
+            int best = 0;
+            pressure = _pressure[0];
+            for (int e = 1; e < ElementCount; e++)
             {
-                int best = 0;
-                float bestVal = _pressure[0];
-                for (int e = 1; e < ElementCount; e++)
+                if (_pressure[e] > pressure)
                 {
-                    if (_pressure[e] > bestVal)
-                    {
-                        bestVal = _pressure[e];
-                        best = e;
-                    }
+                    pressure = _pressure[e];
+                    best = e;
                 }
-                return (ElementType)best;
             }
+            return (ElementType)best;
         }
+
+        /// <summary>
+        /// Element with the most accumulated pressure. NOTE: with zero pressure this
+        /// still returns the first enum value — callers that branch on the identity
+        /// (not just the 0..1 magnitude) should check <see cref="GetDominantThreat"/>'s
+        /// out-value first.
+        /// </summary>
+        public ElementType DominantThreat => GetDominantThreat(out _);
 
         public ElementType CounterWardFor(ElementType incoming) =>
             profile != null ? profile.CounterWard(incoming) : ElementType.Water;
 
-        /// <summary>Test seam.</summary>
-        public void SetProfileForTest(ElementalThreatProfile p) => profile = p;
+        /// <summary>Assign the threat profile in code (spawner / tests).</summary>
+        public void SetProfile(ElementalThreatProfile p) => profile = p;
     }
 }

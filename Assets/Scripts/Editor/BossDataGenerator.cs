@@ -36,6 +36,7 @@ namespace AlchemistsArsenal.EditorTools
             var pressFalling  = BuildConsideration<ElementPressureConsideration>("ElemPressure_Falling", Falling(), 0.8f, "Low elemental pressure favours Neutral.");
             var pressRising   = BuildConsideration<ElementPressureConsideration>("ElemPressure_Rising",  Rising(),  0.6f, "Rising pressure nudges toward aggression before the hard ward.");
             var spikeRising   = BuildConsideration<RecentDamageConsideration>("RecentDamage_Rising",     Rising(),  1.2f, "A fresh burst pushes Recovering.");
+            var wardOverride  = BuildConsideration<ElementThreatOverrideConsideration>("Ward_LatchOverride", Rising(), 3.0f, "Dominant: 1 while a ward is latched -> forces the ElementalWard phase.");
 
             BossPhaseData neutral = BuildPhase("BossPhase_Neutral", BossPhase.Neutral, 2.5f,
                 new BossConsideration[] { hpRising, pressFalling }, new[] { bolt });
@@ -44,7 +45,7 @@ namespace AlchemistsArsenal.EditorTools
                 new BossConsideration[] { hpFallSoft, pressRising }, new[] { slam, bolt });
 
             BossPhaseData ward = BuildPhase("BossPhase_ElementalWard", BossPhase.ElementalWard, 1f,
-                new BossConsideration[0], new[] { pulse });
+                new BossConsideration[] { wardOverride }, new[] { pulse });
 
             BossPhaseData recovering = BuildPhase("BossPhase_Recovering", BossPhase.Recovering, 1f,
                 new BossConsideration[] { spikeRising, hpFallSteep }, new BossAttackPattern[0]);
@@ -137,8 +138,6 @@ namespace AlchemistsArsenal.EditorTools
             so.FindProperty("threatProfile").objectReferenceValue = threat;
             so.FindProperty("phaseEvalInterval").floatValue = 0.75f;
             so.FindProperty("phaseSwitchMargin").floatValue = 0.05f;
-            so.FindProperty("wardDurationSeconds").floatValue = 6f;
-            so.FindProperty("recoveryDurationSeconds").floatValue = 3f;
             so.FindProperty("wardDamageMultiplier").floatValue = 0.3f;
             FillObjectArray(so.FindProperty("phases"), phases);
             so.ApplyModifiedPropertiesWithoutUndo();

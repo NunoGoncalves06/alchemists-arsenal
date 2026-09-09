@@ -56,7 +56,7 @@ namespace AlchemistsArsenal.DebugTools
             SetField(body, "maxHP", 500);
             SetField(body, "currentHP", 500);
             var acc = go.AddComponent<ElementalDamageAccumulator>();
-            acc.SetProfileForTest(MakeProfile());
+            acc.SetProfile(MakeProfile());
 
             for (int i = 0; i < 5; i++)
                 body.ApplyDamage(new DamageInfo(15, ElementType.Fire, Vector2.zero, null));
@@ -120,7 +120,7 @@ namespace AlchemistsArsenal.DebugTools
             SetField(body, "maxHP", 1000);
             SetField(body, "currentHP", 1000);
             var acc = go.AddComponent<ElementalDamageAccumulator>();
-            acc.SetProfileForTest(MakeProfile());
+            acc.SetProfile(MakeProfile());
 
             bool crossed = false;
             ElementType crossedElement = default;

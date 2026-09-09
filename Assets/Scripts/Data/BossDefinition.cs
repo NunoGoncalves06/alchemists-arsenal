@@ -22,10 +22,8 @@ namespace AlchemistsArsenal.Data
         [Header("HFSM timing")]
         [Min(0.1f)] [SerializeField] private float phaseEvalInterval = 0.75f;
         [Range(0f, 1f)] [SerializeField] private float phaseSwitchMargin = 0.05f;
-        [Min(0f)] [SerializeField] private float wardDurationSeconds = 6f;
-        [Min(0f)] [SerializeField] private float recoveryDurationSeconds = 3f;
 
-        [Header("Ward effect")]
+        [Header("Ward effect (latch duration lives on ElementalDamageAccumulator)")]
         [Range(0f, 1f)] [SerializeField] private float wardDamageMultiplier = 0.3f;
 
         public string DisplayName => string.IsNullOrWhiteSpace(displayName) ? name : displayName;
@@ -35,8 +33,6 @@ namespace AlchemistsArsenal.Data
         public IReadOnlyList<BossPhaseData> Phases => phases;
         public float PhaseEvalInterval => phaseEvalInterval;
         public float PhaseSwitchMargin => phaseSwitchMargin;
-        public float WardDurationSeconds => wardDurationSeconds;
-        public float RecoveryDurationSeconds => recoveryDurationSeconds;
         public float WardDamageMultiplier => wardDamageMultiplier;
 
         public BossPhaseData ForPhase(BossPhase phase)
@@ -45,6 +41,16 @@ namespace AlchemistsArsenal.Data
             for (int i = 0; i < phases.Length; i++)
                 if (phases[i] != null && phases[i].Phase == phase) return phases[i];
             return null;
+        }
+
+        public void Configure(string displayName, ElementType coreElement, int maxHealth,
+            ElementalThreatProfile threatProfile, BossPhaseData[] phases)
+        {
+            this.displayName = displayName;
+            this.coreElement = coreElement;
+            this.maxHealth = maxHealth;
+            this.threatProfile = threatProfile;
+            this.phases = phases ?? new BossPhaseData[0];
         }
     }
 }
