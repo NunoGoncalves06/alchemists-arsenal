@@ -91,8 +91,15 @@ namespace AlchemistsArsenal.Combat
 
             if (winner == CurrentPhase) return;
 
+            // Dwell hysteresis stops marginal flip-flopping — but a *decisive* lead
+            // (e.g. a latched ward scoring ~1, or an HP collapse into Recovering) is
+            // meant to act immediately, so it bypasses dwell. This one rule covers
+            // both without naming either phase.
+            float lead = winnerScore - currentScore;
+            bool decisive = winnerScore > 0.85f && lead > 0.35f;
             bool dwellOk = Time.time - _phaseEnteredAt >= CurrentDwell();
-            if (dwellOk && winnerScore - currentScore > definition.PhaseSwitchMargin)
+
+            if ((decisive || dwellOk) && lead > definition.PhaseSwitchMargin)
                 EnterPhase(winner);
         }
 

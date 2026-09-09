@@ -133,7 +133,7 @@ namespace AlchemistsArsenal.DebugTools
 
         private static void CleanupExpedition(ExpeditionManager mgr, Object biome)
         {
-            foreach (var b in Object.FindObjectsByType<CombatantBody>(FindObjectsSortMode.None))
+            foreach (var b in Object.FindObjectsByType<CombatantBody>(FindObjectsInactive.Include))
                 if (b != null) Destroy(b.gameObject);
             if (mgr != null) Destroy(mgr.gameObject);
             MonsterRegistry.Clear();

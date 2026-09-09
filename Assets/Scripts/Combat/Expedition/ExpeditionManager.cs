@@ -19,6 +19,8 @@ namespace AlchemistsArsenal.Combat
         [SerializeField] private MonsterSpawner spawner;
         [SerializeField] private float warmupSeconds = 1.5f;
         [SerializeField] private float gapBetweenWaves = 1.5f;
+        [Tooltip("Safety cap — a wave that hasn't cleared by this is force-ended so the run can't hang.")]
+        [Min(5f)] [SerializeField] private float maxWaveSeconds = 60f;
         [SerializeField] private bool logProgress = true;
 
         public ExpeditionPhase Phase { get; private set; } = ExpeditionPhase.Warmup;
@@ -75,10 +77,19 @@ namespace AlchemistsArsenal.Combat
                     if (Phase == ExpeditionPhase.Lost) yield break;
                 }
 
-                // Hold until the field is clear before the next wave.
+                // Hold until the field is clear before the next wave — with a
+                // safety cap so a stuck straggler can't hang the whole run.
+                float held = 0f;
                 while (LiveMonsters() > 0)
                 {
                     if (AllAdventurersDead()) { Lose(); yield break; }
+                    held += Time.deltaTime;
+                    if (held >= maxWaveSeconds)
+                    {
+                        if (logProgress) Debug.LogWarning($"[Expedition] Wave {WaveNumber} timed out with {LiveMonsters()} left — clearing.");
+                        DespawnLiveMonsters();
+                        break;
+                    }
                     yield return null;
                 }
                 yield return WaitOrLose(gapBetweenWaves);
@@ -149,6 +160,14 @@ namespace AlchemistsArsenal.Combat
             for (int i = 0; i < list.Count; i++)
                 if (list[i] != null && list[i].IsAlive) n++;
             return n;
+        }
+
+        private static void DespawnLiveMonsters()
+        {
+            var list = MonsterRegistry.ActiveMonsters;
+            for (int i = list.Count - 1; i >= 0; i--)
+                if (list[i] is Component c && c != null)
+                    Destroy(c.gameObject);
         }
 
         private static bool AllAdventurersDead()

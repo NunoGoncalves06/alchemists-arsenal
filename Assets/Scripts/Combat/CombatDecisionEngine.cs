@@ -119,6 +119,10 @@ namespace AlchemistsArsenal.Combat
             return Vector2.Dot(target.Velocity, toSelf.normalized);
         }
 
+        // Perf note (Carmack): this is O(monsters) per (bomb × monster) pair, i.e.
+        // O(bombs · monsters²) per decision tick per adventurer. Fine at current
+        // scale (a few bombs, tens of monsters). If biomes grow to hundreds of
+        // monsters, cache the count per distinct blast radius per target here.
         private static int CountCluster(IReadOnlyList<ICombatant> monsters, Vector2 centre, float radius)
         {
             float sqr = radius * radius;
