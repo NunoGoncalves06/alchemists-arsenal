@@ -1,0 +1,40 @@
+# --- Unity Folders ---
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+
+# --- IDE & OS ---
+.idea/
+.vscode/
+.opencode/
+.DS_Store
+Thumbs.db
+
+# --- Generated Solution Files ---
+*.sln
+*.csproj
+*.unityproj
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.opendb
+*.VC.db
+*.slnx
+
+# --- Assets ---
+# You can ignore specific asset types if they are too large (e.g. 4K videos)
+# *.mp4
+
+# --- Packages ---
+# We keep manifest.json and packages-lock.json
+# But ignore the generated package cache (usually inside Library)
