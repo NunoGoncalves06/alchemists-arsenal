@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b025a91bcb3648df807675edd1b6761d, type: 3}
+  m_Name: BossPhase_Neutral
+  m_EditorClassIdentifier: Assembly-CSharp::AlchemistsArsenal.Data.BossPhaseData
+  phase: 0
+  entryConsiderations:
+  - {fileID: 11400000, guid: 0b08710938f1f234ba8eafced9e4fb34, type: 2}
+  - {fileID: 11400000, guid: 6a837b47bec6a1b47b75f68e15adec83, type: 2}
+  attackPatterns:
+  - {fileID: 11400000, guid: 8eea41ea822ca9247a849fc7eae0a7aa, type: 2}
+  minDwellSeconds: 2.5
+  moveSpeedMultiplier: 1
