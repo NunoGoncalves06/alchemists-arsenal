@@ -36,6 +36,23 @@ namespace AlchemistsArsenal.Crafting
         public float MaxOptimalHeat => maxOptimalHeat;
         public Action<float> OnHeatChanged;
 
+        /// <summary>
+        /// Number of physics steps this manager has processed. Lets tests / tooling
+        /// confirm the FixedUpdate simulation is still running (e.g. after a UI tab
+        /// switch hides the cauldron panel).
+        /// </summary>
+        public long PhysicsStepCount { get; private set; }
+
+        /// <summary>
+        /// Directly set the brew heat (0..1). Intended for biome ambient modifiers,
+        /// scripted events, and simulation tests — normal play changes heat by stirring.
+        /// </summary>
+        public void SetHeat(float value01)
+        {
+            currentHeat = Mathf.Clamp01(value01);
+            OnHeatChanged?.Invoke(currentHeat);
+        }
+
         private void Awake()
         {
             if (Instance == null)
@@ -89,6 +106,8 @@ namespace AlchemistsArsenal.Crafting
 
         private void FixedUpdate()
         {
+            PhysicsStepCount++;
+
             // Apply physical forces to herbs inside the cauldron trigger zone
             ApplyStirringForces();
         }
