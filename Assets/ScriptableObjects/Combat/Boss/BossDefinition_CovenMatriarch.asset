@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ddaabff82b9440fd812911662e28585a, type: 3}
+  m_Name: BossDefinition_CovenMatriarch
+  m_EditorClassIdentifier: Assembly-CSharp::AlchemistsArsenal.Data.BossDefinition
+  displayName: The Coven Matriarch
+  coreElement: 4
+  maxHealth: 600
+  threatProfile: {fileID: 11400000, guid: 07b8fad3a42d6514a837ada91d7e7270, type: 2}
+  phases:
+  - {fileID: 11400000, guid: 64338eaca6b0d4c4c93b0929eb12628f, type: 2}
+  - {fileID: 11400000, guid: 6de9d4afdec86b94b8572663ef33e173, type: 2}
+  - {fileID: 11400000, guid: 642e9e7284c401e48a4b094026dd4998, type: 2}
+  - {fileID: 11400000, guid: 9ac55ce095cd46e4288805ef9711a2f0, type: 2}
+  phaseEvalInterval: 0.75
+  phaseSwitchMargin: 0.05
+  wardDamageMultiplier: 0.3
