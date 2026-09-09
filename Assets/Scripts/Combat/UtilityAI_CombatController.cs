@@ -86,7 +86,8 @@ namespace AlchemistsArsenal.Combat
                 scoreThreshold,
                 out BombThrowRequest request,
                 out CombatDecisionEngine.ScoredCandidate best,
-                _breakdown);
+                _breakdown,
+                ResolveWard);
 
             if (!decided) return;
 
@@ -139,6 +140,10 @@ namespace AlchemistsArsenal.Combat
 
         private static string DescribeTarget(ICombatant target) =>
             target is Component c ? c.name : "target";
+
+        // Feedback loop: let the scorer see whether the target is warding an element.
+        private static IElementalWardProvider ResolveWard(ICombatant target) =>
+            target is Component comp ? comp.GetComponent<IElementalWardProvider>() : null;
 
         /// <summary>Test seam — inject a combatant + loadout without a full scene.</summary>
         public void ConfigureForTest(

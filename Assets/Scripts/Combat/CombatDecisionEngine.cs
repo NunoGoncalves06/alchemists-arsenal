@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using AlchemistsArsenal.Data;
@@ -47,7 +48,8 @@ namespace AlchemistsArsenal.Combat
             float scoreThreshold,
             out BombThrowRequest request,
             out ScoredCandidate best,
-            List<ScoredCandidate> breakdown = null)
+            List<ScoredCandidate> breakdown = null,
+            Func<ICombatant, IElementalWardProvider> wardLookup = null)
         {
             request = default;
             best = default;
@@ -57,24 +59,31 @@ namespace AlchemistsArsenal.Combat
             if (self == null || !self.IsAlive || monsters == null || readyBombs == null)
                 return false;
 
-            for (int b = 0; b < readyBombs.Count; b++)
+            for (int m = 0; m < monsters.Count; m++)
             {
-                BombData bomb = readyBombs[b];
-                if (bomb == null) continue;
+                ICombatant target = monsters[m];
+                if (target == null || !target.IsAlive || target.Team != Team.Monster)
+                    continue;
 
-                for (int m = 0; m < monsters.Count; m++)
+                // Resolve the target's ward once, not per bomb.
+                IElementalWardProvider ward = wardLookup?.Invoke(target);
+                bool warded = ward != null && ward.HasActiveWard;
+                ElementType wardElement = warded ? ward.WardElement : default;
+
+                float distance = Vector2.Distance(self.Position, target.Position);
+                float closingSpeed = ClosingSpeed(self, target);
+
+                for (int b = 0; b < readyBombs.Count; b++)
                 {
-                    ICombatant target = monsters[m];
-                    if (target == null || !target.IsAlive || target.Team != Team.Monster)
-                        continue;
+                    BombData bomb = readyBombs[b];
+                    if (bomb == null) continue;
 
-                    float distance = Vector2.Distance(self.Position, target.Position);
-                    float closingSpeed = ClosingSpeed(self, target);
                     int clusterCount = CountCluster(monsters, target.Position, bomb.BlastRadius);
 
                     var ctx = new UtilityContext(
                         self, target, bomb, matrix,
-                        potionQuality01, distance, closingSpeed, clusterCount);
+                        potionQuality01, distance, closingSpeed, clusterCount,
+                        warded, wardElement);
 
                     float score = UtilityScorer.ScoreAction(considerations, in ctx);
 
