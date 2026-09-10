@@ -62,12 +62,21 @@ namespace AlchemistsArsenal.UI
             StartCoroutine(Run());
         }
 
+        private static IEnumerator WaitForClickOr(float seconds)
+        {
+            for (float t = 0f; t < seconds; t += Time.unscaledDeltaTime)
+            {
+                if (Input.GetMouseButtonDown(0) && t > 0.15f) yield break; // ignore the click that opened this
+                yield return null;
+            }
+        }
+
         private IEnumerator Run()
         {
             _step = Step.Welcome;
-            Show("Day one. Time moves slowly today — take it in.\nStart at the Counter on the left.", "1 / 3",
+            Show("Day one. Time moves slowly today — take it in.\nStart at the Counter on the left.\n\n<size=70%>(click to continue)</size>", "1 / 3",
                 new Vector2(0.16f, 0.5f), new Vector2(300, 480));
-            yield return new WaitForSecondsRealtime(3f);
+            yield return WaitForClickOr(6f);
 
             _step = Step.Counter;
             Show("Read the incoming waves, then press ACCEPT to choose what to brew.", "2 / 3",
@@ -89,10 +98,10 @@ namespace AlchemistsArsenal.UI
             }
 
             _step = Step.Done;
-            Show("You've got it. Seal it and send Rookie off. Time runs normal from tomorrow.", "done",
+            Show("You've got it. Seal it and send Rookie off. Time runs normal from tomorrow.\n\n<size=70%>(click to continue)</size>", "done",
                 new Vector2(0.85f, 0.5f), new Vector2(300, 400));
             AudioManager.Play(Sfx.Chime);
-            yield return new WaitForSecondsRealtime(3f);
+            yield return WaitForClickOr(6f);
 
             Finish();
         }

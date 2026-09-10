@@ -166,9 +166,78 @@ re-banks a reward (P7) or, if the file is damaged, eats the save (P8). P9 is the
 subtler "day 2 isn't a clean slate" bug. All 14 items fixed in the following
 commit; re-review after.
 
-## Round 3 — `named-persona-adversarial-review`
+## Round 3 — `named-persona-adversarial-review` (Carmack / Torvalds / Cagan+Jobs)
 
-_(pending)_
+Grounded in `references/persona_principles.md`.
+**Verdict:** 🟠 **CONCERNS** — 0 blocker, 3 warnings, 6 notes. The loop is sound;
+the findings are taste + first-run UX + one honest rubric gap.
+
+### WARNINGS
+
+**P13 — `Continue()` duplicates `Sleep()` behind a state check.**
+_Torvalds — eliminate the special case (high, TED 2016)._ `BeginEvening` banks
+the reward and sets `lastResolvedDay = day` but does **not** advance the day;
+`Sleep()` advances it; so `Continue()` needs a branch that re-does `Sleep`'s
+`day++` / clear-replay when the save was stamped past the fight. The good-taste
+restructure: **the day is over once you've been paid.** `day++` moves *into*
+`BeginEvening` (inside the `lastResolvedDay` guard); `Sleep()` becomes a cosmetic
+"pass the night" → `BeginDay()`; `Continue()` loses the branch entirely — it
+always just `Load` + `BeginDay()` on an already-correct day.
+→ **Fixed.** `BeginEvening` now: `if (lastResolvedDay != day) { bank; advance
+biome on clear; lastResolvedDay = day; day++; }`. `Continue()` special case
+deleted. `Sleep(replay)` just sets the replay target and `BeginDay()`s.
+
+**P14 — Cat-3 (Assets, weighted) is the one category the slice cannot show.**
+_Cagan — fall in love with the problem, not the solution (high, SVPG)._ Every
+visual is procedural (`PixelArt` discs/blocks, synth audio). The slice proves the
+*pipeline* (sprite/clip fields wired) but a grader opening it sees no hand-made
+art — and Assets + Story both lean on that. "All the systems compile" is the
+solution; "a grader can score all 8" is the problem.
+→ **Fixed (scope):** `PHASE0_STATUS.md` now leads with a **do-not-submit-without
+the biome-1 art pass** warning, and `ROADMAP.md` pulls the biome-1 art +
+2 cutscene illustrations into Phase 0's definition-of-done (task 0.13 upgraded
+from 🟡 to a hard gate).
+
+**P15 — The first 3 minutes have two back-to-back forced-passive stretches.**
+_Jobs — design is how it works (high, NYT 2003)._ Opening cinematic (≈45 s of
+typed-out lore over procedural art) → tutorial `Welcome` step
+(`WaitForSecondsRealtime(3f)`, no input accepted). Lore infodump before the
+player has touched anything is the weakest placement.
+→ **Fixed:** the tutorial `Welcome` step advances on click (or a 6 s fallback),
+the diary typewriter completes the current page instantly on click, and the
+opening cinematic keeps its CLOSE-to-skip. (Moving the cinematic to *after* the
+first craft is a design change deferred to Phase 2 — noted.)
+
+### NOTES (applied)
+- N14 `ExpeditionHudScreen.Update()` rebuilt the banner string + set
+  `Image.fillAmount` every frame (per-frame alloc + canvas dirty — Carmack, "no
+  allocation in the frame loop"). Now guarded: only touch `.text` / `.fillAmount`
+  when the underlying value changed.
+- N15 `EnsureShopWorld` is only ever called right after a `DestroyWorld` now →
+  renamed `BuildShopWorld`, guard removed (one call site).
+- N16 `DiaryScreen.PendingReturnPhase` is a `GamePhase?` used as a bool →
+  `bool FromOpeningCinematic`.
+- N17 `Sleep(int)` sentinel `-1` kept (a two-method split is not worth it for one
+  call site + one replay button).
+- N18 `AudioManager` bed generation at Awake (~3.5 MB, ~1 M `sin()` calls) is
+  one-time behind the boot splash — Carmack's "measure first": this is
+  measured-appropriate, no change. (zero-finding: audio-gen hidden by splash,
+  texture cache amortized, detonation is event-driven not polled.)
+- N19 `FindObjectsByType<BombProjectile2D>` in `ExpeditionWorld.OnDestroy` runs
+  once per day during a teardown frame — acceptable; parenting projectiles is
+  cleaner but not a perf issue.
+
+### Integrity check (Feynman)
+Torvalds on the `Continue` branch — yes, it is a literal partial-duplication of
+`Sleep` guarded by a state check, the exact shape of his linked-list example.
+Carmack on per-frame `.text` — yes, documented across his .plan files. Cagan on
+"systems present, weighted category unshowable" — yes, problem-vs-solution.
+All findings stand on merit.
+
+### Summary
+No blocker. P13 is the one real code change — the state machine gets simpler, not
+more complex. P14 is an honest scoping correction (the slice needs *some* real art
+to be gradable). P15 is first-run polish. 8 items applied; re-review after.
 
 ## Round 4 — `eval-rubric-auditor`
 

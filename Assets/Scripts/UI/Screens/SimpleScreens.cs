@@ -192,7 +192,7 @@ namespace AlchemistsArsenal.UI
             {
                 s.openingCinematicSeen = true;
                 SaveSystem.Instance.MarkDirty();
-                DiaryScreen.PendingReturnPhase = GamePhase.Morning;
+                DiaryScreen.FromOpeningCinematic = true;
                 DiaryScreen.OpenEntryId = "diary_00";
                 UIManager.Instance.Show(ScreenId.Diary);
                 yield break;

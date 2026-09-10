@@ -53,7 +53,7 @@
 | 0.10 | `DiaryEntryData` + diary screen (2-page, page-turn) + `CutsceneSequencer` + opening cinematic + 2 entries | `[2]` | opening plays once; biome-1 clear unlocks an entry |
 | 0.11 | `TutorialManager` FSM for Counter + Cauldron (spotlight + pointer + slowed budget) | `[6]` | Day 1 guided; Day 2 normal speed |
 | 0.12 | `AudioManager` + shop/forest music pair + ~8 event SFX + Animalese synth on `SpeechBubble` | `[7]` | music crossfades on phase; adventurer "speaks" |
-| 0.13 | Biome 1 art pass: bg parallax, ground, 3 monsters, herbs, UI chrome, 1 boss, 5-layer diary sketch | `[3]``[4]` | biome 1 looks final; sketch assembles |
+| 0.13 | **[HARD GATE — reviewer P14]** Biome 1 art pass: bg parallax, ground, 3 monsters, herbs, UI chrome 9-slices, 1 boss, 5-layer diary sketch, + 2 opening-cutscene illustrations. Procedural stand-ins ship in the meantime, but the slice is **not gradable** (cats 2, 3) until real art replaces them. | `[3]``[4]``[2]` | biome 1 + opening cutscene look hand-made; sketch assembles |
 | 0.14 | `Systems.QualityTier` deleted → `CombatQuality` everywhere | `[1]` | grep clean |
 | 0.15 | Build → `ISCC.exe` → install on clean VM → smoke test the whole slice | `[6]` | `Setup.exe` installs & the slice is playable start→boss |
 
