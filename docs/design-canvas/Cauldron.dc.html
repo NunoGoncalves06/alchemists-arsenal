@@ -1,0 +1,109 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Pixelify+Sans:wght@400;500;600;700&display=swap');
+    :root{
+      --ink-900:#1b141f;--ink-800:#241a2b;--ink-700:#33263c;
+      --parchment:#efe2c4;--parchment-dim:#c9b892;--wood:#6b4a2f;--wood-dark:#3f2c1c;
+      --candle:#e8b64c;--candle-hot:#f6d873;--witch:#7b4d9e;--danger:#d64550;--ok:#4fae5a;
+      --nature:#5ea637;--fire:#e2683a;--water:#3f8fd0;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{width:1280px;height:720px;overflow:hidden;background:var(--ink-900);
+      font-family:'Pixelify Sans',ui-monospace,monospace;color:var(--parchment);-webkit-font-smoothing:none}
+    .disp{font-family:'Silkscreen',monospace;letter-spacing:.03em}
+    a{color:var(--candle)}a:hover{color:var(--candle-hot)}
+    .wrap{position:absolute;inset:0;padding:26px;display:flex;gap:22px}
+    .stage{flex:1.5;background:var(--ink-800);border:3px solid var(--wood);position:relative;overflow:hidden}
+    .side{flex:1;display:flex;flex-direction:column;gap:16px}
+    h3{font-family:'Silkscreen',monospace;font-size:12px;color:var(--parchment-dim);margin-bottom:8px}
+
+    .pot{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:420px;height:360px;border-radius:0 0 46% 46%;
+      background:radial-gradient(circle at 50% 30%, #7a4a2f, #1c1319 72%);border:8px solid var(--wood-dark)}
+    .liquid{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);width:320px;height:320px;border-radius:50%;
+      background:radial-gradient(circle at 44% 38%, var(--water), #1c3a52 80%);box-shadow:inset 0 0 34px #0008}
+    .vortex{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);width:170px;height:170px;border-radius:50%;
+      border:3px dashed rgba(246,216,115,.55);animation:spin 3s linear infinite}
+    @keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+    .herb{position:absolute;width:22px;height:22px;background:var(--nature);border:2px solid #24361c;border-radius:5px}
+    .paddle{position:absolute;left:56%;top:26%;width:12px;height:190px;background:var(--wood);border:3px solid var(--wood-dark);transform:rotate(22deg)}
+    .cursor{position:absolute;left:60%;top:32%;width:8px;height:8px;background:var(--candle-hot);border:2px solid var(--ink-900);border-radius:50%}
+    .trail{position:absolute;left:40%;top:60%;width:230px;height:90px;border:2px solid rgba(246,216,115,.4);border-radius:50%;transform:rotate(-12deg)}
+
+    .gauge{background:var(--ink-900);border:2px solid var(--wood-dark);padding:14px}
+    .track{position:relative;height:26px;background:var(--ink-700);border:2px solid var(--wood-dark)}
+    .track .green{position:absolute;left:40%;width:30%;top:0;bottom:0;background:rgba(79,174,90,.4);border-inline:2px solid var(--ok)}
+    .track .needle{position:absolute;left:52%;top:-5px;bottom:-5px;width:4px;background:var(--parchment)}
+    .track.cold .needle{left:18%} .track.hot .needle{left:88%}
+    .status{font-family:'Silkscreen',monospace;font-size:11px;margin-top:8px}
+    .status.ok{color:var(--ok)} .status.cold{color:var(--water)} .status.hot{color:var(--danger)}
+    .states{display:flex;flex-direction:column;gap:10px}
+    .st{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--parchment-dim)}
+    .st .mini{width:120px;height:14px;background:var(--ink-700);border:2px solid var(--wood-dark);position:relative;flex:0 0 auto}
+    .st .mini .g{position:absolute;left:40%;width:30%;top:0;bottom:0;background:rgba(79,174,90,.4)}
+    .st .mini .nd{position:absolute;top:-3px;bottom:-3px;width:3px;background:var(--parchment)}
+
+    .reagents h3{margin-top:0}
+    .rrow{display:flex;gap:10px}
+    .rslot{width:60px;height:60px;background:var(--ink-900);border:2px solid var(--wood);display:flex;align-items:center;justify-content:center}
+    .rslot .b{width:26px;height:26px;border-radius:5px;border:2px solid #0006}
+    .note{font-size:11px;color:var(--parchment-dim);margin-top:8px}
+    .brewbtn{margin-top:auto;font-family:'Silkscreen',monospace;font-size:12px;background:var(--ink-700);color:var(--parchment-dim);
+      border:2px dashed var(--wood);padding:14px;text-align:center}
+  </style>
+</helmet>
+
+<div class="wrap">
+  <div class="stage">
+    <div class="trail"></div>
+    <div class="pot"></div>
+    <div class="liquid"></div>
+    <div class="vortex"></div>
+    <div class="herb" style="left:42%;top:44%"></div>
+    <div class="herb" style="left:55%;top:40%;background:var(--fire)"></div>
+    <div class="herb" style="left:50%;top:56%"></div>
+    <div class="herb" style="left:46%;top:38%;background:var(--fire)"></div>
+    <div class="paddle"></div>
+    <div class="cursor"></div>
+  </div>
+
+  <div class="side">
+    <div class="gauge">
+      <h3>HEAT — LIVE</h3>
+      <div class="track"><span class="green"></span><span class="needle"></span></div>
+      <div class="status ok">BREWING PERFECTLY</div>
+    </div>
+
+    <div class="gauge">
+      <h3>HEAT STATES</h3>
+      <div class="states">
+        <div class="st"><span class="mini"><span class="g"></span><span class="nd" style="left:16%"></span></span> <span style="color:var(--water)">TOO COLD — stir faster</span></div>
+        <div class="st"><span class="mini"><span class="g"></span><span class="nd" style="left:52%"></span></span> <span style="color:var(--ok)">OPTIMAL — quality climbing</span></div>
+        <div class="st"><span class="mini"><span class="g"></span><span class="nd" style="left:88%"></span></span> <span style="color:var(--danger)">OVERHEATING — brew scorches, −pts</span></div>
+      </div>
+    </div>
+
+    <div class="gauge reagents">
+      <h3>REAGENTS IN THE POT</h3>
+      <div class="rrow">
+        <div class="rslot"><span class="b" style="background:var(--water)"></span></div>
+        <div class="rslot"><span class="b" style="background:var(--water)"></span></div>
+        <div class="rslot"><span class="b" style="background:var(--fire)"></span></div>
+        <div class="rslot" style="border-style:dashed"></div>
+      </div>
+      <div class="note">Element = majority reagent → <b style="color:var(--water)">Water</b>. Off-element reagents dilute the grade.</div>
+    </div>
+
+    <div class="brewbtn">BREW 62% — KEEP STIRRING</div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

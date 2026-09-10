@@ -1,0 +1,156 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Pixelify+Sans:wght@400;500;600;700&display=swap');
+    :root{
+      --ink-900:#1b141f;--ink-800:#241a2b;--ink-700:#33263c;
+      --parchment:#efe2c4;--parchment-dim:#c9b892;--wood:#6b4a2f;--wood-dark:#3f2c1c;
+      --candle:#e8b64c;--candle-hot:#f6d873;--witch:#7b4d9e;--danger:#d64550;--ok:#4fae5a;
+      --fire:#e2683a;--nature:#5ea637;--water:#3f8fd0;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{width:1280px;height:720px;overflow:hidden;background:var(--ink-900);
+      font-family:'Pixelify Sans',ui-monospace,monospace;color:var(--parchment);-webkit-font-smoothing:none}
+    .disp{font-family:'Silkscreen',monospace;letter-spacing:.03em}
+    a{color:var(--candle)}a:hover{color:var(--candle-hot)}
+
+    .topbar{position:absolute;top:0;left:0;right:0;height:56px;background:var(--ink-800);
+      border-bottom:3px solid var(--wood-dark);display:flex;align-items:center;gap:22px;padding:0 20px}
+    .chip{display:flex;align-items:center;gap:8px;font-size:13px}
+    .chip .disp{font-size:12px;color:var(--candle)}
+    .coin{width:16px;height:16px;border-radius:50%;background:var(--candle);border:2px solid var(--wood-dark)}
+    .clock{flex:0 0 auto;width:190px;height:16px;background:var(--ink-700);border:2px solid var(--wood-dark);position:relative}
+    .clock i{position:absolute;left:0;top:0;bottom:0;width:62%;background:var(--candle);display:block}
+    .cog{margin-left:auto;width:22px;height:22px;color:var(--parchment-dim)}
+
+    .rail{position:absolute;left:0;top:56px;bottom:0;width:92px;background:var(--ink-800);
+      border-right:3px solid var(--wood-dark);display:flex;flex-direction:column;gap:10px;padding:14px 10px}
+    .tab{height:88px;background:var(--ink-700);border:2px solid var(--wood);position:relative;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:10px;color:var(--parchment-dim)}
+    .tab svg{width:26px;height:26px}
+    .tab.active{background:var(--candle);color:var(--ink-900);border-color:var(--wood-dark);box-shadow:3px 0 0 var(--candle-hot)}
+    .tab.locked{opacity:.45}
+    .tab .done{position:absolute;top:4px;right:4px;width:12px;height:12px;color:var(--ok)}
+    .tab .lock{position:absolute;top:5px;right:5px;width:12px;height:12px;color:var(--parchment-dim)}
+
+    .center{position:absolute;left:92px;right:340px;top:56px;bottom:0;padding:22px;display:flex;flex-direction:column;gap:14px}
+    .stationhead{display:flex;align-items:baseline;gap:12px}
+    .stationhead .disp{font-size:16px;color:var(--candle)}
+    .stationhead small{color:var(--parchment-dim);font-size:12px}
+    .viewport{flex:1;position:relative;background:var(--ink-800);border:3px solid var(--wood);overflow:hidden}
+    .potframe{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);width:340px;height:300px;
+      border-radius:50%;background:radial-gradient(circle at 50% 40%, #7a4a2f, #241a2b 70%);border:6px solid var(--wood-dark)}
+    .surface{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);width:250px;height:250px;border-radius:50%;
+      background:radial-gradient(circle at 45% 40%, var(--fire), #7a2f1c 78%);box-shadow:inset 0 0 26px #0007}
+    .herb{position:absolute;width:20px;height:20px;background:var(--nature);border:2px solid #24361c;border-radius:4px}
+    .paddle{position:absolute;left:58%;top:30%;width:10px;height:150px;background:var(--wood);border:2px solid var(--wood-dark);transform:rotate(18deg)}
+    .stir{position:absolute;left:50%;top:46%;width:210px;height:210px;transform:translate(-50%,-50%);
+      border:2px dashed rgba(246,216,115,.5);border-radius:50%}
+    .heat{position:absolute;right:16px;top:16px;bottom:16px;width:34px;background:var(--ink-700);border:2px solid var(--wood-dark)}
+    .heat .band{position:absolute;left:0;right:0;top:30%;height:28%;background:rgba(79,174,90,.35);border-block:2px solid var(--ok)}
+    .heat .needle{position:absolute;left:-6px;right:-6px;height:4px;background:var(--parchment);top:38%}
+    .heatlbl{position:absolute;right:56px;top:16px;font-size:11px;color:var(--ok);font-family:'Silkscreen',monospace}
+    .progress{position:absolute;left:16px;bottom:16px;right:16px;height:14px;background:var(--ink-700);border:2px solid var(--wood-dark)}
+    .progress i{display:block;height:100%;width:44%;background:var(--witch)}
+    .reagents{display:flex;gap:8px}
+    .rslot{width:52px;height:52px;background:var(--ink-800);border:2px solid var(--wood);display:flex;align-items:center;justify-content:center}
+    .rslot .b{width:22px;height:22px;border-radius:4px}
+
+    .dock{position:absolute;right:0;top:56px;bottom:0;width:340px;background:var(--ink-800);
+      border-left:3px solid var(--wood-dark);padding:18px;display:flex;flex-direction:column;gap:14px}
+    .ticket{background:var(--parchment);color:var(--ink-900);border:2px solid var(--wood-dark);padding:12px;box-shadow:4px 4px 0 var(--wood-dark)}
+    .ticket .disp{font-size:12px}
+    .ticket .row{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:13px}
+    .badge{width:18px;height:18px;flex:0 0 auto}
+    .qm{margin-top:4px}
+    .qm .bar{height:20px;background:var(--ink-700);border:2px solid var(--wood-dark);position:relative}
+    .qm .fill{position:absolute;left:0;top:0;bottom:0;width:71%;background:var(--candle)}
+    .qm .tick{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--parchment-dim)}
+    .qm .lab{display:flex;justify-content:space-between;font-size:10px;color:var(--parchment-dim);margin-top:3px}
+    .grade{font-family:'Silkscreen',monospace;font-size:12px;color:var(--candle);margin-top:6px}
+    .log{flex:1;background:var(--ink-900);border:2px solid var(--wood-dark);padding:10px;font-size:12px;overflow:hidden}
+    .log h4{font-family:'Silkscreen',monospace;font-size:10px;color:var(--parchment-dim);margin-bottom:6px}
+    .log div{margin-bottom:4px}
+    .log .minus{color:var(--danger)} .log .plus{color:var(--ok)}
+    .cta{font-family:'Silkscreen',monospace;font-size:12px;text-align:center;background:var(--ink-700);
+      color:var(--parchment-dim);border:2px dashed var(--wood);padding:14px}
+  </style>
+</helmet>
+
+<!-- top bar -->
+<div class="topbar">
+  <div class="chip"><span class="disp">DAY 4</span></div>
+  <div class="chip"><span class="coin"></span><span>128 g</span></div>
+  <div class="chip"><span class="disp">MORNING</span>
+    <span class="clock"><i></i></span></div>
+  <div class="chip"><span class="disp" style="color:var(--fire)">CINDER PEAKS</span><small style="color:var(--parchment-dim)"> · today's run</small></div>
+  <svg class="cog" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2M6 6l1.5 1.5M16.5 16.5L18 18M18 6l-1.5 1.5M7.5 16.5L6 18"/></svg>
+</div>
+
+<!-- station rail -->
+<div class="rail">
+  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h10"/></svg>COUNTER
+    <svg class="done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 12l5 5L20 6"/></svg></div>
+  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 19l7-14 7 14zM9 15h6"/></svg>PREP
+    <svg class="done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 12l5 5L20 6"/></svg></div>
+  <div class="tab active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 10h14l-2 9H7zM8 10V7a4 4 0 018 0v3"/></svg>CAULDRON</div>
+  <div class="tab locked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 10V7a4 4 0 018 0v3M7 10h10v10H7z"/></svg>BOTTLING
+    <svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 11V8a5 5 0 0110 0v3M6 11h12v9H6z"/></svg></div>
+</div>
+
+<!-- centre: cauldron -->
+<div class="center">
+  <div class="stationhead"><span class="disp">CAULDRON</span><small>stir with the mouse · hold the needle in the green</small></div>
+  <div class="viewport">
+    <div class="stir"></div>
+    <div class="potframe"></div>
+    <div class="surface"></div>
+    <div class="herb" style="left:44%;top:40%"></div>
+    <div class="herb" style="left:55%;top:52%;background:var(--water)"></div>
+    <div class="herb" style="left:48%;top:58%"></div>
+    <div class="paddle"></div>
+    <div class="heatlbl">BREWING PERFECTLY</div>
+    <div class="heat"><span class="band"></span><span class="needle"></span></div>
+    <div class="progress"><i></i></div>
+  </div>
+  <div class="reagents">
+    <div class="rslot"><span class="b" style="background:var(--fire)"></span></div>
+    <div class="rslot"><span class="b" style="background:var(--nature)"></span></div>
+    <div class="rslot" style="border-style:dashed"></div>
+    <div class="rslot" style="border-style:dashed"></div>
+  </div>
+</div>
+
+<!-- right order dock -->
+<div class="dock">
+  <div class="ticket">
+    <div class="disp">ORDER · ORD-4821</div>
+    <div class="row"><svg class="badge" viewBox="0 0 24 24"><polygon points="12,3 22,21 2,21" fill="#e2683a" stroke="#3f2c1c" stroke-width="2"/></svg>Firebloom Flask</div>
+    <div class="row" style="font-size:11px;color:#5a4a34">for Rookie · Berserker splash +25%</div>
+    <div class="qm">
+      <div class="lab"><span>0</span><span>Poor</span><span>Okay</span><span>Great</span><span>Perfect</span></div>
+      <div class="bar"><span class="fill"></span>
+        <span class="tick" style="left:60%"></span><span class="tick" style="left:80%"></span><span class="tick" style="left:95%"></span></div>
+      <div class="grade">QUALITY 71 — OKAY</div>
+    </div>
+  </div>
+  <div class="log">
+    <h4>DEDUCTION LOG</h4>
+    <div class="plus">+6  Prep — clean triple-chop</div>
+    <div class="minus">−7  Cauldron — brew ran too hot</div>
+    <div class="minus">−4  Prep — dryer pulled early</div>
+    <div class="plus">+11 Cauldron — held green zone 8s</div>
+    <div style="color:#7c6c52">born at 25 · Poor</div>
+  </div>
+  <div class="cta">SEAL AT BOTTLING TO<br>SEND TO EXPEDITION ▶</div>
+</div>
+</x-dc>
+</body>
+</html>

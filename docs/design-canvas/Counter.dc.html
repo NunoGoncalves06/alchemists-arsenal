@@ -1,0 +1,123 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Pixelify+Sans:wght@400;500;600;700&display=swap');
+    :root{
+      --ink-900:#1b141f;--ink-800:#241a2b;--ink-700:#33263c;
+      --parchment:#efe2c4;--parchment-dim:#c9b892;--wood:#6b4a2f;--wood-dark:#3f2c1c;
+      --candle:#e8b64c;--candle-hot:#f6d873;--witch:#7b4d9e;--danger:#d64550;--ok:#4fae5a;
+      --nature:#5ea637;--fire:#e2683a;--water:#3f8fd0;--poison:#b6c33f;--arcane:#c451a8;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{width:1280px;height:720px;overflow:hidden;background:var(--ink-900);
+      font-family:'Pixelify Sans',ui-monospace,monospace;color:var(--parchment);-webkit-font-smoothing:none}
+    .disp{font-family:'Silkscreen',monospace;letter-spacing:.03em}
+    a{color:var(--candle)}a:hover{color:var(--candle-hot)}
+    .wrap{position:absolute;inset:0;padding:24px;display:flex;flex-direction:column;gap:16px}
+    .head{display:flex;align-items:baseline;gap:14px}
+    .head .disp{font-size:18px;color:var(--candle)}
+    .head small{color:var(--parchment-dim);font-size:12px}
+    .body{flex:1;display:flex;gap:20px}
+    .col{background:var(--ink-800);border:3px solid var(--wood);padding:18px;display:flex;flex-direction:column;gap:14px}
+    .left{flex:1.4} .right{flex:1}
+    h3{font-family:'Silkscreen',monospace;font-size:12px;color:var(--parchment-dim)}
+
+    .waves{display:flex;gap:12px}
+    .wave{flex:1;background:var(--ink-900);border:2px solid var(--wood-dark);padding:10px;display:flex;flex-direction:column;gap:8px;align-items:center}
+    .wave .n{font-family:'Silkscreen',monospace;font-size:10px;color:var(--parchment-dim)}
+    .mob{display:flex;align-items:center;gap:6px;font-size:12px}
+    .mob svg{width:16px;height:16px}
+    .arrow{align-self:center;color:var(--parchment-dim);width:14px}
+
+    .demand{}
+    .demandbar{display:flex;height:34px;border:2px solid var(--wood-dark)}
+    .demandbar span{display:block}
+    .legend{display:flex;gap:14px;font-size:11px;color:var(--parchment-dim);margin-top:8px;flex-wrap:wrap}
+    .legend b{display:inline-flex;align-items:center;gap:5px;color:var(--parchment)}
+    .legend svg{width:12px;height:12px}
+    .rec{background:var(--ink-900);border:2px solid var(--candle);padding:12px;font-size:14px}
+    .rec .disp{font-size:13px;color:var(--candle)}
+
+    .client{display:flex;gap:14px;align-items:flex-start}
+    .portrait{width:88px;height:100px;background:var(--ink-900);border:2px solid var(--wood-dark);flex:0 0 auto;position:relative}
+    .portrait .face{position:absolute;left:22px;top:20px;width:44px;height:44px;background:var(--candle);border:2px solid var(--wood-dark);border-radius:6px}
+    .portrait .body{position:absolute;left:16px;bottom:10px;width:56px;height:34px;background:var(--witch);border:2px solid var(--wood-dark)}
+    .speech{background:var(--parchment);color:var(--ink-900);border:2px solid var(--wood-dark);padding:8px 10px;font-size:13px;position:relative}
+    .speech:after{content:"";position:absolute;left:-9px;top:14px;border:6px solid transparent;border-right-color:var(--wood-dark)}
+    .speech i{font-style:normal;color:#7c6c52;font-size:11px;display:block;margin-top:3px}
+    .want{margin-top:12px;font-size:13px;display:flex;align-items:center;gap:8px}
+    .want svg{width:18px;height:18px}
+    .assess{font-family:'Silkscreen',monospace;font-size:12px;background:var(--candle);color:var(--ink-900);
+      border:2px solid var(--wood-dark);box-shadow:4px 4px 0 var(--wood-dark);padding:13px;text-align:center;margin-top:auto}
+  </style>
+</helmet>
+
+<div class="wrap">
+  <div class="head"><span class="disp">COUNTER</span><small>read the afternoon · pick what to brew</small></div>
+  <div class="body">
+
+    <div class="col left">
+      <h3>WAVE FORECAST — CINDER PEAKS</h3>
+      <div class="waves">
+        <div class="wave"><span class="n">WAVE 1</span>
+          <div class="mob"><svg viewBox="0 0 24 24"><polygon points="12,3 22,21 2,21" fill="#e2683a" stroke="#3f2c1c" stroke-width="2"/></svg> ×4 Emberling</div>
+          <div class="mob"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="#5ea637" stroke="#24361c" stroke-width="2"/></svg> ×2 Bark Treant</div>
+        </div>
+        <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        <div class="wave"><span class="n">WAVE 2</span>
+          <div class="mob"><svg viewBox="0 0 24 24"><polygon points="12,3 22,21 2,21" fill="#e2683a" stroke="#3f2c1c" stroke-width="2"/></svg> ×6 Emberling</div>
+        </div>
+        <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        <div class="wave"><span class="n">WAVE 3</span>
+          <div class="mob"><svg viewBox="0 0 24 24"><polygon points="12,3 22,21 2,21" fill="#e2683a" stroke="#3f2c1c" stroke-width="2"/></svg> ×3 Cinder Hound</div>
+          <div class="mob"><svg viewBox="0 0 24 24"><path d="M12 3c4 6 7 9 7 13a7 7 0 01-14 0c0-4 3-7 7-13z" fill="#3f8fd0" stroke="#1c3a52" stroke-width="2"/></svg> ×2 Frostkin</div>
+        </div>
+      </div>
+
+      <div class="demand">
+        <h3>ELEMENTAL DEMAND</h3>
+        <div class="demandbar">
+          <span style="width:68%;background:var(--fire)"></span>
+          <span style="width:20%;background:var(--nature)"></span>
+          <span style="width:12%;background:var(--water)"></span>
+        </div>
+        <div class="legend">
+          <b><svg viewBox="0 0 24 24"><polygon points="12,3 22,21 2,21" fill="#e2683a"/></svg>Fire 68%</b>
+          <b><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="#5ea637"/></svg>Nature 20%</b>
+          <b><svg viewBox="0 0 24 24"><path d="M12 3c4 6 7 9 7 13a7 7 0 01-14 0z" fill="#3f8fd0"/></svg>Water 12%</b>
+        </div>
+      </div>
+
+      <div class="rec">
+        <span class="disp">RECOMMENDATION</span><br>
+        Mostly Fire out there — brew <b style="color:var(--water)">Water</b> for the ×2 matchup.
+      </div>
+    </div>
+
+    <div class="col right">
+      <h3>TODAY'S CLIENT</h3>
+      <div class="client">
+        <div class="portrait"><span class="face"></span><span class="body"></span></div>
+        <div>
+          <div class="speech">Bru-nu wa-ta fla-she, wi-tch!
+            <i>"Brew me a water flask, witch!"</i></div>
+        </div>
+      </div>
+      <div class="want"><svg viewBox="0 0 24 24"><path d="M12 3c4 6 7 9 7 13a7 7 0 01-14 0c0-4 3-7 7-13z" fill="#3f8fd0" stroke="#1c3a52" stroke-width="2"/></svg>
+        wants a <b>Tidevial</b> (Water)</div>
+      <div style="font-size:12px;color:var(--parchment-dim)">Rookie · throw cooldown ×1.0 · 1 bomb slot</div>
+      <div class="assess">ACCEPT ORDER — BREW WATER ▶</div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

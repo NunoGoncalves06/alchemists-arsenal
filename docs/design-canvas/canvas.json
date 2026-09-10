@@ -1,0 +1,27 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "Screens" },
+    { "id": "page-2", "name": "Component kit" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html",          "page": "page-1", "x": 0,    "y": 0,    "w": 1280, "h": 720, "title": "Main Menu" },
+    { "file": "MorningShell.dc.html",   "page": "page-1", "x": 1420, "y": 0,    "w": 1280, "h": 720, "title": "Morning shell — Cauldron active" },
+    { "file": "Counter.dc.html",        "page": "page-1", "x": 2840, "y": 0,    "w": 1280, "h": 720, "title": "Morning — Counter station" },
+    { "file": "Cauldron.dc.html",       "page": "page-1", "x": 0,    "y": 920,  "w": 1280, "h": 720, "title": "Morning — Cauldron close-up (physics)" },
+    { "file": "ExpeditionHUD.dc.html",  "page": "page-1", "x": 1420, "y": 920,  "w": 1280, "h": 720, "title": "Afternoon — Expedition HUD" },
+    { "file": "EveningReport.dc.html",  "page": "page-1", "x": 2840, "y": 920,  "w": 1280, "h": 720, "title": "Evening — Expedition Report" },
+    { "file": "Diary.dc.html",          "page": "page-1", "x": 0,    "y": 1840, "w": 1280, "h": 720, "title": "Evening — Visual Diary" },
+    { "file": "BiomeMap.dc.html",       "page": "page-1", "x": 1420, "y": 1840, "w": 1280, "h": 720, "title": "Biome Map / Progression" },
+    { "file": "Tutorial.dc.html",       "page": "page-1", "x": 2840, "y": 1840, "w": 1280, "h": 720, "title": "Day-1 Tutorial overlay" },
+    { "file": "Components.dc.html",     "page": "page-2", "x": 0,    "y": 0,    "w": 1280, "h": 1180, "title": "Shared component kit" }
+  ],
+  "annotations": [
+    { "id": "loop-note", "page": "page-1", "x": -40, "y": -150, "w": 420,
+      "text": "Alchemist's Arsenal — full screen redesign (DESIGN.md v0.4)\nMorning (craft) -> Afternoon (auto-battle) -> Evening (report + story).\nCraft quality 0-100 is the through-line: it scales afternoon damage and evening pay." },
+    { "id": "chrome-note", "page": "page-1", "x": -40, "y": 900, "w": 380,
+      "text": "Chrome vocabulary: cozy candlelit witch-cottage for shop/menu/evening; tense per-element wash for each biome's combat. Element identity is always colour + shape (colourblind support)." },
+    { "id": "kit-note", "page": "page-2", "x": -40, "y": -120, "w": 380,
+      "text": "Every screen is built from these. One UITheme ScriptableObject holds the palette + type tokens so a re-skin is one asset." }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}

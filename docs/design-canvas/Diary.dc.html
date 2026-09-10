@@ -1,0 +1,104 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Pixelify+Sans:wght@400;500;600;700&display=swap');
+    :root{
+      --ink-900:#1b141f;--ink-800:#241a2b;--ink-700:#33263c;
+      --parchment:#efe2c4;--parchment-dim:#c9b892;--wood:#6b4a2f;--wood-dark:#3f2c1c;
+      --candle:#e8b64c;--candle-hot:#f6d873;--witch:#7b4d9e;--danger:#d64550;--ok:#4fae5a;--arcane:#c451a8;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{width:1280px;height:720px;overflow:hidden;background:
+      radial-gradient(130% 90% at 50% 10%, rgba(123,77,158,.2), transparent 55%), #140f18;
+      font-family:'Pixelify Sans',ui-monospace,monospace;color:var(--parchment);-webkit-font-smoothing:none}
+    .disp{font-family:'Silkscreen',monospace;letter-spacing:.03em}
+    a{color:var(--candle)}a:hover{color:var(--candle-hot)}
+
+    .book{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:1000px;height:600px;
+      background:var(--wood-dark);border:6px solid #2b1d13;box-shadow:10px 10px 0 #0006;display:flex}
+    .page{flex:1;background:var(--parchment);color:#2b2117;margin:14px;position:relative;
+      box-shadow:inset 0 0 0 2px #d9c9a3}
+    .page.left{margin-right:7px} .page.right{margin-left:7px}
+    .spine{width:10px;background:#20140c;align-self:stretch;margin:14px 0}
+
+    /* left: cutscene illustration, flat pixel blocks */
+    .cut{position:absolute;inset:26px;background:#1d2733;border:3px solid #10161d;overflow:hidden}
+    .moon{position:absolute;right:26px;top:20px;width:46px;height:46px;background:#e9e2c7;border-radius:50%}
+    .hill{position:absolute;left:0;right:0;bottom:0;height:90px;background:#26331f}
+    .witchf{position:absolute;left:70px;bottom:74px;width:40px;height:70px;background:var(--witch);border:3px solid #2b1740}
+    .hat{position:absolute;left:60px;bottom:138px;width:60px;height:26px;background:#2b1740;clip-path:polygon(0 100%,100% 100%,50% 0)}
+    .loved{position:absolute;right:90px;bottom:60px;width:36px;height:56px;background:#6b6f52;border:3px solid #3a3c2c}
+    .curse{position:absolute;right:70px;bottom:70px;width:80px;height:80px;border:3px dashed var(--arcane);border-radius:50%}
+    .replay{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);font-family:'Silkscreen',monospace;
+      font-size:9px;background:#2b2117;color:var(--parchment);padding:5px 10px}
+    .frames{position:absolute;left:14px;bottom:12px;display:flex;gap:4px}
+    .frames b{width:8px;height:8px;background:#c9b99a}
+    .frames b.on{background:#2b2117}
+
+    /* right: prose + boss sketch */
+    .rt{position:absolute;inset:28px;display:flex;flex-direction:column}
+    .rt .no{font-family:'Silkscreen',monospace;font-size:10px;color:#8a7a5c}
+    .rt h2{font-family:'Silkscreen',monospace;font-size:15px;margin:6px 0 12px}
+    .rt p{font-size:14px;line-height:1.6;font-style:italic}
+    .sketch{margin-top:auto;height:200px;border:3px solid #cdbd97;position:relative;background:#f6ecd4}
+    .sketch .lbl{position:absolute;top:6px;left:8px;font-family:'Silkscreen',monospace;font-size:9px;color:#8a7a5c}
+    .s-body{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);width:70px;height:96px;background:#d9c7a2;border:3px solid #2b2117}
+    .s-head{position:absolute;left:50%;bottom:104px;transform:translateX(-50%);width:44px;height:44px;background:#d9c7a2;border:3px solid #2b2117;border-radius:50%}
+    .s-armL{position:absolute;left:calc(50% - 62px);bottom:44px;width:44px;height:14px;background:#d9c7a2;border:3px solid #2b2117;transform:rotate(20deg)}
+    .s-armR{position:absolute;left:calc(50% + 18px);bottom:52px;width:44px;height:14px;background:#d9c7a2;border:3px solid #2b2117;transform:rotate(-24deg)}
+    .s-ghost{position:absolute;left:calc(50% + 26px);bottom:110px;width:34px;height:34px;border:3px dashed #b9a882}
+
+    .ribbon{position:absolute;right:-4px;top:80px;display:flex;flex-direction:column;gap:6px}
+    .ribbon i{width:16px;height:34px;background:var(--candle);border:2px solid var(--wood-dark)}
+    .ribbon i.locked{background:#4a3a52}
+    .ribbon i.on{background:var(--candle-hot);width:22px}
+
+    .close{position:absolute;right:22px;top:16px;font-family:'Silkscreen',monospace;font-size:11px;color:var(--parchment-dim)}
+  </style>
+</helmet>
+
+<div class="close">◄ BACK TO EVENING</div>
+
+<div class="book">
+  <div class="page left">
+    <div class="cut">
+      <div class="moon"></div>
+      <div class="hill"></div>
+      <div class="hat"></div>
+      <div class="witchf"></div>
+      <div class="loved"></div>
+      <div class="curse"></div>
+    </div>
+    <div class="frames"><b class="on"></b><b class="on"></b><b></b><b></b></div>
+    <div class="replay">⟲ REPLAY</div>
+  </div>
+  <div class="spine"></div>
+  <div class="page right">
+    <div class="rt">
+      <span class="no">ENTRY IV — "THE CINDER HEART"</span>
+      <h2>WHAT THE FIRE KEPT</h2>
+      <p>I found it in the ash where the hound fell — still warm, still beating.
+      The book says a coven-thing grows one for each soul it takes. I only need
+      the one. I told myself that again on the walk home.</p>
+      <div class="sketch">
+        <span class="lbl">THE COVEN MATRIARCH — 3 / 5 CLEARED</span>
+        <div class="s-body"></div><div class="s-head"></div>
+        <div class="s-armL"></div><div class="s-armR"></div>
+        <div class="s-ghost"></div>
+      </div>
+    </div>
+    <div class="ribbon">
+      <i></i><i></i><i class="on"></i><i class="locked"></i><i class="locked"></i><i class="locked"></i>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

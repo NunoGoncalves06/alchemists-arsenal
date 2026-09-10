@@ -1,0 +1,182 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Pixelify+Sans:wght@400;500;600;700&display=swap');
+    :root{
+      --ink-900:#1b141f;--ink-800:#241a2b;--ink-700:#33263c;
+      --parchment:#efe2c4;--parchment-dim:#c9b892;--wood:#6b4a2f;--wood-dark:#3f2c1c;
+      --candle:#e8b64c;--candle-hot:#f6d873;--witch:#7b4d9e;--danger:#d64550;--ok:#4fae5a;
+      --nature:#5ea637;--fire:#e2683a;--water:#3f8fd0;--poison:#b6c33f;--arcane:#c451a8;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{width:1280px;height:1180px;background:var(--ink-900);padding:26px;
+      font-family:'Pixelify Sans',ui-monospace,monospace;color:var(--parchment);-webkit-font-smoothing:none}
+    h1{font-family:'Silkscreen',monospace;font-size:16px;color:var(--candle);margin-bottom:4px}
+    .lede{font-size:12px;color:var(--parchment-dim);margin-bottom:20px}
+    .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+    .cell{background:var(--ink-800);border:3px solid var(--wood);padding:14px;display:flex;flex-direction:column;gap:10px}
+    h3{font-family:'Silkscreen',monospace;font-size:10px;color:var(--parchment-dim)}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+    .btn{font-family:'Silkscreen',monospace;font-size:11px;padding:9px 12px;border:2px solid var(--wood-dark)}
+    .btn.p{background:var(--candle);color:var(--ink-900);box-shadow:3px 3px 0 var(--wood-dark)}
+    .btn.g{background:var(--ink-700);color:var(--parchment);border-color:var(--wood)}
+    .btn.d{background:var(--danger);color:#fff}
+    .btn.x{background:var(--ink-700);color:var(--parchment-dim);opacity:.45}
+
+    .swatch{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:9px;color:var(--parchment-dim)}
+    .swatch i{width:34px;height:34px;border:2px solid var(--wood-dark)}
+    .badge svg{width:22px;height:22px}
+    .badge{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:9px;color:var(--parchment-dim)}
+
+    .grade{font-family:'Silkscreen',monospace;font-size:10px;padding:5px 8px;border:2px solid var(--wood-dark)}
+    .g-perfect{background:var(--ok);color:var(--ink-900)}
+    .g-great{background:var(--candle);color:var(--ink-900)}
+    .g-okay{background:var(--candle);color:var(--ink-900);opacity:.7}
+    .g-poor{background:var(--danger);color:#fff}
+
+    .qm{height:22px;background:var(--ink-700);border:2px solid var(--wood-dark);position:relative}
+    .qm i{position:absolute;left:0;top:0;bottom:0;width:71%;background:var(--candle)}
+    .qm b{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--parchment-dim)}
+
+    .heat{height:22px;background:var(--ink-700);border:2px solid var(--wood-dark);position:relative}
+    .heat .band{position:absolute;left:40%;width:28%;top:0;bottom:0;background:rgba(79,174,90,.4);border-inline:2px solid var(--ok)}
+    .heat .nd{position:absolute;top:-4px;bottom:-4px;width:3px;background:var(--parchment);left:52%}
+
+    .portrait{width:70px;height:84px;background:var(--ink-900);border:2px solid var(--wood);position:relative}
+    .portrait .f{position:absolute;left:18px;top:14px;width:34px;height:34px;background:var(--candle);border:2px solid var(--wood-dark)}
+    .portrait.dead{opacity:.45}
+    .ammo{display:flex;gap:3px}
+    .ammo b{width:8px;height:8px;background:var(--water);border:1px solid #1c3a52}
+    .ammo b.s{background:var(--ink-700)}
+    .cd{width:26px;height:26px;border-radius:50%;border:3px solid var(--wood-dark);background:conic-gradient(var(--candle) 0 62%,var(--ink-700) 62%)}
+
+    .speech{background:var(--parchment);color:var(--ink-900);border:2px solid var(--wood-dark);padding:7px 9px;font-size:12px;position:relative}
+    .speech:after{content:"";position:absolute;left:-9px;top:12px;border:6px solid transparent;border-right-color:var(--wood-dark)}
+    .toast{background:var(--ink-800);border:2px solid var(--candle);padding:8px 12px;font-size:11px;display:flex;gap:8px;align-items:center}
+    .toast .i{width:14px;height:14px;background:var(--candle)}
+    .tabm{display:flex;gap:0}
+    .tabm div{font-family:'Silkscreen',monospace;font-size:9px;padding:8px 10px;border:2px solid var(--wood-dark);color:var(--parchment-dim);background:var(--ink-700)}
+    .tabm div.on{background:var(--candle);color:var(--ink-900)}
+    .tabm div.lock{opacity:.4}
+    .pips{display:flex;gap:5px}
+    .pips b{width:34px;height:9px;background:var(--ink-700);border:2px solid var(--wood-dark)}
+    .pips b.on{background:var(--arcane)}
+    .coin{width:16px;height:16px;border-radius:50%;background:var(--candle);border:2px solid var(--wood-dark)}
+    .node{width:52px;height:52px;border:3px solid var(--wood-dark);background:var(--ink-700);display:flex;align-items:center;justify-content:center}
+    .node.cur{border-color:var(--candle)}
+    .node svg{width:22px;height:22px}
+  </style>
+</helmet>
+
+<h1>COMPONENT KIT</h1>
+<div class="lede">One theme (UITheme SO) drives every screen — palette + type tokens from DESIGN.md §5. Hard corners, 2px borders, hard offset shadows, no blur.</div>
+
+<div class="grid">
+
+  <div class="cell">
+    <h3>PIXEL BUTTON</h3>
+    <div class="row"><span class="btn p">PRIMARY</span><span class="btn g">GHOST</span></div>
+    <div class="row"><span class="btn d">DELETE</span><span class="btn x">DISABLED</span></div>
+  </div>
+
+  <div class="cell">
+    <h3>PALETTE — CHROME</h3>
+    <div class="row">
+      <span class="swatch"><i style="background:var(--ink-900)"></i>ink-900</span>
+      <span class="swatch"><i style="background:var(--ink-800)"></i>ink-800</span>
+      <span class="swatch"><i style="background:var(--parchment)"></i>parchment</span>
+      <span class="swatch"><i style="background:var(--wood)"></i>wood</span>
+      <span class="swatch"><i style="background:var(--candle)"></i>candle</span>
+      <span class="swatch"><i style="background:var(--witch)"></i>witch</span>
+    </div>
+  </div>
+
+  <div class="cell">
+    <h3>ELEMENT BADGE — COLOUR + SHAPE</h3>
+    <div class="row">
+      <span class="badge"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="#5ea637" stroke="#24361c" stroke-width="2"/></svg>Nature</span>
+      <span class="badge"><svg viewBox="0 0 24 24"><polygon points="12,3 22,21 2,21" fill="#e2683a" stroke="#3f2c1c" stroke-width="2"/></svg>Fire</span>
+      <span class="badge"><svg viewBox="0 0 24 24"><path d="M12 3c4 6 7 9 7 13a7 7 0 01-14 0c0-4 3-7 7-13z" fill="#3f8fd0" stroke="#1c3a52" stroke-width="2"/></svg>Water</span>
+      <span class="badge"><svg viewBox="0 0 24 24"><polygon points="12,3 21,8 21,17 12,22 3,17 3,8" fill="#b6c33f" stroke="#5a5f1c" stroke-width="2"/></svg>Poison</span>
+      <span class="badge"><svg viewBox="0 0 24 24"><path d="M12 2l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#c451a8" stroke="#5a1c4c" stroke-width="2"/></svg>Arcane</span>
+    </div>
+  </div>
+
+  <div class="cell">
+    <h3>GRADE BADGE — 4 BAND (CombatQuality)</h3>
+    <div class="row">
+      <span class="grade g-perfect">PERFECT ≥95</span>
+      <span class="grade g-great">GREAT ≥80</span>
+      <span class="grade g-okay">OKAY ≥60</span>
+      <span class="grade g-poor">POOR &lt;60</span>
+    </div>
+  </div>
+
+  <div class="cell">
+    <h3>QUALITY METER — 0..100</h3>
+    <div class="qm"><i></i><b style="left:60%"></b><b style="left:80%"></b><b style="left:95%"></b></div>
+    <div style="font-size:10px;color:var(--parchment-dim)">born at 25 · pulses on any band crossing (up or down)</div>
+  </div>
+
+  <div class="cell">
+    <h3>HEAT GAUGE</h3>
+    <div class="heat"><span class="band"></span><span class="nd"></span></div>
+    <div style="font-size:10px;color:var(--ok);font-family:'Silkscreen',monospace">BREWING PERFECTLY</div>
+  </div>
+
+  <div class="cell">
+    <h3>PORTRAIT CARD</h3>
+    <div class="row">
+      <div class="portrait"><span class="f"></span></div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <span class="ammo"><b></b><b></b><b></b><b class="s"></b><b class="s"></b></span>
+        <span class="cd"></span>
+      </div>
+      <div class="portrait dead"><span class="f"></span></div>
+    </div>
+  </div>
+
+  <div class="cell">
+    <h3>BOSS PHASE PIPS</h3>
+    <div class="pips"><b>NEU</b><b class="on">ENR</b><b>WRD</b><b>REC</b></div>
+    <div style="font-size:10px;color:var(--parchment-dim)">reads BossPhaseManager.CurrentPhase</div>
+  </div>
+
+  <div class="cell">
+    <h3>STATION TAB</h3>
+    <div class="tabm"><div class="on">CTR</div><div>PRP</div><div>CLD</div><div class="lock">BTL</div></div>
+    <div style="font-size:10px;color:var(--parchment-dim)">active · idle · locked (padlock)</div>
+  </div>
+
+  <div class="cell">
+    <h3>SPEECH BUBBLE — ANIMALESE</h3>
+    <div class="speech">Bru-nu fla-she!</div>
+  </div>
+
+  <div class="cell">
+    <h3>TOAST + RESOURCE</h3>
+    <div class="toast"><span class="i"></span>New diary entry unlocked</div>
+    <div class="row" style="font-size:13px"><span class="coin"></span> 128 g</div>
+  </div>
+
+  <div class="cell">
+    <h3>BIOME NODE</h3>
+    <div class="row">
+      <span class="node"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="#5ea637"/></svg></span>
+      <span class="node cur"><svg viewBox="0 0 24 24"><polygon points="12,3 22,21 2,21" fill="#e2683a"/></svg></span>
+      <span class="node" style="opacity:.4"><svg viewBox="0 0 24 24"><path d="M12 3c4 6 7 9 7 13a7 7 0 01-14 0z" fill="#3f8fd0"/></svg></span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

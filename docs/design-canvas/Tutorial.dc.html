@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Pixelify+Sans:wght@400;500;600;700&display=swap');
+    :root{
+      --ink-900:#1b141f;--ink-800:#241a2b;--ink-700:#33263c;
+      --parchment:#efe2c4;--parchment-dim:#c9b892;--wood:#6b4a2f;--wood-dark:#3f2c1c;
+      --candle:#e8b64c;--candle-hot:#f6d873;--witch:#7b4d9e;--ok:#4fae5a;--fire:#e2683a;--water:#3f8fd0;--nature:#5ea637;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{width:1280px;height:720px;overflow:hidden;background:var(--ink-900);
+      font-family:'Pixelify Sans',ui-monospace,monospace;color:var(--parchment);-webkit-font-smoothing:none}
+    .disp{font-family:'Silkscreen',monospace;letter-spacing:.03em}
+    a{color:var(--candle)}a:hover{color:var(--candle-hot)}
+
+    /* faded morning shell underneath */
+    .shell{position:absolute;inset:0;filter:saturate(.5)}
+    .topbar{position:absolute;top:0;left:0;right:0;height:56px;background:var(--ink-800);border-bottom:3px solid var(--wood-dark);display:flex;align-items:center;gap:20px;padding:0 20px;font-size:12px}
+    .clock{width:200px;height:16px;background:var(--ink-700);border:2px solid var(--wood-dark);position:relative}
+    .clock i{position:absolute;left:0;top:0;bottom:0;width:88%;background:var(--water)}
+    .rail{position:absolute;left:0;top:56px;bottom:0;width:92px;background:var(--ink-800);border-right:3px solid var(--wood-dark);display:flex;flex-direction:column;gap:10px;padding:14px 10px}
+    .tab{height:86px;background:var(--ink-700);border:2px solid var(--wood);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:10px;color:var(--parchment-dim)}
+    .tab svg{width:24px;height:24px}
+    .tab.active{background:var(--candle);color:var(--ink-900)}
+    .tab.locked{opacity:.4}
+    .center{position:absolute;left:92px;right:340px;top:56px;bottom:0;padding:22px}
+    .viewport{width:100%;height:100%;background:var(--ink-800);border:3px solid var(--wood);position:relative}
+    .pot{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);width:300px;height:260px;border-radius:0 0 46% 46%;background:radial-gradient(circle at 50% 30%,#7a4a2f,#1c1319 72%);border:6px solid var(--wood-dark)}
+    .liq{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:220px;height:220px;border-radius:50%;background:radial-gradient(circle at 44% 38%,var(--water),#1c3a52 80%)}
+    .dock{position:absolute;right:0;top:56px;bottom:0;width:340px;background:var(--ink-800);border-left:3px solid var(--wood-dark)}
+
+    /* dim + spotlight */
+    .scrim{position:absolute;inset:0;background:rgba(20,14,20,.72)}
+    .spot{position:absolute;left:170px;top:290px;width:520px;height:360px;border-radius:50%;
+      box-shadow:0 0 0 9999px rgba(20,14,20,.72);border:3px solid var(--candle)}
+
+    .arrow{position:absolute;left:700px;top:430px;color:var(--candle);animation:bob 1s ease-in-out infinite alternate}
+    @keyframes bob{to{transform:translateX(-14px)}}
+    .arrow svg{width:56px;height:56px}
+
+    .coach{position:absolute;left:720px;top:300px;width:330px;background:var(--parchment);color:var(--ink-900);
+      border:3px solid var(--wood-dark);box-shadow:6px 6px 0 var(--wood-dark);padding:16px}
+    .coach .step{font-family:'Silkscreen',monospace;font-size:10px;color:#8a7a5c}
+    .coach h3{font-family:'Silkscreen',monospace;font-size:14px;margin:6px 0 8px}
+    .coach p{font-size:14px;line-height:1.5}
+    .dots{display:flex;gap:6px;margin-top:12px}
+    .dots b{width:10px;height:10px;background:#c9b99a}
+    .dots b.on{background:#2b2117}
+
+    .slowbadge{position:absolute;left:250px;top:14px;font-family:'Silkscreen',monospace;font-size:10px;
+      background:var(--water);color:var(--ink-900);border:2px solid var(--wood-dark);padding:5px 9px}
+  </style>
+</helmet>
+
+<div class="shell">
+  <div class="topbar">
+    <span class="disp" style="font-size:11px">DAY 1</span>
+    <span class="clock"><i></i></span>
+    <span class="disp" style="font-size:11px;color:var(--nature)">WHISPERING WOODS</span>
+  </div>
+  <div class="rail">
+    <div class="tab active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h10"/></svg>COUNTER</div>
+    <div class="tab locked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 19l7-14 7 14z"/></svg>PREP</div>
+    <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 10h14l-2 9H7z"/></svg>CAULDRON</div>
+    <div class="tab locked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 10h10v10H7z"/></svg>BOTTLING</div>
+  </div>
+  <div class="center"><div class="viewport"><div class="pot"></div><div class="liq"></div></div></div>
+  <div class="dock"></div>
+</div>
+
+<div class="spot"></div>
+<div class="slowbadge">DAY 1 — TIME IS SLOWED</div>
+
+<div class="arrow">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+</div>
+
+<div class="coach">
+  <div class="step">STEP 3 OF 5 · CAULDRON</div>
+  <h3>STIR TO THE GREEN</h3>
+  <p>Move the mouse in circles over the pot. Keep the heat needle inside the
+  green band — that's where the potion gets better.</p>
+  <div class="dots"><b class="on"></b><b class="on"></b><b class="on"></b><b></b><b></b></div>
+</div>
+</x-dc>
+</body>
+</html>

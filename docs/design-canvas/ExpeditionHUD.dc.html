@@ -1,0 +1,148 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Pixelify+Sans:wght@400;500;600;700&display=swap');
+    :root{
+      --ink-900:#1b141f;--ink-800:#241a2b;--ink-700:#33263c;
+      --parchment:#efe2c4;--parchment-dim:#c9b892;--wood:#6b4a2f;--wood-dark:#3f2c1c;
+      --candle:#e8b64c;--candle-hot:#f6d873;--witch:#7b4d9e;--danger:#d64550;--ok:#4fae5a;
+      --nature:#5ea637;--fire:#e2683a;--water:#3f8fd0;--poison:#b6c33f;--arcane:#c451a8;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{width:1280px;height:720px;overflow:hidden;
+      font-family:'Pixelify Sans',ui-monospace,monospace;color:var(--parchment);-webkit-font-smoothing:none}
+    .disp{font-family:'Silkscreen',monospace;letter-spacing:.03em}
+    a{color:var(--candle)}a:hover{color:var(--candle-hot)}
+    /* combat scene — cinder peaks, tense fire wash */
+    .scene{position:absolute;inset:0;background:
+      radial-gradient(120% 80% at 50% 120%, rgba(226,104,58,.35), transparent 60%),
+      linear-gradient(180deg,#3a1f1c 0%, #1a1114 68%)}
+    .ridge{position:absolute;left:0;right:0;bottom:120px;height:90px;background:#241417;border-top:3px solid #120a0c}
+    .ridge2{position:absolute;left:0;right:0;bottom:0;height:120px;background:#1a0f11}
+    .adv{position:absolute;bottom:150px;width:34px;height:46px;background:var(--candle);border:2px solid var(--wood-dark)}
+    .mon{position:absolute;bottom:150px;width:30px;height:30px;border:2px solid #120a0c}
+    .bomb{position:absolute;width:12px;height:12px;background:var(--water);border:2px solid #1c3a52;border-radius:50%}
+    .dmg{position:absolute;font-family:'Silkscreen',monospace;font-size:14px;color:var(--water);text-shadow:2px 2px 0 #000}
+    .x2{position:absolute;font-family:'Silkscreen',monospace;font-size:12px;color:var(--candle-hot);text-shadow:2px 2px 0 #000}
+
+    .bannerwrap{position:absolute;top:16px;left:0;right:0;display:flex;justify-content:center}
+    .banner{background:var(--ink-800);border:3px solid var(--wood-dark);padding:8px 20px;text-align:center}
+    .banner .disp{font-size:13px;color:var(--candle)}
+    .banner small{color:var(--parchment-dim);font-size:11px}
+
+    .boss{position:absolute;top:16px;left:50%;transform:translateX(-50%);width:520px;display:none}
+    /* wave mode shown; boss bar kept as an alt row below for the sheet */
+    .bossbar-demo{position:absolute;top:70px;left:50%;transform:translateX(-50%);width:560px;background:var(--ink-800);border:3px solid var(--wood-dark);padding:8px 12px}
+    .bossbar-demo .disp{font-size:11px;color:var(--arcane)}
+    .hp{height:16px;background:var(--ink-700);border:2px solid var(--wood-dark);position:relative;margin-top:5px}
+    .hp i{position:absolute;left:0;top:0;bottom:0;width:56%;background:var(--danger)}
+    .pips{display:flex;gap:6px;margin-top:6px}
+    .pip{flex:1;height:8px;background:var(--ink-700);border:2px solid var(--wood-dark);font-size:0}
+    .pip.on{background:var(--arcane)}
+    .pips small{font-size:9px;color:var(--parchment-dim)}
+
+    .controls{position:absolute;top:16px;right:18px;display:flex;gap:8px}
+    .cbtn{font-family:'Silkscreen',monospace;font-size:10px;background:var(--ink-800);color:var(--parchment);
+      border:2px solid var(--wood);padding:7px 9px}
+    .cbtn.on{background:var(--candle);color:var(--ink-900);border-color:var(--wood-dark)}
+
+    .ticker{position:absolute;left:50%;transform:translateX(-50%);bottom:150px;background:rgba(27,20,31,.9);
+      border:2px solid var(--wood);padding:6px 12px;font-size:12px}
+    .ticker b{color:var(--water)}
+
+    .dock{position:absolute;left:0;right:0;bottom:0;height:132px;background:var(--ink-800);
+      border-top:3px solid var(--wood-dark);display:flex;gap:14px;align-items:center;padding:0 20px}
+    .card{width:210px;height:96px;background:var(--ink-900);border:2px solid var(--wood);display:flex;gap:10px;padding:10px}
+    .card .pic{width:64px;height:76px;background:var(--candle);border:2px solid var(--wood-dark);position:relative;flex:0 0 auto}
+    .card.dead{opacity:.45}
+    .card.dead .pic{background:#5a4a34}
+    .card .meta{flex:1;display:flex;flex-direction:column;gap:4px;font-size:11px}
+    .card .hpm{height:10px;background:var(--ink-700);border:2px solid var(--wood-dark);position:relative}
+    .card .hpm i{position:absolute;left:0;top:0;bottom:0;background:var(--ok)}
+    .card .bomb{display:flex;align-items:center;gap:5px}
+    .card .bomb svg{width:13px;height:13px}
+    .ammo{display:flex;gap:3px}
+    .ammo b{width:8px;height:8px;background:var(--water);border:1px solid #1c3a52}
+    .ammo b.spent{background:var(--ink-700)}
+    .cd{width:24px;height:24px;border-radius:50%;border:3px solid var(--wood-dark);
+      background:conic-gradient(var(--candle) 0 62%, var(--ink-700) 62% 100%);flex:0 0 auto}
+    .inspector{margin-left:auto;width:250px;height:108px;background:var(--ink-900);border:2px solid var(--wood);padding:8px;font-size:10px}
+    .inspector h4{font-family:'Silkscreen',monospace;font-size:9px;color:var(--parchment-dim);margin-bottom:5px}
+    .irow{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+    .irow .b{flex:1;height:9px;background:var(--ink-700);position:relative}
+    .irow .b i{position:absolute;left:0;top:0;bottom:0;background:var(--parchment-dim)}
+    .irow.win .b i{background:var(--water)}
+  </style>
+</helmet>
+
+<div class="scene">
+  <div class="ridge"></div><div class="ridge2"></div>
+
+  <!-- combat actors -->
+  <div class="adv" style="left:120px"></div>
+  <div class="mon" style="left:820px;background:var(--fire)"></div>
+  <div class="mon" style="left:900px;background:var(--fire)"></div>
+  <div class="mon" style="left:980px;background:var(--nature)"></div>
+  <div class="bomb" style="left:520px;bottom:280px"></div>
+  <div class="dmg" style="left:840px;bottom:230px">34</div>
+  <div class="x2" style="left:840px;bottom:255px">×2!</div>
+
+  <!-- banner: wave mode -->
+  <div class="bannerwrap"><div class="banner"><span class="disp">CINDER PEAKS</span><br><small>WAVE 2 / 3 · 5 monsters</small></div></div>
+
+  <!-- boss bar (alt state, shown for the sheet) -->
+  <div class="bossbar-demo">
+    <span class="disp">THE COVEN MATRIARCH</span>
+    <div class="hp"><i></i></div>
+    <div class="pips">
+      <span class="pip">NEUTRAL</span><span class="pip on">ENRAGED</span><span class="pip">WARD</span><span class="pip">RECOVER</span>
+    </div>
+    <div class="pips"><small>NEUTRAL</small><small>ENRAGED ◄</small><small>WARD</small><small>RECOVERING</small></div>
+  </div>
+
+  <div class="controls">
+    <div class="cbtn on">1×</div><div class="cbtn">2×</div><div class="cbtn">❚❚</div>
+    <div class="cbtn">↳ THINKING</div>
+  </div>
+
+  <div class="ticker">Rookie → <b>Tidevial</b> · Water ×2 vs Emberling · cluster 3</div>
+
+  <div class="dock">
+    <div class="card">
+      <div class="pic"></div>
+      <div class="meta">
+        <span class="disp" style="font-size:10px">ROOKIE</span>
+        <div class="hpm"><i style="width:74%"></i></div>
+        <div class="bomb"><svg viewBox="0 0 24 24"><path d="M12 3c4 6 7 9 7 13a7 7 0 01-14 0z" fill="#3f8fd0" stroke="#1c3a52" stroke-width="2"/></svg> Tidevial · <b style="color:var(--candle)">Okay</b></div>
+        <div class="ammo"><b></b><b></b><b></b><b class="spent"></b><b class="spent"></b></div>
+      </div>
+      <div class="cd"></div>
+    </div>
+    <div class="card dead">
+      <div class="pic"></div>
+      <div class="meta">
+        <span class="disp" style="font-size:10px">BERSERKER</span>
+        <div class="hpm"><i style="width:0"></i></div>
+        <div class="bomb"><svg viewBox="0 0 24 24"><polygon points="12,3 22,21 2,21" fill="#e2683a"/></svg> Firebloom · <b>Great</b></div>
+        <span style="color:var(--danger)">DOWN</span>
+      </div>
+    </div>
+
+    <div class="inspector">
+      <h4>ROOKIE — DECISION</h4>
+      <div class="irow win"><span>Tidevial → Emberling</span><span class="b"><i style="width:92%"></i></span><span>.92</span></div>
+      <div class="irow"><span>Tidevial → Treant</span><span class="b"><i style="width:41%"></i></span><span>.41</span></div>
+      <div class="irow"><span>Firebloom → Emberling</span><span class="b"><i style="width:23%"></i></span><span>.23</span></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

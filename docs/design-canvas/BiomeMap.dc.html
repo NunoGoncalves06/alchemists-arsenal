@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Pixelify+Sans:wght@400;500;600;700&display=swap');
+    :root{
+      --ink-900:#1b141f;--ink-800:#241a2b;--ink-700:#33263c;
+      --parchment:#efe2c4;--parchment-dim:#c9b892;--wood:#6b4a2f;--wood-dark:#3f2c1c;
+      --candle:#e8b64c;--candle-hot:#f6d873;--witch:#7b4d9e;--danger:#d64550;--ok:#4fae5a;
+      --nature:#5ea637;--fire:#e2683a;--water:#3f8fd0;--poison:#b6c33f;--arcane:#c451a8;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{width:1280px;height:720px;overflow:hidden;background:
+      radial-gradient(120% 90% at 80% 100%, rgba(196,81,168,.16), transparent 55%),
+      linear-gradient(180deg,#241a2b,#15101a);
+      font-family:'Pixelify Sans',ui-monospace,monospace;color:var(--parchment);-webkit-font-smoothing:none}
+    .disp{font-family:'Silkscreen',monospace;letter-spacing:.03em}
+    a{color:var(--candle)}a:hover{color:var(--candle-hot)}
+    .title{position:absolute;top:22px;left:28px;font-family:'Silkscreen',monospace;font-size:16px;color:var(--candle)}
+    .sub{position:absolute;top:48px;left:28px;font-size:12px;color:var(--parchment-dim)}
+
+    .map{position:absolute;inset:80px 40px 90px}
+    .path{position:absolute;left:0;top:0;width:100%;height:100%}
+    .node{position:absolute;width:150px;transform:translate(-50%,-50%);text-align:center}
+    .disc{width:74px;height:74px;margin:0 auto;border:4px solid var(--wood-dark);background:var(--ink-800);
+      display:flex;align-items:center;justify-content:center}
+    .disc svg{width:34px;height:34px}
+    .node.cleared .disc{background:var(--ink-700)}
+    .node.current .disc{border-color:var(--candle);box-shadow:0 0 0 4px rgba(232,182,76,.3)}
+    .node.locked{opacity:.4}
+    .node .nm{font-family:'Silkscreen',monospace;font-size:10px;margin-top:8px}
+    .node .stars{font-size:12px;color:var(--candle);margin-top:2px}
+    .node .el{font-size:10px;color:var(--parchment-dim)}
+    .spire{width:88px;height:110px;margin:0 auto;background:var(--ink-800);border:4px solid var(--arcane);
+      clip-path:polygon(20% 100%,80% 100%,62% 12%,50% 0,38% 12%)}
+
+    .card{position:absolute;right:44px;bottom:96px;width:280px;background:var(--ink-800);border:3px solid var(--wood);padding:16px}
+    .card h3{font-family:'Silkscreen',monospace;font-size:12px;color:var(--fire)}
+    .card p{font-size:12px;color:var(--parchment-dim);margin:8px 0}
+    .card .row{display:flex;gap:8px;margin-top:10px}
+    .b1{flex:1;font-family:'Silkscreen',monospace;font-size:11px;background:var(--candle);color:var(--ink-900);border:2px solid var(--wood-dark);padding:11px;text-align:center}
+    .b2{flex:1;font-family:'Silkscreen',monospace;font-size:11px;background:var(--ink-700);color:var(--parchment);border:2px solid var(--wood);padding:11px;text-align:center}
+    .foot{position:absolute;left:28px;bottom:26px;font-size:11px;color:var(--parchment-dim)}
+  </style>
+</helmet>
+
+<div class="title">THE FOREST ROAD</div>
+<div class="sub">Day 4 · sleeping advances the road when a biome is cleared</div>
+
+<div class="map">
+  <svg class="path" viewBox="0 0 1000 480" preserveAspectRatio="none" fill="none" stroke="#4a3a52" stroke-width="6" stroke-dasharray="4 10">
+    <path d="M70 380 C 200 260, 240 260, 330 300 S 520 220, 560 150 S 760 120, 820 210 S 930 150, 940 90"/>
+  </svg>
+
+  <div class="node cleared" style="left:7%;top:80%">
+    <div class="disc"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="#5ea637" stroke="#24361c" stroke-width="2"/></svg></div>
+    <div class="nm">WHISPERING WOODS</div><div class="stars">★★★</div><div class="el">Nature · tutorial</div>
+  </div>
+  <div class="node current" style="left:33%;top:62%">
+    <div class="disc"><svg viewBox="0 0 24 24"><polygon points="12,3 22,21 2,21" fill="#e2683a" stroke="#3f2c1c" stroke-width="2"/></svg></div>
+    <div class="nm">CINDER PEAKS</div><div class="stars">★★☆</div><div class="el">Fire ◄ you are here</div>
+  </div>
+  <div class="node locked" style="left:56%;top:32%">
+    <div class="disc"><svg viewBox="0 0 24 24"><path d="M12 3c4 6 7 9 7 13a7 7 0 01-14 0z" fill="#3f8fd0" stroke="#1c3a52" stroke-width="2"/></svg></div>
+    <div class="nm">FROSTBITE CAVERNS</div><div class="el">Water</div>
+  </div>
+  <div class="node locked" style="left:80%;top:44%">
+    <div class="disc"><svg viewBox="0 0 24 24"><polygon points="12,3 21,8 21,17 12,22 3,17 3,8" fill="#b6c33f" stroke="#5a5f1c" stroke-width="2"/></svg></div>
+    <div class="nm">VENOM SWAMP</div><div class="el">Poison</div>
+  </div>
+  <div class="node locked" style="left:94%;top:16%">
+    <div class="spire"></div>
+    <div class="nm">THE COVEN'S PEAK</div><div class="el">Arcane · final boss</div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>CINDER PEAKS</h3>
+  <p>3 waves · no boss yet. Best grade ★★☆ — one adventurer fell.
+  Bring Water; the ridges are crawling with Emberlings.</p>
+  <div class="row">
+    <div class="b1">CONTINUE ▶</div>
+    <div class="b2">⟲ REPLAY (½ gold)</div>
+  </div>
+</div>
+
+<div class="foot">Replaying a cleared biome pays half gold and does not advance the road — but it always pays.</div>
+</x-dc>
+</body>
+</html>
