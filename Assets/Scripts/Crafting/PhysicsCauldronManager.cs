@@ -65,6 +65,19 @@ namespace AlchemistsArsenal.Crafting
             }
         }
 
+        // Scene-scoped singleton: null Instance on destroy so an additive Shop
+        // reload can't leave CauldronUI bound to a dead manager (reviewer X5).
+        private void OnDestroy()
+        {
+            if (Instance == this) Instance = null;
+        }
+
+        /// <summary>Code-wire the herb layer (ShopWorld builds herbs at runtime).</summary>
+        public void Configure(LayerMask herbLayers)
+        {
+            herbLayerMask = herbLayers;
+        }
+
         private void Start()
         {
             lastMousePosition = GetMouseWorldPosition();
