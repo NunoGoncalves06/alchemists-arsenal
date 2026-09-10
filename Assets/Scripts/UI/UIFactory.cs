@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using AlchemistsArsenal.Art;
 using AlchemistsArsenal.Combat;
 using AlchemistsArsenal.Core;
 
@@ -45,9 +46,22 @@ namespace AlchemistsArsenal.UI
             var go = new GameObject(name, typeof(RectTransform));
             go.transform.SetParent(parent, false);
             var img = go.AddComponent<Image>();
-            img.sprite = PixelArt.White;
+            img.sprite = PixelArt.White;    // flat tinted fill; framed panels use FramedPanel
             img.type = Image.Type.Sliced;
             img.color = fill;
+            return img;
+        }
+
+        /// <summary>A panel with the authored 9-slice wood/ink frame — for the main surfaces.</summary>
+        public static Image FramedPanel(Transform parent, string name = "Panel")
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var img = go.AddComponent<Image>();
+            img.sprite = PixelSprites.Panel9();
+            img.type = Image.Type.Sliced;
+            img.pixelsPerUnitMultiplier = 3f;
+            img.color = Color.white;
             return img;
         }
 
@@ -116,21 +130,11 @@ namespace AlchemistsArsenal.UI
             var go = new GameObject("ElementBadge", typeof(RectTransform));
             go.transform.SetParent(parent, false);
             var img = go.AddComponent<Image>();
-            img.sprite = PlaceholderArt.Make(ShapeFor(element), UITheme.Element(element), UITheme.Ink900);
+            img.sprite = PixelSprites.ElementIcon(element);
             img.rectTransform.sizeDelta = new Vector2(size, size);
             img.raycastTarget = false;
             return img;
         }
-
-        public static PlaceholderArt.Shape ShapeFor(ElementType e) => e switch
-        {
-            ElementType.Fire => PlaceholderArt.Shape.Star,     // stand-in until authored triangle/hex/droplet
-            ElementType.Nature => PlaceholderArt.Shape.Disc,
-            ElementType.Water => PlaceholderArt.Shape.Diamond,
-            ElementType.Poison => PlaceholderArt.Shape.Diamond,
-            ElementType.Arcane => PlaceholderArt.Shape.Star,
-            _ => PlaceholderArt.Shape.Disc,
-        };
 
         public static VerticalLayoutGroup VStack(Transform parent, float spacing, RectOffset pad = null)
         {

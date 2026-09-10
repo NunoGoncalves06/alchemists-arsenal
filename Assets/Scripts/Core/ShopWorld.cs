@@ -1,4 +1,5 @@
 using UnityEngine;
+using AlchemistsArsenal.Art;
 using AlchemistsArsenal.Combat;
 using AlchemistsArsenal.Crafting;
 
@@ -33,7 +34,9 @@ namespace AlchemistsArsenal.Core
             potGo.transform.SetParent(transform, false);
             var cauldron = potGo.AddComponent<PhysicsCauldronManager>();
             cauldron.Configure(1 << HerbLayer);
-            PixelArt.AddDisc(potGo, new Color(0.18f, 0.12f, 0.10f), 0, 3.4f);
+            var potArt = new GameObject("CauldronArt");
+            potArt.transform.SetParent(potGo.transform, false);
+            PixelArt.AddSprite(potArt, PixelSprites.Cauldron(), 0, 4.6f);
 
             for (int i = 0; i < 6; i++)
             {
@@ -49,7 +52,7 @@ namespace AlchemistsArsenal.Core
                 rb.angularDamping = 0.8f;
 
                 herb.AddComponent<CircleCollider2D>().radius = 0.18f;
-                PixelArt.AddDisc(herb, i % 2 == 0 ? new Color(0.37f, 0.65f, 0.22f) : new Color(0.25f, 0.56f, 0.82f), 3, 0.34f);
+                PixelArt.AddSprite(herb, PixelSprites.Herb(i % 2 == 0 ? ElementType.Nature : ElementType.Water), 3, 0.5f);
             }
         }
     }

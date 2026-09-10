@@ -114,7 +114,7 @@ namespace AlchemistsArsenal.UI
 
         private Transform Column(Transform parent, string title)
         {
-            var panel = UIFactory.Panel(parent, UITheme.Ink800, "Col");
+            var panel = UIFactory.FramedPanel(parent, "Col");
             var le = panel.gameObject.AddComponent<LayoutElement>(); le.flexibleWidth = 1;
             var v = UIFactory.VStack(panel.transform, 8f, new RectOffset(16, 16, 16, 16));
             UIFactory.Stretch((RectTransform)v.transform);

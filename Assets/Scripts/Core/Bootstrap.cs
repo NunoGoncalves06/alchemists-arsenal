@@ -26,6 +26,21 @@ namespace AlchemistsArsenal.Core
             _done = true;
             DontDestroyOnLoad(gameObject);
 
+            // A persistent fallback camera so the game view always has something
+            // clearing the screen — the shop / arena cameras (depth -1) draw over
+            // it, and the Boot / Menu screens (Screen-Space-Overlay canvas) draw
+            // over everything. Without this Unity shows "Display 1 No cameras
+            // rendering" until a world spawns.
+            var camGo = new GameObject("BootCamera");
+            camGo.transform.SetParent(transform, false);
+            var cam = camGo.AddComponent<Camera>();
+            cam.orthographic = true;
+            cam.orthographicSize = 5f;
+            cam.depth = -100;
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(0.106f, 0.078f, 0.122f); // ink-900
+            cam.cullingMask = 0; // renders nothing itself — just clears
+
             // order: time + save first, then the loop, then presentation.
             Add<TimeControl>("TimeControl");
             Add<SaveSystem>("SaveSystem");

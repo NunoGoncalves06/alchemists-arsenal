@@ -15,9 +15,20 @@ namespace AlchemistsArsenal.UI
         protected override void Build()
         {
             UIFactory.Box(transform, UITheme.Ink900, Rt);
-            var logo = UIFactory.Label(transform, "ALCHEMIST'S\nARSENAL", 64, UITheme.Candle,
+
+            var crest = new GameObject("Crest", typeof(RectTransform)).AddComponent<UnityEngine.UI.Image>();
+            crest.transform.SetParent(transform, false);
+            crest.sprite = Art.PixelSprites.BootLogo();
+            crest.rectTransform.anchorMin = crest.rectTransform.anchorMax = new Vector2(0.5f, 0.62f);
+            crest.rectTransform.sizeDelta = new Vector2(160, 160);
+            crest.raycastTarget = false;
+
+            var logo = UIFactory.Label(transform, "ALCHEMIST'S ARSENAL", 52, UITheme.Candle,
                 TextAlignmentOptions.Center, bold: true);
-            UIFactory.Stretch(logo.rectTransform);
+            logo.rectTransform.anchorMin = new Vector2(0.1f, 0.36f);
+            logo.rectTransform.anchorMax = new Vector2(0.9f, 0.48f);
+            logo.rectTransform.offsetMin = logo.rectTransform.offsetMax = Vector2.zero;
+
             var tag = UIFactory.Label(transform, "all art · music · sound made in-house", 16, UITheme.ParchmentDim,
                 TextAlignmentOptions.Bottom);
             UIFactory.Stretch(tag.rectTransform, 24f);
