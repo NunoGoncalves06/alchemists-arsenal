@@ -7,6 +7,7 @@ using AlchemistsArsenal.Combat;
 using AlchemistsArsenal.Crafting;
 using AlchemistsArsenal.Data;
 using AlchemistsArsenal.Systems;
+using AlchemistsArsenal.Audio;
 
 namespace AlchemistsArsenal.UI
 {
@@ -209,11 +210,14 @@ namespace AlchemistsArsenal.UI
 
         private void SwitchTab(bool cauldron)
         {
+            if (cauldron && !TutorialManager.CauldronUnlocked) return; // Day-1 gate
             _cauldron = cauldron;
             _counterPanel.gameObject.SetActive(!cauldron);
             _cauldronPanel.gameObject.SetActive(cauldron);
             Tint(_counterTab, !cauldron);
             Tint(_cauldronTab, cauldron);
+            if (_cauldronTab != null) _cauldronTab.interactable = TutorialManager.CauldronUnlocked;
+            AudioManager.Play(Sfx.Tab);
         }
 
         private static void Tint(Button b, bool active)
@@ -259,6 +263,7 @@ namespace AlchemistsArsenal.UI
         private void AcceptOrder()
         {
             GameLoopManager.Instance.ConfirmOrder($"{_chosenElement} Flask", _chosenElement);
+            AudioManager.Play(Sfx.Confirm);
             HookOrder();
             RefreshOrder();
             SwitchTab(true);
