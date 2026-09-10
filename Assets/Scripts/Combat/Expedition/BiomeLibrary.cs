@@ -32,10 +32,16 @@ namespace AlchemistsArsenal.Combat
         public static string Name(int i) => Names[Mathf.Clamp(i, 0, Count - 1)];
         public static ElementType Theme(int i) => Themes[Mathf.Clamp(i, 0, Count - 1)];
 
+        // One BiomeData per index, built on first request (reviewer P4 — CreateInstance
+        // SOs are not GC'd, so callers must not rebuild them every frame).
+        private static readonly BiomeData[] _cache = new BiomeData[Count];
+
         public static BiomeData Get(int index)
         {
             index = Mathf.Clamp(index, 0, Count - 1);
+            if (_cache[index] != null) return _cache[index];
             var b = ScriptableObject.CreateInstance<BiomeData>();
+            _cache[index] = b;
 
             switch (index)
             {

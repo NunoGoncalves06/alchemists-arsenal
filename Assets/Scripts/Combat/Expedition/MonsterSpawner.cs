@@ -28,6 +28,7 @@ namespace AlchemistsArsenal.Combat
 
             Vector2 pos = new Vector2(spawnEdgeX, Random.Range(-spawnBandY, spawnBandY));
             var go = NewBody($"Monster_{data.DisplayName}", pos, Team.Monster, data.Element, data.MaxHealth, 0.45f);
+            go.transform.SetParent(transform, worldPositionStays: true); // under ExpeditionWorld — torn down with it
 
             var walker = go.AddComponent<MonsterWalker>();
             walker.Configure(data.MoveSpeed);
@@ -45,6 +46,7 @@ namespace AlchemistsArsenal.Combat
 
             var go = NewBody("Boss_" + boss.DisplayName, new Vector2(spawnEdgeX - 1f, 0f),
                 Team.Monster, boss.CoreElement, boss.MaxHealth, 1.1f);
+            go.transform.SetParent(transform, worldPositionStays: true);
 
             go.AddComponent<MonsterWalker>().Configure(1.4f);
 

@@ -61,6 +61,7 @@ namespace AlchemistsArsenal.Core
         private void Update()
         {
             if (Phase != GamePhase.Morning) return;
+            if (UI.TutorialManager.Active) return; // budget is frozen while Day-1 is being taught (reviewer P3)
 
             _morningRemaining -= Time.unscaledDeltaTime * Mathf.Max(0f, BudgetRateMultiplier);
             MorningRemaining01 = Mathf.Clamp01(_morningRemaining / morningBudgetSeconds);
@@ -130,6 +131,8 @@ namespace AlchemistsArsenal.Core
 
         public void BeginAfternoon()
         {
+            if (_expeditionRoot != null) return; // re-entrancy guard (reviewer P6)
+
             ActiveOrder order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
             PendingLoadout = LoadoutBuilder.Build(order); // once, here — finished or not
 
