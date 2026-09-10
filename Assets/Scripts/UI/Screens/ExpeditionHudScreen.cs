@@ -95,6 +95,7 @@ namespace AlchemistsArsenal.UI
         {
             _world = GameLoopManager.Instance != null ? GameLoopManager.Instance.CurrentExpedition : null;
             _slabPanel.gameObject.SetActive(false);
+            _lastBanner = ""; _lastBossFill = -1f; _lastPip = -1;
             _paused = false; _fast = false;
             SetFast(SettingsService.DefaultExpeditionSpeed == 2);
 

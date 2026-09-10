@@ -76,6 +76,7 @@ namespace AlchemistsArsenal.DebugTools
         private void TestSaveRoundTrip()
         {
             var s = RunState.NewGame(0);
+            s.lastSavedUnixSeconds = 1;
             s.day = 4; s.gold = 137; s.currentBiomeIndex = 2;
             s.bestGrades[0] = 3; s.bestGrades[1] = 2;
             s.unlockedDiary.Add("diary_ww");

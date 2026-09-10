@@ -135,7 +135,8 @@ namespace AlchemistsArsenal.UI
 
         protected override void OnHide()
         {
-            if (_typing != null) StopCoroutine(_typing);
+            if (_typing != null) { StopCoroutine(_typing); _typing = null; }
+            if (_frameAnim != null) { StopCoroutine(_frameAnim); _frameAnim = null; }
         }
 
         private void Step(int d)

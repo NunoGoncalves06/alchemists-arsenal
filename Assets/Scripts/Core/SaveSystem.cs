@@ -59,9 +59,11 @@ namespace AlchemistsArsenal.Core
                 string path = PathFor(slot);
                 if (!File.Exists(path)) { LastSlotCorrupt = false; return null; }
                 var s = JsonUtility.FromJson<RunState>(File.ReadAllText(path));
-                // Every real save is written with saveVersion >= 1; a 0 means the
-                // JSON was truncated/garbage and only defaults came back.
-                if (s == null || s.saveVersion < 1)
+                // `saveVersion` can't be the signal — RunState's field initializer
+                // sets it to 1 even on a partial parse. `lastSavedUnixSeconds` is
+                // only ever written by Save(), so a 0 means "never a real save"
+                // (garbage that JsonUtility populated with defaults) — reviewer R7.
+                if (s == null || s.lastSavedUnixSeconds <= 0)
                 {
                     LastSlotCorrupt = true;
                     return null;
@@ -117,8 +119,6 @@ namespace AlchemistsArsenal.Core
 
             State.saveVersion = RunState.CurrentVersion;
             State.lastSavedUnixSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            if (GameLoopManager.Instance != null)
-                State.phaseAtSave = (int)GameLoopManager.Instance.Phase;
 
             string path = PathFor(State.slot);
             string tmp = path + ".tmp";
@@ -171,7 +171,6 @@ namespace AlchemistsArsenal.Core
             s.replayBiomeIndex = s.replayBiomeIndex < 0 ? -1 : Math.Clamp(s.replayBiomeIndex, 0, biomes - 1);
             s.gold = Math.Max(0, s.gold);
             s.lastResolvedDay = Math.Clamp(s.lastResolvedDay, 0, s.day);
-            s.phaseAtSave = Math.Clamp(s.phaseAtSave, 0, (int)GamePhase.BiomeMap);
 
             s.ownedHerbs ??= new System.Collections.Generic.List<string>();
             s.ownedUpgrades ??= new System.Collections.Generic.List<string>();
