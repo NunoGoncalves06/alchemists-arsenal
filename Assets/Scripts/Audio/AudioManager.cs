@@ -147,11 +147,14 @@ namespace AlchemistsArsenal.Audio
 
         // ------------------------------------------------------------- speech
 
-        /// <summary>Animalese: one short pitched vowel per non-space glyph.</summary>
+        private Coroutine _speaking;
+
+        /// <summary>Animalese: one short pitched vowel per non-space glyph. Only one line at a time.</summary>
         public static void Speak(string text, float basePitch = 1f)
         {
             if (Instance == null || string.IsNullOrEmpty(text)) return;
-            Instance.StartCoroutine(Instance.SpeakRoutine(text, basePitch));
+            if (Instance._speaking != null) Instance.StopCoroutine(Instance._speaking);
+            Instance._speaking = Instance.StartCoroutine(Instance.SpeakRoutine(text, basePitch));
         }
 
         private IEnumerator SpeakRoutine(string text, float basePitch)
@@ -166,6 +169,7 @@ namespace AlchemistsArsenal.Audio
                 yield return wait;
             }
             _speech.pitch = 1f;
+            _speaking = null;
         }
 
         private AudioClip _vowel;

@@ -15,9 +15,14 @@ namespace AlchemistsArsenal.Core
     {
         private static bool _done;
 
+        // Reset the guard when the domain reloads OR when "fast enter play mode"
+        // skips the reload (reviewer P5).
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetGuard() => _done = false;
+
         private void Awake()
         {
-            if (_done) { Destroy(gameObject); return; }
+            if (_done || GameLoopManager.Instance != null) { Destroy(gameObject); return; }
             _done = true;
             DontDestroyOnLoad(gameObject);
 

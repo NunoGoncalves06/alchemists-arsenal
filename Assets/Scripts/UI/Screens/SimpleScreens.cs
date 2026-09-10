@@ -132,7 +132,6 @@ namespace AlchemistsArsenal.UI
             s.fillRect = fill.rectTransform; UIFactory.Stretch(fill.rectTransform);
             s.minValue = 0; s.maxValue = 1; s.value = get();
             s.onValueChanged.AddListener(v => set(v));
-            s.GetComponent<LayoutElement>();
             var le = s.gameObject.AddComponent<LayoutElement>(); le.minWidth = 220; le.minHeight = 22;
         }
 

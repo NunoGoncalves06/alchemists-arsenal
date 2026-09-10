@@ -38,13 +38,11 @@ namespace AlchemistsArsenal.UI
         {
             if (Instance == this) Instance = null;
             if (GameLoopManager.Instance != null) GameLoopManager.Instance.OnPhaseChanged -= OnPhase;
-            if (CraftingManager.Instance != null) CraftingManager.Instance.OnOrderStarted -= OnOrder;
         }
 
         private void Start()
         {
             if (GameLoopManager.Instance != null) GameLoopManager.Instance.OnPhaseChanged += OnPhase;
-            if (CraftingManager.Instance != null) CraftingManager.Instance.OnOrderStarted += OnOrder;
             BuildOverlay();
         }
 
@@ -108,8 +106,6 @@ namespace AlchemistsArsenal.UI
             if (s != null) { s.tutorialCompleted = true; SaveSystem.Instance.MarkDirty(); }
             _group.alpha = 0f;
         }
-
-        private void OnOrder(ActiveOrder _) { /* handled in Run() poll */ }
 
         // ------------------------------------------------------------- overlay
 

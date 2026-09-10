@@ -100,18 +100,15 @@ namespace AlchemistsArsenal.UI
 
         public void Show(ScreenId id)
         {
+            if (Current == id && _screens.TryGetValue(id, out var same) && same.gameObject.activeSelf)
+                return; // Show(current) is a no-op — never re-fire OnShow (reviewer P2)
+
             foreach (var kv in _screens)
             {
                 bool on = kv.Key == id;
-                if (kv.Value.gameObject.activeSelf != on)
-                {
-                    kv.Value.gameObject.SetActive(on);
-                    if (on) kv.Value.NotifyShown(); else kv.Value.NotifyHidden();
-                }
-                else if (on)
-                {
-                    kv.Value.NotifyShown();
-                }
+                if (kv.Value.gameObject.activeSelf == on) continue;
+                kv.Value.gameObject.SetActive(on);
+                if (on) kv.Value.NotifyShown(); else kv.Value.NotifyHidden();
             }
             Current = id;
         }

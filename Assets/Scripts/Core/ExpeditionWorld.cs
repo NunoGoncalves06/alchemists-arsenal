@@ -35,7 +35,8 @@ namespace AlchemistsArsenal.Core
 
             ElementalMatrix matrix = DefaultExpeditionData.Matrix();
 
-            ArenaCamera = new GameObject("ArenaCamera").AddComponent<Camera>();
+            var camGo = new GameObject("ArenaCamera") { tag = "MainCamera" }; // movement code reads Camera.main (reviewer N1)
+            ArenaCamera = camGo.AddComponent<Camera>();
             ArenaCamera.transform.SetParent(transform, false);
             ArenaCamera.transform.position = new Vector3(0f, 0f, -10f);
             ArenaCamera.orthographic = true;
@@ -73,6 +74,17 @@ namespace AlchemistsArsenal.Core
         private void HandleFinished(bool won)
         {
             OnFinished?.Invoke(Telemetry != null ? Telemetry.Report : new ExpeditionReport { won = won });
+        }
+
+        private void OnDestroy()
+        {
+            // Belt-and-braces: the static registries must not carry this run's
+            // corpses into tomorrow (reviewer P1). Monsters/adventurers are parented
+            // under this root and die with it; stray projectiles get swept here.
+            MonsterRegistry.Clear();
+            AdventurerRegistry.Clear();
+            foreach (var p in FindObjectsByType<BombProjectile2D>(FindObjectsSortMode.None))
+                if (p != null) Destroy(p.gameObject);
         }
 
         private void BuildAdventurer(int index, int count, AdventurerLoadout loadout,
