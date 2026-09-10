@@ -32,6 +32,8 @@ namespace AlchemistsArsenal.Combat
             var walker = go.AddComponent<MonsterWalker>();
             walker.Configure(data.MoveSpeed);
 
+            go.AddComponent<MonsterTag>().Data = data; // instance -> archetype, for loot / telemetry
+
             AddSprite(go, data.Sprite, PlaceholderArt.Shape.Diamond, data.Element);
             go.SetActive(true);
             return go;

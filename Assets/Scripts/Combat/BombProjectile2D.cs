@@ -1,8 +1,30 @@
+using System;
 using UnityEngine;
 using AlchemistsArsenal.Data;
 
 namespace AlchemistsArsenal.Combat
 {
+    /// <summary>One detonation, for telemetry + HUD feedback (reviewer X2 — this
+    /// lives on the projectile, where the blast actually happens).</summary>
+    public readonly struct DetonationInfo
+    {
+        public readonly Vector2 Position;
+        public readonly ElementType Element;
+        public readonly PotionGrade Grade;
+        public readonly int HitCount;
+        public readonly int TotalDamage;
+        public readonly bool HadElementalAdvantage;
+        public readonly ICombatant Thrower;
+
+        public DetonationInfo(Vector2 pos, ElementType element, PotionGrade grade,
+            int hitCount, int totalDamage, bool advantage, ICombatant thrower)
+        {
+            Position = pos; Element = element; Grade = grade;
+            HitCount = hitCount; TotalDamage = totalDamage;
+            HadElementalAdvantage = advantage; Thrower = thrower;
+        }
+    }
+
     /// <summary>
     /// A thrown potion-bomb. Flight is 100% Rigidbody2D — initial velocity is set
     /// once from <see cref="BallisticSolver"/>, then gravity does the rest. There is
@@ -38,6 +60,9 @@ namespace AlchemistsArsenal.Combat
         private bool _detonated;
 
         public bool HasDetonated => _detonated;
+
+        /// <summary>Raised once per bomb, the frame it detonates. Telemetry + HUD listen.</summary>
+        public static event Action<DetonationInfo> OnDetonatedGlobal;
 
         private void Awake()
         {
@@ -122,6 +147,10 @@ namespace AlchemistsArsenal.Combat
             float damageMultiplier = CombatQuality.DamageMultiplier(grade);
             bool elementalEnabled = CombatQuality.ElementalBonusEnabled(grade);
 
+            int hitCount = 0;
+            int totalDamage = 0;
+            bool hadAdvantage = false;
+
             Collider2D[] hits = Physics2D.OverlapCircleAll(epicenter, radius, detonationMask);
             for (int i = 0; i < hits.Length; i++)
             {
@@ -135,7 +164,7 @@ namespace AlchemistsArsenal.Combat
                     Vector2 toHit = hitRb.position - epicenter;
                     float dist = toHit.magnitude;
                     float falloff = Mathf.Clamp01(1f - dist / Mathf.Max(radius, 0.01f));
-                    Vector2 dir = dist > 0.001f ? toHit / dist : Random.insideUnitCircle.normalized;
+                    Vector2 dir = dist > 0.001f ? toHit / dist : UnityEngine.Random.insideUnitCircle.normalized;
 
                     hitRb.AddForceAtPosition(dir * (knockbackImpulse * falloff), epicenter, ForceMode2D.Impulse);
                 }
@@ -147,12 +176,19 @@ namespace AlchemistsArsenal.Combat
                 float elementMultiplier = elementalEnabled && _matrix != null
                     ? _matrix.GetMultiplier(_bomb.Element, combatant.Element)
                     : 1f;
+                if (elementMultiplier > 1.01f) hadAdvantage = true;
 
                 int finalDamage = Mathf.Max(0,
                     Mathf.RoundToInt(_bomb.BaseDamage * damageMultiplier * elementMultiplier));
 
                 damageable.ApplyDamage(new DamageInfo(finalDamage, _bomb.Element, epicenter, _thrower));
+                hitCount++;
+                totalDamage += finalDamage;
             }
+
+            if (_bomb != null)
+                OnDetonatedGlobal?.Invoke(new DetonationInfo(
+                    epicenter, _bomb.Element, grade, hitCount, totalDamage, hadAdvantage, _thrower));
 
             Destroy(gameObject);
         }

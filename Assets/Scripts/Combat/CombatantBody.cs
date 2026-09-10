@@ -40,6 +40,13 @@ namespace AlchemistsArsenal.Combat
         /// <summary>Raised on every applied hit (after mitigation) with the amount actually dealt.</summary>
         public event Action<DamageInfo> OnDamaged;
 
+        /// <summary>Global death feed for telemetry / loot / diary (reviewer X1 — no new
+        /// per-instance event needed; this rides the existing death path).</summary>
+        public static event Action<CombatantBody> OnAnyDied;
+
+        /// <summary>Global damage feed — the expedition HUD's floating damage numbers.</summary>
+        public static event Action<CombatantBody, DamageInfo> OnAnyDamaged;
+
         private void Awake()
         {
             _rb = GetComponent<Rigidbody2D>();
@@ -88,7 +95,9 @@ namespace AlchemistsArsenal.Combat
 
             currentHP = Mathf.Max(0, currentHP - amount);
 
-            OnDamaged?.Invoke(new DamageInfo(amount, info.Element, info.SourcePoint, info.Source));
+            var applied = new DamageInfo(amount, info.Element, info.SourcePoint, info.Source);
+            OnDamaged?.Invoke(applied);
+            OnAnyDamaged?.Invoke(this, applied);
 
             if (currentHP > 0) return;
 
@@ -96,6 +105,7 @@ namespace AlchemistsArsenal.Combat
             // actually gone — consumers all filter on IsAlive, and expedition
             // win/lose needs to see that a spawned side is fully down.
             OnDied?.Invoke(this);
+            OnAnyDied?.Invoke(this);
             if (destroyOnDeath) Destroy(gameObject, deathLingerSeconds);
         }
     }
