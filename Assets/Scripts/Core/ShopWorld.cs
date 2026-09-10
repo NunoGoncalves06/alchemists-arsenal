@@ -19,7 +19,8 @@ namespace AlchemistsArsenal.Core
         {
             transform.position = Vector3.zero;
 
-            WorldCamera = new GameObject("ShopCamera").AddComponent<Camera>();
+            var camGo = new GameObject("ShopCamera") { tag = "MainCamera" }; // PhysicsCauldronManager reads Camera.main
+            WorldCamera = camGo.AddComponent<Camera>();
             WorldCamera.transform.SetParent(transform, false);
             WorldCamera.transform.position = new Vector3(0f, 0.5f, -10f);
             WorldCamera.orthographic = true;
