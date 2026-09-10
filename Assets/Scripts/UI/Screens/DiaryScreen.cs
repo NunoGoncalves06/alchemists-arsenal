@@ -48,6 +48,7 @@ namespace AlchemistsArsenal.UI
             // Authored frame (shown when DiaryEntryData.cutsceneFrames is non-empty — reviewer G1)
             _frameImg = UIFactory.Panel(_cut, Color.white, "Frame");
             UIFactory.Stretch(_frameImg.rectTransform);
+            _frameImg.type = Image.Type.Simple;   // authored frames are whole sprites, not 9-slice
             _frameImg.preserveAspect = true;
             _frameImg.gameObject.SetActive(false);
 
