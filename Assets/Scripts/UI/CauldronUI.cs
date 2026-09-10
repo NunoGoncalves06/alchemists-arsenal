@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 using AlchemistsArsenal.Systems;
 using AlchemistsArsenal.Crafting;
+using AlchemistsArsenal.Combat;
 
 namespace AlchemistsArsenal.UI
 {
@@ -188,21 +189,25 @@ namespace AlchemistsArsenal.UI
 
             if (tierText != null)
             {
-                QualityTier tier = currentTrackedOrder.GetTier();
-                tierText.text = tier.ToString().ToUpper();
+                PotionGrade grade = currentTrackedOrder.GetGrade();
+                tierText.text = grade.ToString().ToUpper();
 
-                // Style based on Quality Tier
-                switch (tier)
+                // Style based on the 4-band combat grade (the only grade the player sees).
+                switch (grade)
                 {
-                    case QualityTier.Perfect:
+                    case PotionGrade.Perfect:
                         tierText.color = perfectQualityColor;
                         if (qualityPanelBg != null) qualityPanelBg.color = new Color(0f, 0.8f, 0.4f, 0.15f);
                         break;
-                    case QualityTier.Good:
+                    case PotionGrade.Great:
                         tierText.color = goodQualityColor;
                         if (qualityPanelBg != null) qualityPanelBg.color = new Color(0.9f, 0.7f, 0f, 0.15f);
                         break;
-                    case QualityTier.Poor:
+                    case PotionGrade.Okay:
+                        tierText.color = goodQualityColor;
+                        if (qualityPanelBg != null) qualityPanelBg.color = new Color(0.9f, 0.55f, 0f, 0.15f);
+                        break;
+                    default: // Poor
                         tierText.color = poorQualityColor;
                         if (qualityPanelBg != null) qualityPanelBg.color = new Color(0.8f, 0.1f, 0.1f, 0.15f);
                         break;

@@ -15,10 +15,8 @@ namespace AlchemistsArsenal.Combat
     /// Single source of truth for how a morning potion's quality score converts into
     /// afternoon combat effects. Both the utility AI and the detonation code read
     /// from here so the "morning craft dictates afternoon combat" loop stays
-    /// consistent.
-    ///
-    /// (<see cref="AlchemistsArsenal.Systems.QualityTier"/> is the older 3-band shop
-    /// display enum — this is the combat-facing 4-band version the rubric specifies.)
+    /// consistent. This 4-band grade is the ONLY grade the player ever sees
+    /// (the older 3-band <c>QualityTier</c> was deleted — reviewer round 3).
     /// </summary>
     public static class CombatQuality
     {

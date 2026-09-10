@@ -77,7 +77,11 @@ namespace AlchemistsArsenal.Combat
 
         // ---------------------------------------------------------------- boss
 
-        public static BossDefinition Boss()
+        public static BossDefinition Boss() => BuildBoss("The Coven Matriarch", ElementType.Arcane, 520);
+
+        /// <summary>Same HFSM scaffold (Neutral/Enraged/ElementalWard/Recovering), re-themed
+        /// and re-scaled — used by <c>BiomeLibrary</c> for each biome's boss.</summary>
+        public static BossDefinition BuildBoss(string displayName, ElementType core, int hp)
         {
             var threat = ScriptableObject.CreateInstance<ElementalThreatProfile>();
             threat.SetEntries(new[]
@@ -113,7 +117,7 @@ namespace AlchemistsArsenal.Combat
             };
 
             var def = ScriptableObject.CreateInstance<BossDefinition>();
-            def.Configure("The Coven Matriarch", ElementType.Arcane, 520, threat, phases);
+            def.Configure(displayName, core, Mathf.Max(1, hp), threat, phases);
             return def;
         }
 
