@@ -18,7 +18,8 @@ namespace AlchemistsArsenal.UI
     public class DiaryScreen : GameScreen
     {
         public static string OpenEntryId;
-        public static GamePhase? PendingReturnPhase;
+        /// <summary>Set by the Day-Intro card so CLOSE returns to the morning, not the Evening.</summary>
+        public static bool FromOpeningCinematic;
 
         private RectTransform _cut;
         private TextMeshProUGUI _title, _text, _pageOf;
@@ -26,6 +27,7 @@ namespace AlchemistsArsenal.UI
         private List<string> _ids = new List<string>();
         private int _index;
         private Coroutine _typing;
+        private string _fullText = "";
 
         protected override void Build()
         {
@@ -148,9 +150,21 @@ namespace AlchemistsArsenal.UI
             _typing = StartCoroutine(TypeOut(entry.entryText));
         }
 
+        private void Update()
+        {
+            // Click anywhere while typing → snap the page to full text (reviewer P15).
+            if (_typing != null && Input.GetMouseButtonDown(0))
+            {
+                StopCoroutine(_typing);
+                _typing = null;
+                _text.text = _fullText;
+            }
+        }
+
         private IEnumerator TypeOut(string full)
         {
-            if (SettingsService.ReduceMotion) { _text.text = full; yield break; }
+            _fullText = full;
+            if (SettingsService.ReduceMotion) { _text.text = full; _typing = null; yield break; }
             _text.text = "";
             var wait = new WaitForSecondsRealtime(0.012f);
             for (int i = 0; i < full.Length; i++)
@@ -158,19 +172,19 @@ namespace AlchemistsArsenal.UI
                 _text.text += full[i];
                 if (i % 2 == 0) yield return wait;
             }
+            _typing = null;
         }
 
         private void Close()
         {
-            if (PendingReturnPhase == GamePhase.Morning)
+            OpenEntryId = null;
+            if (FromOpeningCinematic)
             {
-                PendingReturnPhase = null;
-                OpenEntryId = null;
+                FromOpeningCinematic = false;
                 GameLoopManager.Instance.BeginMorning();
             }
             else
             {
-                OpenEntryId = null;
                 UIManager.Instance.Show(ScreenId.Evening);
             }
         }

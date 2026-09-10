@@ -142,27 +142,38 @@ namespace AlchemistsArsenal.UI
             }
         }
 
+        private string _lastBanner = "";
+        private float _lastBossFill = -1f;
+        private int _lastPip = -1;
+
         private void Update()
         {
             if (_world == null || _world.Expedition == null) return;
             var exp = _world.Expedition;
 
-            if (exp.Phase == ExpeditionPhase.BossFight && exp.BossInstance != null)
+            bool boss = exp.Phase == ExpeditionPhase.BossFight && exp.BossInstance != null;
+            if (_bossBar.gameObject.activeSelf != boss) _bossBar.gameObject.SetActive(boss);
+            if (_pips.gameObject.activeSelf != boss) _pips.gameObject.SetActive(boss);
+
+            string banner;
+            if (boss)
             {
                 var bb = exp.BossInstance.GetComponent<CombatantBody>();
                 var bp = exp.BossInstance.GetComponent<BossPhaseManager>();
-                _bossBar.gameObject.SetActive(true); _pips.gameObject.SetActive(true);
-                if (bb != null) _bossFill.fillAmount = bb.MaxHP > 0 ? (float)bb.CurrentHP / bb.MaxHP : 0f;
-                _banner.text = "THE BOSS";
-                if (bp != null) SetPips((int)bp.CurrentPhase);
+                float f = bb != null && bb.MaxHP > 0 ? (float)bb.CurrentHP / bb.MaxHP : 0f;
+                if (!Mathf.Approximately(f, _lastBossFill)) { _bossFill.fillAmount = f; _lastBossFill = f; }
+                int pip = bp != null ? (int)bp.CurrentPhase : 0;
+                if (pip != _lastPip) { SetPips(pip); _lastPip = pip; }
+                banner = "THE BOSS";
             }
             else
             {
-                _bossBar.gameObject.SetActive(false); _pips.gameObject.SetActive(false);
-                _banner.text = exp.Phase == ExpeditionPhase.Warmup
+                banner = exp.Phase == ExpeditionPhase.Warmup
                     ? $"{BiomeName()} — GET READY"
                     : $"{BiomeName()} — WAVE {Mathf.Max(1, exp.WaveNumber)} / {exp.TotalWaves}";
             }
+
+            if (banner != _lastBanner) { _banner.text = banner; _lastBanner = banner; }
         }
 
         private string BiomeName() => GameLoopManager.Instance != null
@@ -232,12 +243,14 @@ namespace AlchemistsArsenal.UI
         private class PortraitTracker : MonoBehaviour
         {
             private CombatantBody _body; private Image _hp; private Image _card;
+            private float _last = -1f; private bool _dead;
             public void Init(CombatantBody b, Image hp, Image card) { _body = b; _hp = hp; _card = card; }
             private void Update()
             {
                 if (_body == null) return;
-                _hp.fillAmount = _body.MaxHP > 0 ? Mathf.Clamp01((float)_body.CurrentHP / _body.MaxHP) : 0f;
-                if (!_body.IsAlive && _card != null) _card.color = new Color(0.2f, 0.15f, 0.18f);
+                float f = _body.MaxHP > 0 ? Mathf.Clamp01((float)_body.CurrentHP / _body.MaxHP) : 0f;
+                if (!Mathf.Approximately(f, _last)) { _hp.fillAmount = f; _last = f; }
+                if (!_dead && !_body.IsAlive && _card != null) { _card.color = new Color(0.2f, 0.15f, 0.18f); _dead = true; }
             }
         }
     }

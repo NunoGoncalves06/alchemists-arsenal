@@ -26,7 +26,7 @@ namespace AlchemistsArsenal.UI
             srt.anchorMin = new Vector2(0f, 0.92f); srt.anchorMax = new Vector2(1f, 1f);
             srt.offsetMin = srt.offsetMax = Vector2.zero;
             Tab(strip.transform, "REPORT", ShowReport);
-            Tab(strip.transform, "DIARY", () => { DiaryScreen.OpenEntryId = null; DiaryScreen.PendingReturnPhase = null; UIManager.Instance.Show(ScreenId.Diary); });
+            Tab(strip.transform, "DIARY", () => { DiaryScreen.OpenEntryId = null; DiaryScreen.FromOpeningCinematic = false; UIManager.Instance.Show(ScreenId.Diary); });
 
             _gold = UIFactory.Label(strip.transform, "", 18, UITheme.Candle, TextAlignmentOptions.Right, true);
             _gold.gameObject.AddComponent<LayoutElement>().minWidth = 200;

@@ -110,19 +110,9 @@ namespace AlchemistsArsenal.Core
         {
             if (!SaveSystem.Instance.Load(0)) return false;
 
-            // A save stamped past the fight = that day's reward was already banked
-            // (reviewer P7). Roll the day forward the way Sleep() would, so Continue
-            // lands on the next morning rather than replaying a resolved day.
-            RunState s = SaveSystem.Instance.State;
-            var saved = (GamePhase)s.phaseAtSave;
-            if ((saved == GamePhase.Evening || saved == GamePhase.BiomeMap) && s.lastResolvedDay >= s.day)
-            {
-                s.replayBiomeIndex = -1;
-                s.day++;
-                if (CraftingManager.Instance != null) CraftingManager.Instance.ClearOrder();
-                SaveSystem.Instance.MarkDirty();
-            }
-
+            // No special case: BeginEvening already advanced the day when it banked
+            // the reward (reviewer P13), so a save is always on a day that hasn't
+            // started yet. Continue is just "resume the current day".
             BeginDay();
             return true;
         }
@@ -131,7 +121,7 @@ namespace AlchemistsArsenal.Core
         {
             // Fresh shop every day — no stale heat / herb positions (reviewer P9).
             DestroyWorld(ref _shopRoot);
-            EnsureShopWorld();
+            BuildShopWorld();
             DestroyWorld(ref _expeditionRoot);
             _expeditionWorld = null;
             SetPhase(GamePhase.DayIntro);
@@ -215,7 +205,14 @@ namespace AlchemistsArsenal.Core
                     if (!s.ownedHerbs.Contains(kv.Key)) s.ownedHerbs.Add(kv.Key);
 
                 DiaryManager.EvaluateAfterExpedition(s, TargetBiomeIndex, r);
+
+                // The day is over the moment you're paid: advance it here so a
+                // mid-Evening quit resumes on the next day with no Continue-side
+                // fix-up (reviewer P13). A replay day consumes its replay target.
                 s.lastResolvedDay = s.day;
+                s.day++;
+                s.replayBiomeIndex = -1;
+                if (CraftingManager.Instance != null) CraftingManager.Instance.ClearOrder();
                 SaveSystem.Instance.MarkDirty();
             }
 
@@ -231,22 +228,23 @@ namespace AlchemistsArsenal.Core
             SetPhase(GamePhase.BiomeMap);
         }
 
-        /// <summary>Sleep: roll the day forward. <paramref name="replayNextDay"/> ≥ 0 targets a cleared biome.</summary>
+        /// <summary>
+        /// Sleep just passes the night — <see cref="BeginEvening"/> already advanced
+        /// the day (reviewer P13). <paramref name="replayNextDay"/> ≥ 0 points
+        /// tomorrow's expedition at a cleared biome instead of the current node.
+        /// </summary>
         public void Sleep(int replayNextDay)
         {
             RunState s = SaveSystem.Instance.State;
             s.replayBiomeIndex = replayNextDay < 0 ? -1 : replayNextDay;
-            s.day++;
-            if (CraftingManager.Instance != null) CraftingManager.Instance.ClearOrder();
             SaveSystem.Instance.Save();
             BeginDay();
         }
 
         // ---------------------------------------------------------------- worlds
 
-        private void EnsureShopWorld()
+        private void BuildShopWorld()
         {
-            if (_shopRoot != null) return;
             _shopRoot = new GameObject("~ShopWorld");
             _shopRoot.AddComponent<ShopWorld>().Build();
         }

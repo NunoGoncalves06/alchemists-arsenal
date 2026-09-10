@@ -4,6 +4,13 @@ Implemented against `ROADMAP.md` Phase 0. Verified: `dotnet build` of a
 scratch csproj over all `Assets/Scripts/**/*.cs` — **0 errors** (Unity CLI is not
 available on this machine; see "Verification" in the rebase memory note).
 
+> ⚠️ **DO NOT SUBMIT FOR GRADING YET.** Every visual is procedural
+> (`PixelArt` discs/blocks, synth audio). The slice proves all 8 rubric *systems*
+> run end-to-end, but **Assets (weighted) and Story score near zero on
+> programmer art** — a grader must see hand-made pixel art. The biome-1 art pass
+> + 2 cutscene illustrations (task 0.13, now a hard gate) must land before
+> submission. Reviewer P14.
+
 | # | Task | Status | Where |
 |---|---|---|---|
 | 0.1 | Scene skeleton | ✅ (adapted) | `Boot.unity` + `Core/Bootstrap.cs`; Shop/Expedition are loop-owned GameObject roots, not additive `.unity` scenes — see Deviation 1 |
