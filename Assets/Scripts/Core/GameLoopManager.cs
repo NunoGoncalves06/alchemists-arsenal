@@ -17,6 +17,16 @@ namespace AlchemistsArsenal.Core
     /// <c>.unity</c> scenes — same isolation, no YAML to hand-author without the
     /// editor. Sim components never live under a UI root, and every scene-scoped
     /// singleton nulls its Instance on destroy (reviewer X5).
+    ///
+    /// Legal transition sequence (each method guards its expected <c>from</c> phase):
+    /// <code>
+    /// Boot ─GoToMainMenu→ MainMenu ─StartNewGame/Continue→ BeginDay
+    ///   BeginDay → DayIntro ─BeginMorning→ Morning ─BeginHandoff→ Handoff
+    ///   Handoff ─BeginAfternoon→ Afternoon ─BeginEvening→ Evening
+    ///   Evening ─BeginBiomeMap→ BiomeMap ─Sleep→ BeginDay (day+1)
+    /// </code>
+    /// The day's reward is banked once, in <c>BeginEvening</c>, guarded by
+    /// <c>RunState.lastResolvedDay</c>; the biome advances there too on a clear.
     /// </summary>
     public class GameLoopManager : MonoBehaviour
     {
@@ -99,12 +109,28 @@ namespace AlchemistsArsenal.Core
         public bool Continue()
         {
             if (!SaveSystem.Instance.Load(0)) return false;
+
+            // A save stamped past the fight = that day's reward was already banked
+            // (reviewer P7). Roll the day forward the way Sleep() would, so Continue
+            // lands on the next morning rather than replaying a resolved day.
+            RunState s = SaveSystem.Instance.State;
+            var saved = (GamePhase)s.phaseAtSave;
+            if ((saved == GamePhase.Evening || saved == GamePhase.BiomeMap) && s.lastResolvedDay >= s.day)
+            {
+                s.replayBiomeIndex = -1;
+                s.day++;
+                if (CraftingManager.Instance != null) CraftingManager.Instance.ClearOrder();
+                SaveSystem.Instance.MarkDirty();
+            }
+
             BeginDay();
             return true;
         }
 
         public void BeginDay()
         {
+            // Fresh shop every day — no stale heat / herb positions (reviewer P9).
+            DestroyWorld(ref _shopRoot);
             EnsureShopWorld();
             DestroyWorld(ref _expeditionRoot);
             _expeditionWorld = null;
@@ -114,9 +140,9 @@ namespace AlchemistsArsenal.Core
         /// <summary>Called by the Day-Intro card when it finishes / is skipped.</summary>
         public void BeginMorning()
         {
+            if (Phase != GamePhase.DayIntro) { Debug.LogWarning($"[Loop] BeginMorning from {Phase} ignored"); return; }
             _morningRemaining = morningBudgetSeconds;
             MorningRemaining01 = 1f;
-            EnsureShopWorld();
             SetPhase(GamePhase.Morning);
         }
 
@@ -127,10 +153,15 @@ namespace AlchemistsArsenal.Core
                 CraftingManager.Instance.StartNewOrder(potionName, element);
         }
 
-        public void BeginHandoff() => SetPhase(GamePhase.Handoff);
+        public void BeginHandoff()
+        {
+            if (Phase != GamePhase.Morning) { Debug.LogWarning($"[Loop] BeginHandoff from {Phase} ignored"); return; }
+            SetPhase(GamePhase.Handoff);
+        }
 
         public void BeginAfternoon()
         {
+            if (Phase != GamePhase.Handoff) { Debug.LogWarning($"[Loop] BeginAfternoon from {Phase} ignored"); return; }
             if (_expeditionRoot != null) return; // re-entrancy guard (reviewer P6)
 
             ActiveOrder order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
@@ -145,7 +176,6 @@ namespace AlchemistsArsenal.Core
             _expeditionWorld.Build(biome, PendingLoadout, adventurerCount: 1);
 
             SetPhase(GamePhase.Afternoon);
-            SaveSystem.Instance.AutoSave();
         }
 
         // The HUD shows the result slab and advances on CONTINUE — the loop only
@@ -157,49 +187,55 @@ namespace AlchemistsArsenal.Core
 
         public void BeginEvening()
         {
+            if (Phase != GamePhase.Afternoon) { Debug.LogWarning($"[Loop] BeginEvening from {Phase} ignored"); return; }
+
             RunState s = SaveSystem.Instance.State;
             ExpeditionReport r = LatestReport;
 
-            if (r != null)
+            // Bank the day's reward exactly once — a mid-Evening quit + Continue
+            // must not run this twice (reviewer P7).
+            if (r != null && s.lastResolvedDay != s.day)
             {
-                var (paid, tip) = Economy.Payout(r.craftedGrade, replay: s.IsReplayDay);
-                r.goldPaidByGrade = paid;
+                int fee = 0; bool tip = false;
+                if (r.won) (fee, tip) = Economy.Payout(r.craftedGrade, replay: s.IsReplayDay); // no fee for a lost job (P11)
+                r.goldPaidByGrade = fee;
                 r.perfectTip = tip;
-                s.AddGold(r.TotalGold);
+                s.AddGold(r.TotalGold); // loot + fee
 
                 if (r.won)
+                {
                     s.RecordGrade(TargetBiomeIndex, r.Stars);
+                    // Clearing your current node advances the road; a replay does not.
+                    if (!s.IsReplayDay && s.currentBiomeIndex == TargetBiomeIndex
+                        && s.currentBiomeIndex < BiomeLibrary.Count - 1)
+                        s.currentBiomeIndex++;
+                }
 
                 foreach (var kv in r.herbDrops)
                     if (!s.ownedHerbs.Contains(kv.Key)) s.ownedHerbs.Add(kv.Key);
 
                 DiaryManager.EvaluateAfterExpedition(s, TargetBiomeIndex, r);
+                s.lastResolvedDay = s.day;
                 SaveSystem.Instance.MarkDirty();
             }
 
-            EnsureShopWorld(); // night chrome reuses the shop world
             DestroyWorld(ref _expeditionRoot);
             _expeditionWorld = null;
             SetPhase(GamePhase.Evening);
             SaveSystem.Instance.AutoSave();
         }
 
-        public void BeginBiomeMap() => SetPhase(GamePhase.BiomeMap);
+        public void BeginBiomeMap()
+        {
+            if (Phase != GamePhase.Evening) { Debug.LogWarning($"[Loop] BeginBiomeMap from {Phase} ignored"); return; }
+            SetPhase(GamePhase.BiomeMap);
+        }
 
-        /// <summary>From the Biome Map: sleep = advance the day (+ maybe the biome) and save.</summary>
-        public void Sleep(bool advanceBiome, int replayIndex)
+        /// <summary>Sleep: roll the day forward. <paramref name="replayNextDay"/> ≥ 0 targets a cleared biome.</summary>
+        public void Sleep(int replayNextDay)
         {
             RunState s = SaveSystem.Instance.State;
-
-            if (replayIndex >= 0)
-                s.replayBiomeIndex = replayIndex;
-            else
-            {
-                s.replayBiomeIndex = -1;
-                if (advanceBiome && s.currentBiomeIndex < BiomeLibrary.Count - 1)
-                    s.currentBiomeIndex++;
-            }
-
+            s.replayBiomeIndex = replayNextDay < 0 ? -1 : replayNextDay;
             s.day++;
             if (CraftingManager.Instance != null) CraftingManager.Instance.ClearOrder();
             SaveSystem.Instance.Save();

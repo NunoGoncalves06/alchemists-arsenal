@@ -37,11 +37,11 @@ namespace AlchemistsArsenal.UI
     public class MainMenuScreen : GameScreen
     {
         private Button _continue;
+        private TextMeshProUGUI _warn;
 
         protected override void Build()
         {
             UIFactory.Box(transform, UITheme.Ink800, Rt);
-            UIFactory.Box(transform, new Color(0f, 0f, 0f, 0f), Rt); // spacer
 
             var title = UIFactory.Label(transform, "ALCHEMIST'S ARSENAL", 46, UITheme.Candle, TextAlignmentOptions.TopLeft, true);
             title.rectTransform.anchorMin = new Vector2(0.06f, 0.72f);
@@ -54,21 +54,27 @@ namespace AlchemistsArsenal.UI
             rt.anchorMax = new Vector2(0.34f, 0.68f);
             rt.offsetMin = rt.offsetMax = Vector2.zero;
 
-            _continue = UIFactory.Button(col.transform, "CONTINUE", () =>
-            {
-                if (GameLoopManager.Instance != null && !GameLoopManager.Instance.Continue())
-                    GameLoopManager.Instance.StartNewGame();
-            });
+            _continue = UIFactory.Button(col.transform, "CONTINUE",
+                () => { if (GameLoopManager.Instance != null) GameLoopManager.Instance.Continue(); });
             Fix(_continue, 56);
             Fix(UIFactory.Button(col.transform, "NEW GAME", () => GameLoopManager.Instance.StartNewGame(), primary: false), 56);
             Fix(UIFactory.Button(col.transform, "SETTINGS", () => UIManager.Instance.Show(ScreenId.Settings), primary: false), 56);
             Fix(UIFactory.Button(col.transform, "QUIT", Quit, primary: false), 56);
+
+            _warn = UIFactory.Label(col.transform, "", 14, UITheme.Danger);
+            _warn.gameObject.AddComponent<LayoutElement>().minHeight = 40;
         }
 
         protected override void OnShow()
         {
-            if (_continue != null && SaveSystem.Instance != null)
-                _continue.interactable = SaveSystem.Instance.SlotExists(0);
+            if (SaveSystem.Instance == null) return;
+            bool exists = SaveSystem.Instance.SlotExists(0);
+            bool corrupt = exists && SaveSystem.Instance.SlotCorrupt(0);
+            if (_continue != null) _continue.interactable = exists && !corrupt;
+            if (_warn != null)
+                _warn.text = corrupt
+                    ? "Save file unreadable. NEW GAME will overwrite it."
+                    : "";
         }
 
         private static void Fix(Button b, float h) => b.gameObject.AddComponent<LayoutElement>().minHeight = h;
@@ -182,9 +188,10 @@ namespace AlchemistsArsenal.UI
 
             // Opening cinematic plays once, right after the first Day Intro.
             var s = SaveSystem.Instance.State;
-            if (s != null && s.day == 1 && s.HasDiary("diary_00") && !s.HasDiary("diary_00_seen"))
+            if (s != null && s.HasDiary("diary_00") && !s.openingCinematicSeen)
             {
-                s.unlockedDiary.Add("diary_00_seen");
+                s.openingCinematicSeen = true;
+                SaveSystem.Instance.MarkDirty();
                 DiaryScreen.PendingReturnPhase = GamePhase.Morning;
                 DiaryScreen.OpenEntryId = "diary_00";
                 UIManager.Instance.Show(ScreenId.Diary);
@@ -280,25 +287,22 @@ namespace AlchemistsArsenal.UI
                     current ? UITheme.Candle : (unlocked ? UITheme.Parchment : UITheme.WoodDark));
                 lbl.rectTransform.sizeDelta = new Vector2(340, 30);
 
-                if (unlocked && !current && stars > 0)
+                if (unlocked && stars > 0 && i != s.currentBiomeIndex)
                 {
                     int idx = i;
-                    var rp = UIFactory.Button(row.transform, "REPLAY", () => GameLoopManager.Instance.Sleep(false, idx), primary: false);
+                    var rp = UIFactory.Button(row.transform, "REPLAY", () => GameLoopManager.Instance.Sleep(idx), primary: false);
                     var le = rp.gameObject.AddComponent<LayoutElement>(); le.minWidth = 100; le.minHeight = 30;
                 }
             }
 
-            bool cleared = s.bestGrades[s.currentBiomeIndex] > 0;
-            bool last = s.currentBiomeIndex >= BiomeLibrary.Count - 1;
-            var hint = UIFactory.Label(_dynamic, cleared && !last
-                ? "Sleeping advances the road to the next biome."
-                : "Replay a cleared biome for half gold — it always pays, so you never get stuck.",
+            var hint = UIFactory.Label(_dynamic,
+                "The road already moved forward when you cleared the biome. Sleeping just passes the night.\n" +
+                "Replay a cleared biome for half the fee (loot still counts) — you never get stuck.",
                 16, UITheme.ParchmentDim, TextAlignmentOptions.BottomLeft);
             hint.rectTransform.offsetMin = new Vector2(32, 24);
-            hint.rectTransform.offsetMax = new Vector2(-500, 60);
+            hint.rectTransform.offsetMax = new Vector2(-500, 80);
 
-            var sleep = UIFactory.Button(_dynamic, cleared && !last ? "SLEEP — ADVANCE  ▶" : "SLEEP  ▶",
-                () => GameLoopManager.Instance.Sleep(cleared && !last, -1));
+            var sleep = UIFactory.Button(_dynamic, "SLEEP  ▶", () => GameLoopManager.Instance.Sleep(-1));
             var srt = sleep.image.rectTransform;
             srt.anchorMin = new Vector2(0.68f, 0.14f); srt.anchorMax = new Vector2(0.95f, 0.24f);
             srt.offsetMin = srt.offsetMax = Vector2.zero;
