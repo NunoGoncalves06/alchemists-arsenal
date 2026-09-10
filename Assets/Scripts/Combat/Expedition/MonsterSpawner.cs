@@ -1,4 +1,5 @@
 using UnityEngine;
+using AlchemistsArsenal.Art;
 using AlchemistsArsenal.Data;
 
 namespace AlchemistsArsenal.Combat
@@ -35,7 +36,7 @@ namespace AlchemistsArsenal.Combat
 
             go.AddComponent<MonsterTag>().Data = data; // instance -> archetype, for loot / telemetry
 
-            AddSprite(go, data.Sprite, PlaceholderArt.Shape.Diamond, data.Element);
+            AddSprite(go, data.Sprite != null ? data.Sprite : PixelSprites.Monster(data.DisplayName), 5, 1f);
             go.SetActive(true);
             return go;
         }
@@ -57,7 +58,7 @@ namespace AlchemistsArsenal.Combat
             var phase = go.AddComponent<BossPhaseManager>();
             phase.Configure(boss, executor);
 
-            AddSprite(go, null, PlaceholderArt.Shape.Star, boss.CoreElement);
+            AddSprite(go, PixelSprites.Boss(), 5, 1f);
             go.transform.localScale = Vector3.one * 2.2f;
             go.SetActive(true);
             return go;
@@ -82,16 +83,12 @@ namespace AlchemistsArsenal.Combat
             return go;
         }
 
-        private static void AddSprite(GameObject go, Sprite authored, PlaceholderArt.Shape shape, ElementType element)
+        private static void AddSprite(GameObject go, Sprite sprite, int sortingOrder, float worldSize)
         {
-            if (authored != null)
-            {
-                var sr = go.AddComponent<SpriteRenderer>();
-                sr.sprite = authored;
-                sr.sortingOrder = 5;
-                return;
-            }
-            PlaceholderArt.AddRenderer(go, shape, PlaceholderArt.ElementColor(element), 5);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = sprite;
+            sr.sortingOrder = sortingOrder;
+            if (PixelSprites.Unlit != null) sr.sharedMaterial = PixelSprites.Unlit;
         }
     }
 }

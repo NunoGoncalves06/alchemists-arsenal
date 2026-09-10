@@ -133,7 +133,7 @@ namespace AlchemistsArsenal.UI
 
         private void BuildOrderDock()
         {
-            var dock = UIFactory.Panel(transform, UITheme.Ink800, "OrderDock");
+            var dock = UIFactory.FramedPanel(transform, "OrderDock");
             dock.rectTransform.anchorMin = new Vector2(0.72f, 0f); dock.rectTransform.anchorMax = new Vector2(1f, 0.93f);
             dock.rectTransform.offsetMin = dock.rectTransform.offsetMax = Vector2.zero;
 
@@ -310,7 +310,7 @@ namespace AlchemistsArsenal.UI
                 return;
             }
             _ticketName.text = $"{order.potionName}\n<size=70%>{order.element}</size>";
-            _ticketBadge.sprite = PlaceholderArt.Make(UIFactory.ShapeFor(order.element), UITheme.Element(order.element), UITheme.Ink900);
+            _ticketBadge.sprite = Art.PixelSprites.ElementIcon(order.element);
             _qualityFill.fillAmount = order.qualityScore / 100f;
             var grade = order.GetGrade();
             _qualityText.text = $"QUALITY {order.qualityScore} — <color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(grade))}>{grade.ToString().ToUpper()}</color>";

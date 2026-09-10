@@ -50,11 +50,34 @@ namespace AlchemistsArsenal.UI
         };
 
         private static TMP_FontAsset _font;
+
+        /// <summary>
+        /// The UI font. Prefers TMP's imported default asset; if "Import TMP
+        /// Essential Resources" was never run (or its import errored), builds a
+        /// dynamic <see cref="TMP_FontAsset"/> from a Unity built-in font at
+        /// runtime so text still renders. No font file is committed.
+        /// </summary>
         public static TMP_FontAsset Font
         {
             get
             {
-                if (_font == null) _font = TMP_Settings.defaultFontAsset;
+                if (_font != null) return _font;
+
+                _font = TMP_Settings.defaultFontAsset;
+                if (_font != null) return _font;
+
+                UnityEngine.Font os = null;
+                try { os = Resources.GetBuiltinResource<UnityEngine.Font>("LegacyRuntime.ttf"); } catch { /* older name */ }
+                if (os == null)
+                    try { os = Resources.GetBuiltinResource<UnityEngine.Font>("Arial.ttf"); } catch { /* neither */ }
+                if (os == null)
+                    os = UnityEngine.Font.CreateDynamicFontFromOSFont(new[] { "Segoe UI", "Arial", "Helvetica", "sans-serif" }, 16);
+
+                if (os != null)
+                {
+                    _font = TMP_FontAsset.CreateFontAsset(os);
+                    if (_font != null) _font.name = "RuntimeUIFont";
+                }
                 return _font;
             }
         }

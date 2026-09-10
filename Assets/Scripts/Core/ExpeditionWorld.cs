@@ -112,7 +112,9 @@ namespace AlchemistsArsenal.Core
             ai.Configure(body, loadout, matrix, considerations);
             go.AddComponent<BallisticBombLauncher>().Configure(ai, matrix);
 
-            PixelArt.AddDisc(go, new Color(0.85f, 0.80f, 0.55f), 6, 0.8f);
+            var art = new GameObject("Art");
+            art.transform.SetParent(go.transform, false);
+            PixelArt.AddSprite(art, Art.PixelSprites.Rookie(), 6, 1.5f);
             go.SetActive(true);
         }
     }

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using AlchemistsArsenal.Art;
 using AlchemistsArsenal.Combat;
 
 namespace AlchemistsArsenal.Core
@@ -36,6 +37,18 @@ namespace AlchemistsArsenal.Core
         {
             var sr = PlaceholderArt.AddRenderer(go, PlaceholderArt.Shape.Disc, color, sortingOrder);
             if (diameter > 0f) go.transform.localScale = Vector3.one * diameter;
+            return sr;
+        }
+
+        /// <summary>Add an authored <see cref="PixelSprites"/> sprite, optionally scaled so its width ≈ <paramref name="worldWidth"/>.</summary>
+        public static SpriteRenderer AddSprite(GameObject go, Sprite sprite, int sortingOrder, float worldWidth = 0f)
+        {
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = sprite;
+            sr.sortingOrder = sortingOrder;
+            if (PixelSprites.Unlit != null) sr.sharedMaterial = PixelSprites.Unlit;
+            if (worldWidth > 0f && sprite != null && sprite.bounds.size.x > 0.001f)
+                go.transform.localScale = Vector3.one * (worldWidth / sprite.bounds.size.x);
             return sr;
         }
 
