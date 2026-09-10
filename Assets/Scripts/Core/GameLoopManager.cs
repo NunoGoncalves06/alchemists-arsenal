@@ -37,6 +37,7 @@ namespace AlchemistsArsenal.Core
 
         public ExpeditionReport LatestReport { get; private set; }
         public AdventurerLoadout PendingLoadout { get; private set; }
+        public ExpeditionWorld CurrentExpedition => _expeditionWorld;
 
         public event Action<GamePhase> OnPhaseChanged;
         public event Action<float> OnMorningTimeChanged;
@@ -144,10 +145,11 @@ namespace AlchemistsArsenal.Core
             SaveSystem.Instance.AutoSave();
         }
 
+        // The HUD shows the result slab and advances on CONTINUE — the loop only
+        // stashes the report here.
         private void HandleExpeditionFinished(ExpeditionReport report)
         {
             LatestReport = report;
-            BeginEvening();
         }
 
         public void BeginEvening()

@@ -173,6 +173,19 @@ namespace AlchemistsArsenal.Crafting
             bool isTooCold = currentHeat < minOptimalHeat;
             bool isTooHot = currentHeat > maxOptimalHeat;
 
+            if (!isTooCold && !isTooHot)
+            {
+                // In the green band: clean brewing *raises* quality back toward 100
+                // (the "climb from the born-at-25 floor" half of the model — reviewer X4).
+                if (Time.time >= nextDeductionTime && smoothedStirSpeed > 1f)
+                {
+                    activeOrder.ApplyBonus(baseDeductionPoints, "Cauldron Brewing",
+                        $"Held the green zone ({currentHeat:P0})", Time.time);
+                    nextDeductionTime = Time.time + deductionInterval;
+                }
+                return;
+            }
+
             if (isTooCold || isTooHot)
             {
                 if (Time.time >= nextDeductionTime)
