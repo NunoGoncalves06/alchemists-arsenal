@@ -29,7 +29,6 @@ namespace AlchemistsArsenal.Combat
 
         [Header("Scene")]
         [SerializeField] private bool createCamera = true;
-        [SerializeField] private bool showHud = true;
 
         private ExpeditionManager _expedition;
 
@@ -110,59 +109,7 @@ namespace AlchemistsArsenal.Combat
             PlaceholderArt.AddRenderer(go, PlaceholderArt.Shape.Disc, biome.GroundTint, -10);
         }
 
-        // ------------------------------------------------------------ minimal HUD
-
-        private void OnGUI()
-        {
-            if (!showHud || _expedition == null) return;
-
-            var style = new GUIStyle(GUI.skin.label) { fontSize = 16, fontStyle = FontStyle.Bold };
-            GUI.Label(new Rect(12, 10, 600, 24),
-                $"{(biome != null ? biome.BiomeName : "?")}  —  {_expedition.Phase}", style);
-
-            string line2 = _expedition.Phase == ExpeditionPhase.BossFight
-                ? BossLine()
-                : $"Wave {_expedition.WaveNumber}/{_expedition.TotalWaves}   Monsters: {CountAlive(MonsterRegistry.ActiveMonsters)}";
-            GUI.Label(new Rect(12, 34, 600, 22), line2);
-            GUI.Label(new Rect(12, 56, 600, 22), $"Adventurers: {AdventurerHpLine()}");
-
-            if (_expedition.Phase == ExpeditionPhase.Won || _expedition.Phase == ExpeditionPhase.Lost)
-            {
-                var big = new GUIStyle(GUI.skin.label)
-                {
-                    fontSize = 40, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter
-                };
-                big.normal.textColor = _expedition.Phase == ExpeditionPhase.Won ? Color.green : new Color(1f, 0.4f, 0.4f);
-                GUI.Label(new Rect(0, Screen.height * 0.4f, Screen.width, 60),
-                    _expedition.Phase == ExpeditionPhase.Won ? "VICTORY" : "DEFEAT", big);
-            }
-        }
-
-        private string BossLine()
-        {
-            var boss = _expedition.BossInstance;
-            if (boss == null) return "Boss down.";
-            var body = boss.GetComponent<CombatantBody>();
-            var phase = boss.GetComponent<BossPhaseManager>();
-            return $"BOSS {(body != null ? body.CurrentHP : 0)}/{(body != null ? body.MaxHP : 0)} HP" +
-                   $"   phase: {(phase != null ? phase.CurrentPhase.ToString() : "?")}";
-        }
-
-        private static int CountAlive(IReadOnlyList<ICombatant> list)
-        {
-            int n = 0;
-            for (int i = 0; i < list.Count; i++) if (list[i] != null && list[i].IsAlive) n++;
-            return n;
-        }
-
-        private static string AdventurerHpLine()
-        {
-            var list = AdventurerRegistry.ActiveAdventurers;
-            if (list.Count == 0) return "-";
-            var parts = new List<string>();
-            for (int i = 0; i < list.Count; i++)
-                if (list[i] != null) parts.Add(list[i].CurrentHP.ToString());
-            return string.Join(" / ", parts);
-        }
+        // The runtime HUD is ExpeditionHudScreen (DESIGN.md §7.8). This component is
+        // only the editor drop-in demo now — no OnGUI.
     }
 }
