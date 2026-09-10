@@ -62,6 +62,19 @@ which needs the editor. The `.iss` is correct and `productName` now matches its
 `AppExeName`. Run `Unity ▸ Build (Windows x64) → build/` then
 `ISCC.exe installer\AlchemistsArsenal.iss`.
 
+## Reviewer loop outcome (5 rounds — see `PHASE0_REVIEW_LOG.md`)
+
+`code-reviewer` → `adversarial-reviewer` → `named-persona` → `eval-rubric-auditor`
+→ `code-reviewer` (regression). ~45 fixes applied. Round 5: **Approve**, no
+new bug class. Rubric audit: **6/8 categories at Level 2** running today
+(Mechanics, Levels, Physics, Usability, Sound, AI); Story + Assets reach Level 2
+only after the art pass (task 0.13). The two open items are not code:
+
+1. **Art pass (task 0.13)** — a hard submission gate.
+2. **Run it in Unity** — all C# is compile-verified and the pure meta logic is
+   covered by `Assets/Scripts/Debug/GameLoopSimulationTest.cs`, but the full
+   scene / UI / expedition path needs an editor Play session to confirm.
+
 ## Known rough edges (for the reviewer pass)
 
 - uGUI is code-built with rough anchoring — spacing/overlap will need a polish
