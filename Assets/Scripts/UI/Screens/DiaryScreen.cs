@@ -21,7 +21,9 @@ namespace AlchemistsArsenal.UI
         /// <summary>Set by the Day-Intro card so CLOSE returns to the morning, not the Evening.</summary>
         public static bool FromOpeningCinematic;
 
-        private RectTransform _cut;
+        private RectTransform _cut, _proceduralScene;
+        private Image _frameImg;
+        private Coroutine _frameAnim;
         private TextMeshProUGUI _title, _text, _pageOf;
         private Image[] _sketchLayers;
         private List<string> _ids = new List<string>();
@@ -42,7 +44,15 @@ namespace AlchemistsArsenal.UI
             left.rectTransform.offsetMin = left.rectTransform.offsetMax = Vector2.zero;
             _cut = UIFactory.Rect(left.transform, "Cut", new Vector2(0.06f, 0.06f), new Vector2(0.94f, 0.94f), Vector2.zero, Vector2.zero);
             UIFactory.Box(_cut, new Color(0.11f, 0.15f, 0.20f), _cut);
-            BuildProceduralScene(_cut);
+
+            // Authored frame (shown when DiaryEntryData.cutsceneFrames is non-empty — reviewer G1)
+            _frameImg = UIFactory.Panel(_cut, Color.white, "Frame");
+            UIFactory.Stretch(_frameImg.rectTransform);
+            _frameImg.preserveAspect = true;
+            _frameImg.gameObject.SetActive(false);
+
+            _proceduralScene = UIFactory.Root(_cut, "Procedural");
+            BuildProceduralScene(_proceduralScene);
 
             var right = UIFactory.Panel(book.transform, UITheme.Parchment, "RightPage");
             right.rectTransform.anchorMin = new Vector2(0.51f, 0.04f); right.rectTransform.anchorMax = new Vector2(0.98f, 0.96f);
@@ -148,6 +158,27 @@ namespace AlchemistsArsenal.UI
             _pageOf.text = $"{_index + 1}/{_ids.Count}";
             if (_typing != null) StopCoroutine(_typing);
             _typing = StartCoroutine(TypeOut(entry.entryText));
+
+            // Authored frames take over the illustration when present.
+            if (_frameAnim != null) { StopCoroutine(_frameAnim); _frameAnim = null; }
+            bool hasFrames = entry.cutsceneFrames != null && entry.cutsceneFrames.Length > 0;
+            _frameImg.gameObject.SetActive(hasFrames);
+            _proceduralScene.gameObject.SetActive(!hasFrames);
+            if (hasFrames)
+                _frameAnim = StartCoroutine(PlayFrames(entry.cutsceneFrames, Mathf.Max(0.5f, entry.frameRate)));
+        }
+
+        private IEnumerator PlayFrames(Sprite[] frames, float fps)
+        {
+            var wait = new WaitForSecondsRealtime(1f / fps);
+            int i = 0;
+            while (true)
+            {
+                _frameImg.sprite = frames[i % frames.Length];
+                i++;
+                if (i >= frames.Length && SettingsService.ReduceMotion) yield break; // hold the last frame
+                yield return wait;
+            }
         }
 
         private void Update()

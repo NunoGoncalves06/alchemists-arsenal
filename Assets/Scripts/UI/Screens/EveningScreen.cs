@@ -4,6 +4,7 @@ using UnityEngine.UI;
 using TMPro;
 using AlchemistsArsenal.Core;
 using AlchemistsArsenal.Combat;
+using AlchemistsArsenal.Audio;
 
 namespace AlchemistsArsenal.UI
 {
@@ -50,6 +51,14 @@ namespace AlchemistsArsenal.UI
         {
             _gold.text = $"{SaveSystem.Instance.State.gold} g";
             ShowReport();
+
+            // Rookie reacts to the potion grade in Animalese (cat 7).
+            var r = GameLoopManager.Instance != null ? GameLoopManager.Instance.LatestReport : null;
+            if (r != null)
+            {
+                bool happy = r.won && r.craftedGrade is PotionGrade.Great or PotionGrade.Perfect;
+                AudioManager.Speak(happy ? "ha ha gu-d fla-she wi-tch" : "nu gu-d dis wun to sla-dge", happy ? 1.2f : 0.85f);
+            }
         }
 
         private void ShowReport()

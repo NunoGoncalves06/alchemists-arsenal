@@ -193,6 +193,10 @@ namespace AlchemistsArsenal.UI
 
             BuildForecast(biome);
 
+            // The adventurer "speaks" their request in Animalese (cat 7).
+            if (CraftingManager.Instance == null || CraftingManager.Instance.CurrentOrder == null)
+                AudioManager.Speak($"bru nu {_chosenElement} fla she wi tch", 1.15f);
+
             if (GameLoopManager.Instance != null)
                 GameLoopManager.Instance.OnMorningTimeChanged += SetClock;
             HookOrder();

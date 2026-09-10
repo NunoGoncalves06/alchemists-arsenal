@@ -139,6 +139,12 @@ namespace AlchemistsArsenal.UI
             so.sprite = Combat.PlaceholderArt.Make(Combat.PlaceholderArt.Shape.Disc, new Color(0f, 0f, 0f, 0f), UITheme.Candle);
             so.raycastTarget = false;
 
+            _arrow = UIFactory.Panel(go.transform, UITheme.Candle, "Arrow").rectTransform;
+            var ai = _arrow.GetComponent<Image>();
+            ai.sprite = Combat.PlaceholderArt.Make(Combat.PlaceholderArt.Shape.Diamond, UITheme.Candle, UITheme.Ink900);
+            ai.raycastTarget = false;
+            _arrow.sizeDelta = new Vector2(48, 48);
+
             var bubble = UIFactory.Panel(go.transform, UITheme.Parchment, "Coach");
             _coach = bubble.rectTransform;
             _bubble = UIFactory.Label(bubble.transform, "", 18, UITheme.Ink900, TextAlignmentOptions.TopLeft);
@@ -147,7 +153,8 @@ namespace AlchemistsArsenal.UI
             UIFactory.Stretch(_dots.rectTransform, 8f);
         }
 
-        private RectTransform _coach;
+        private RectTransform _coach, _arrow;
+        private Vector2 _arrowAnchor;
 
         private void Show(string text, string dots, Vector2 anchorCenter, Vector2 size)
         {
@@ -158,6 +165,19 @@ namespace AlchemistsArsenal.UI
             _coach.anchoredPosition = Vector2.zero;
             _spotlight.anchorMin = _spotlight.anchorMax = anchorCenter;
             _spotlight.sizeDelta = size * 1.4f;
+
+            // Arrow sits just off the spotlight, nudged back toward screen centre so
+            // it reads as "look here".
+            Vector2 toCentre = (new Vector2(0.5f, 0.5f) - anchorCenter);
+            _arrowAnchor = anchorCenter + toCentre.normalized * 0.08f;
+            _arrow.anchorMin = _arrow.anchorMax = _arrowAnchor;
+        }
+
+        private void Update()
+        {
+            if (_group == null || _group.alpha < 0.5f || _arrow == null) return;
+            float bob = Mathf.Sin(Time.unscaledTime * 6f) * 8f;
+            _arrow.anchoredPosition = new Vector2(0f, bob);
         }
     }
 }

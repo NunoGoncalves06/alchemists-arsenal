@@ -239,6 +239,39 @@ No blocker. P13 is the one real code change — the state machine gets simpler, 
 more complex. P14 is an honest scoping correction (the slice needs *some* real art
 to be gradable). P15 is first-run polish. 8 items applied; re-review after.
 
-## Round 4 — `eval-rubric-auditor`
+## Round 4 — `eval-rubric-auditor` (8-category Level-2 audit)
 
-_(pending)_
+**Result: 6 / 8 at Level 2; 2 below — both blocked on the same thing (authored art).**
+
+| # | Category `*`=weighted | Level | Why | Code gap to close (art gaps → task 0.13) |
+|---|---|---|---|---|
+| 1 | Gameplay & mechanics `*` | **L2** | loop closes end-to-end (`LoadoutBuilder` → grade → `BombProjectile2D` multiplier → Report "Poor: −50%"); decay model live (born 25, green raises, off-band lowers, 4-band) | — (needs a play-test for *feel*) |
+| 2 | Story | **L1** (system L2, execution L0) | visual diary + page nav + assembling 5-layer boss sketch + opening cinematic all exist; but illustrations are procedural blocks, and `DiaryScreen` never renders `DiaryEntryData.cutsceneFrames` even the field exists | **G1** — `DiaryScreen` plays `cutsceneFrames` (animated at `frameRate`) when non-empty, procedural fallback otherwise |
+| 3 | Assets `*` | **L0** | zero self-made assets; every consumer (`MonsterData.sprite`, `DiaryEntryData.cutsceneFrames`, …) has the `authored != null` fallback wired, but nothing is drawn; `PlaceholderArt` is named "placeholder" | **G3** — add a Credits screen stating "all art/music/sound made in-house"; the art itself is task 0.13 |
+| 4 | Size / levels `*` | **L2** | 5 `BiomeData` biomes, themed, sequenced, map + progression + replay; biomes 2–4 are 2-wave/no-boss but structurally distinct | polish: 3rd wave / mini-boss for biomes 2–4 (not required) |
+| 5 | Physics | **L2 (strong)** | cauldron stir = `AddForce` tangential + `AddTorque` in `FixedUpdate`; bombs = `Rigidbody2D` arc + `OverlapCircleAll` + `AddForceAtPosition` knockback; no `transform.position +=` on bodies | — |
+| 6 | Usability `*` | **L2** | `TutorialManager` FSM (slowed+frozen budget, spotlight, coach bubble, station gate, once-per-save); `.iss` installer sane | **G4** — add a pointer arrow (bubble→spotlight); UI polish is Phase 2 |
+| 7 | Sound & music | **L2** | procedural adaptive music (shop↔forest crossfade) + SFX bank + Animalese `Speak()` | **G2** — nothing *calls* `Speak()` yet; wire it to the Counter order + Evening reaction |
+| 8 | AI | **L2 (strong)** | IAUS `CombatDecisionEngine` (scored candidates + response curves) + boss HFSM (`BossPhaseScorer`, dwell hysteresis, `BossBehaviourRunner`); visible via always-on ticker | **G6** (note) — the opt-in `ShowAiThinking` full `LastBreakdown` panel isn't built; the ticker covers Level 2 |
+
+**Cross-cutting G5 — nothing has been run in Unity.** Compile-clean ≠ works.
+Add `Debug/GameLoopSimulationTest` that drives `GameLoopManager` through a full
+headless day and asserts phase order + single reward bank + no double-bank on a
+simulated resume.
+
+### Fixes applied this round
+G1 (diary frame playback), G2 (Animalese wired to Counter + Evening), G3 (Credits
+screen), G4 (tutorial pointer arrow), G5 (headless day-loop test). G6 left as a
+documented Phase-2 note.
+
+### Standing conclusion
+The slice is a genuine "Level-2 floor" for **6** categories today. Story and
+Assets reach Level 2 only after task 0.13 (the art pass) — which is now a hard
+submission gate in `ROADMAP.md` / `PHASE0_STATUS.md`. No category is at Level 2
+"on paper only": each has a running system a grader can see.
+
+---
+
+## Round 5 — re-review after rounds 1–4 fixes (all four skills, abbreviated)
+
+_(pending — the exit condition is a clean pass; rounds 1–4 each found real issues.)_

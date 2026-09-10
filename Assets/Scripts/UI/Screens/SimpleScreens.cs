@@ -59,6 +59,7 @@ namespace AlchemistsArsenal.UI
             Fix(_continue, 56);
             Fix(UIFactory.Button(col.transform, "NEW GAME", () => GameLoopManager.Instance.StartNewGame(), primary: false), 56);
             Fix(UIFactory.Button(col.transform, "SETTINGS", () => UIManager.Instance.Show(ScreenId.Settings), primary: false), 56);
+            Fix(UIFactory.Button(col.transform, "CREDITS", () => UIManager.Instance.Show(ScreenId.Credits), primary: false), 56);
             Fix(UIFactory.Button(col.transform, "QUIT", Quit, primary: false), 56);
 
             _warn = UIFactory.Label(col.transform, "", 14, UITheme.Danger);
@@ -149,6 +150,29 @@ namespace AlchemistsArsenal.UI
             Button btn = null;
             btn = UIFactory.Button(row.transform, get() ? "ON" : "OFF", () => { set(!get()); }, primary: get());
             var le = btn.gameObject.AddComponent<LayoutElement>(); le.minWidth = 90; le.minHeight = 30;
+        }
+    }
+
+    // ----------------------------------------------------------------- Credits
+
+    public class CreditsScreen : GameScreen
+    {
+        protected override void Build()
+        {
+            UIFactory.Box(transform, UITheme.Ink900, Rt);
+            var v = UIFactory.VStack(transform, 10f, new RectOffset(80, 80, 60, 60));
+            UIFactory.Stretch((RectTransform)v.transform);
+            UIFactory.Label(v.transform, "ALCHEMIST'S ARSENAL", 34, UITheme.Candle, TextAlignmentOptions.Top, true);
+            UIFactory.Label(v.transform,
+                "A shop-management / auto-battler hybrid.\n\n" +
+                "ALL ART, MUSIC AND SOUND CREATED IN-HOUSE.\n" +
+                "Pixel art, procedural audio, and the Animalese speech synth were made\n" +
+                "for this project — nothing from an asset store.\n\n" +
+                "Built with Unity 6 · Inno Setup installer · 2D physics, IAUS combat AI,\n" +
+                "a hierarchical boss FSM, and a decaying-quality crafting loop.",
+                18, UITheme.Parchment, TextAlignmentOptions.Top);
+            var back = UIFactory.Button(v.transform, "BACK", () => UIManager.Instance.Show(ScreenId.MainMenu), primary: false);
+            back.gameObject.AddComponent<LayoutElement>().minHeight = 48;
         }
     }
 
