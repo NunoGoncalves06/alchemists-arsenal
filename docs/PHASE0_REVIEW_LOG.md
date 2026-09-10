@@ -272,6 +272,58 @@ submission gate in `ROADMAP.md` / `PHASE0_STATUS.md`. No category is at Level 2
 
 ---
 
-## Round 5 — re-review after rounds 1–4 fixes (all four skills, abbreviated)
+## Round 5 — `code-reviewer` convergence (regression hunt on rounds 1–4)
 
-_(pending — the exit condition is a clean pass; rounds 1–4 each found real issues.)_
+**Verdict:** 🟢 **Approve with suggestions** — 1 warning (a round-2 fix that
+didn't actually work), 5 notes. No new NRE / lifecycle / state-machine bug.
+
+### WARNING
+
+**R7 — the corrupt-save check from round 2 never triggers.** `Peek` gated on
+`s.saveVersion < 1`, but `RunState`'s field initializer sets `saveVersion = 1`
+even when `JsonUtility.FromJson` populated nothing → a valid-but-empty parse
+slips through as a real save.
+→ **Fixed:** gate on `s.lastSavedUnixSeconds <= 0` instead — that field is only
+ever written by `Save()`, so 0 unambiguously means "not a real save". Truly
+malformed JSON still throws and is caught.
+
+### NOTES (applied)
+- R6 `BeginEvening` only advanced the day inside the `r != null` branch → a
+  (defensive, near-impossible) null report would stall the loop on one day. The
+  `day++` / `ClearOrder` / `replay` reset now run whenever `lastResolvedDay != day`,
+  independent of the report; only the *banking* needs the report.
+- R1 `RunState.phaseAtSave` became dead after P13 removed the `Continue()` special
+  case → field + its stamp + its Migrate clamp all deleted.
+- R4 `DiaryScreen.OnHide` didn't stop `_frameAnim` (Unity stops it on deactivate
+  anyway, but the field dangled) → both coroutine handles nulled on hide.
+- R9 `ExpeditionHudScreen`'s `_lastBanner/_lastBossFill/_lastPip` change-guards
+  weren't reset between expeditions (self-corrected on frame 1, but unclean) →
+  reset in `OnShow`.
+- R11 adding `ScreenId.Credits` shifted `ScreenId` enum values — verified nothing
+  persists `ScreenId` (only `GamePhase`, which is unchanged). No save-compat break.
+- R12 `UIManager.Show`'s new "no-op if current" guard — verified the very first
+  `Show(Boot)` still works (`Current==Boot` but the screen is inactive, so the
+  guard correctly doesn't fire).
+
+### Summary
+The round 1–4 fixes hold up. The one real miss (R7) is fixed. Approve.
+
+---
+
+## Convergence status
+
+| Round | Skill | Verdict | Real issues found |
+|---|---|---|---|
+| 1 | code-reviewer | Request changes | 1 critical (cross-day leak) + 6 warn |
+| 2 | adversarial-reviewer | BLOCK | 2 critical (re-bank exploit, save wipe) + 4 warn |
+| 3 | named-persona | CONCERNS | 3 warn (Continue special case, Assets gap, forced-passive intro) |
+| 4 | eval-rubric-auditor | 6/8 at L2 | 5 code gaps (diary frames, Animalese wiring, credits, arrow, test) |
+| 5 | code-reviewer (regression) | **Approve** | 1 warn (R7) + 5 notes |
+
+Rounds 1–5 applied **~45 fixes**. Round 5 is the first with no critical/blocker
+and no new bug class — only a single missed-earlier fix (now closed) and notes.
+**The reviewer loop has converged for the code.** The two open items are not
+code: (a) the **art pass** (task 0.13 — hard submission gate; Story + Assets
+reach L2 only with real sprites), and (b) **running it in Unity** — everything
+here is compile-verified + covered by `GameLoopSimulationTest` for the pure
+logic, but the full scene/UI/expedition path needs an editor Play session.

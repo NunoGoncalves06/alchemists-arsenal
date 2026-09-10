@@ -41,10 +41,11 @@ namespace AlchemistsArsenal.Core
         public bool openingCinematicSeen = false;
         public long lastSavedUnixSeconds = 0;
 
-        /// <summary>Phase the game was in when last saved — lets Continue resume past a resolved day (reviewer P7).</summary>
-        public int phaseAtSave = 0;
-
-        /// <summary>The last day whose expedition reward was banked — blocks double-banking on a mid-Evening quit (reviewer P7).</summary>
+        /// <summary>
+        /// The last day whose expedition reward was banked. <see cref="GameLoopManager.BeginEvening"/>
+        /// checks this so a mid-Evening quit + Continue can't re-bank the day (reviewer P7):
+        /// the day is fully resolved (paid + advanced) the moment you reach Evening.
+        /// </summary>
         public int lastResolvedDay = 0;
 
         // ----------------------------------------------------------------- helpers

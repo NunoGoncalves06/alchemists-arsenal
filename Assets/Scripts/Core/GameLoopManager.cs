@@ -182,33 +182,35 @@ namespace AlchemistsArsenal.Core
             RunState s = SaveSystem.Instance.State;
             ExpeditionReport r = LatestReport;
 
-            // Bank the day's reward exactly once — a mid-Evening quit + Continue
-            // must not run this twice (reviewer P7).
-            if (r != null && s.lastResolvedDay != s.day)
+            // Resolve the day exactly once — a mid-Evening quit + Continue must not
+            // run this twice (reviewer P7). The day always advances here (even if
+            // the report is somehow missing) so the loop can never stall on a day
+            // (reviewer R6).
+            if (s.lastResolvedDay != s.day)
             {
-                int fee = 0; bool tip = false;
-                if (r.won) (fee, tip) = Economy.Payout(r.craftedGrade, replay: s.IsReplayDay); // no fee for a lost job (P11)
-                r.goldPaidByGrade = fee;
-                r.perfectTip = tip;
-                s.AddGold(r.TotalGold); // loot + fee
-
-                if (r.won)
+                if (r != null)
                 {
-                    s.RecordGrade(TargetBiomeIndex, r.Stars);
-                    // Clearing your current node advances the road; a replay does not.
-                    if (!s.IsReplayDay && s.currentBiomeIndex == TargetBiomeIndex
-                        && s.currentBiomeIndex < BiomeLibrary.Count - 1)
-                        s.currentBiomeIndex++;
+                    int fee = 0; bool tip = false;
+                    if (r.won) (fee, tip) = Economy.Payout(r.craftedGrade, replay: s.IsReplayDay); // no fee for a lost job (P11)
+                    r.goldPaidByGrade = fee;
+                    r.perfectTip = tip;
+                    s.AddGold(r.TotalGold); // loot + fee
+
+                    if (r.won)
+                    {
+                        s.RecordGrade(TargetBiomeIndex, r.Stars);
+                        // Clearing your current node advances the road; a replay does not.
+                        if (!s.IsReplayDay && s.currentBiomeIndex == TargetBiomeIndex
+                            && s.currentBiomeIndex < BiomeLibrary.Count - 1)
+                            s.currentBiomeIndex++;
+                    }
+
+                    foreach (var kv in r.herbDrops)
+                        if (!s.ownedHerbs.Contains(kv.Key)) s.ownedHerbs.Add(kv.Key);
+
+                    DiaryManager.EvaluateAfterExpedition(s, TargetBiomeIndex, r);
                 }
 
-                foreach (var kv in r.herbDrops)
-                    if (!s.ownedHerbs.Contains(kv.Key)) s.ownedHerbs.Add(kv.Key);
-
-                DiaryManager.EvaluateAfterExpedition(s, TargetBiomeIndex, r);
-
-                // The day is over the moment you're paid: advance it here so a
-                // mid-Evening quit resumes on the next day with no Continue-side
-                // fix-up (reviewer P13). A replay day consumes its replay target.
                 s.lastResolvedDay = s.day;
                 s.day++;
                 s.replayBiomeIndex = -1;
