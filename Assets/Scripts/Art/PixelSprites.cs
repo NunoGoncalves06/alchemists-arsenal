@@ -83,6 +83,10 @@ namespace AlchemistsArsenal.Art
         public static Sprite Boss() => Bake("boss", BOSS);
         public static Sprite CatSleeping() => Bake("cat", CAT);
 
+        /// <summary>A small downward-pointing chevron for tutorial callouts — a real
+        /// triangle, not a symmetric diamond (which reads as a ball, not an arrow).</summary>
+        public static Sprite PointerArrow() => Bake("pointer_arrow", POINTER_ARROW);
+
         public static Sprite Monster(string name)
         {
             string key = (name ?? "").ToLowerInvariant();
@@ -428,6 +432,16 @@ namespace AlchemistsArsenal.Art
             "..KKKKKKKK.K",
             "........KKKK",
             "............",
+        };
+
+        // 9 x 5 — downward-pointing tutorial arrow (wide base at top, tip at bottom)
+        private static readonly string[] POINTER_ARROW =
+        {
+            ".KKKKKKK.",
+            ".KyyyyyK.",
+            "..KyyyK..",
+            "...KyK...",
+            "....K....",
         };
 
         // 12 x 12 — herb leaf (green by default; tinted per element by ElementSwap)

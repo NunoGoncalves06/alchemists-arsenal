@@ -35,16 +35,21 @@ namespace AlchemistsArsenal.Core
             string name = order != null && !string.IsNullOrWhiteSpace(order.potionName)
                 ? order.potionName : "Raw Sludge";
 
+            RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+            float dmgMult = s != null && s.HasUpgrade(UpgradeCatalog.HeavierFlasks) ? 1.25f : 1f;
+            float cdMult = s != null && s.HasUpgrade(UpgradeCatalog.QuickHands) ? 0.75f : 1f;
+            int ammoBonus = s != null && s.HasUpgrade(UpgradeCatalog.SpareVials) ? 5 : 0;
+
             // Base stats are the "spec" of the potion; the 0..1 quality that scales
             // damage/blast/elemental is carried separately via the live ActiveOrder.
             BombData bomb = BombData.Create(
                 name, element,
-                baseDamage: 22, blastRadius: 2.6f, throwSpeed: 13f,
-                idealRange: 6f, minSafeRange: 2f, maxRange: 13f, cooldownSeconds: 1.4f);
+                baseDamage: Mathf.RoundToInt(22 * dmgMult), blastRadius: 2.6f, throwSpeed: 13f,
+                idealRange: 6f, minSafeRange: 2f, maxRange: 13f, cooldownSeconds: 1.4f * cdMult);
 
             var loadout = ScriptableObject.CreateInstance<AdventurerLoadout>();
             loadout.name = $"Loadout_{name}";
-            loadout.SetSlots(AdventurerLoadout.Slot(bomb, AmmoFor(grade)));
+            loadout.SetSlots(AdventurerLoadout.Slot(bomb, AmmoFor(grade) + ammoBonus));
             return loadout;
         }
     }

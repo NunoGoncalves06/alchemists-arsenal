@@ -12,19 +12,38 @@ using AlchemistsArsenal.Audio;
 namespace AlchemistsArsenal.UI
 {
     /// <summary>
-    /// The morning shell (DESIGN.md §7.6). Phase 0: top bar + a two-tab rail
-    /// (Counter, Cauldron), the active station panel, and the right order dock with
-    /// the live <c>QualityMeter</c> + deduction log. Prep / Bottling are shown
-    /// locked (Day-2 / Day-3 unlocks — §7.6 W-R2a).
+    /// The morning shell (DESIGN.md §7.6). Top bar + a four-tab rail (Counter,
+    /// Cauldron, Prep, Bottling), the active station panel, and the right order dock
+    /// with the live <c>QualityMeter</c> + deduction log. All four stations are
+    /// functional from day 1 — Cauldron/Prep/Bottling unlock together the moment the
+    /// Counter order is accepted (<see cref="TutorialManager.StationsUnlocked"/>);
+    /// there is no separate multi-day unlock gate (playtest: that gate previously had
+    /// no unlock path at all, so Prep/Bottling were permanently locked).
     /// </summary>
     public class MorningScreen : GameScreen
     {
+        // Named StationTab, not Tab — this class also has a Tab(...) rail-button builder method.
+        private enum StationTab { Counter, Cauldron, Prep, Bottling }
+
         private TextMeshProUGUI _dayText, _goldText, _statusText, _qualityText, _logText;
         private Image _clockFill, _heatFill, _heatBand, _qualityFill, _brewFill, _bg;
-        private RectTransform _counterPanel, _cauldronPanel;
-        private Button _counterTab, _cauldronTab, _sendBtn;
+        private RectTransform _counterPanel, _cauldronPanel, _prepPanel, _bottlingPanel;
+        private Button _counterTab, _cauldronTab, _prepTab, _bottlingTab, _sendBtn;
         private ElementType _chosenElement = ElementType.Fire;
-        private bool _cauldron;
+        private StationTab _activeTab = StationTab.Counter;
+
+        // Prep — pick herbs matching the order's element for a quality bonus.
+        private TextMeshProUGUI _prepHint;
+        private readonly System.Collections.Generic.List<Button> _herbButtons = new System.Collections.Generic.List<Button>();
+        private int _prepPicksLeft;
+        private const int PrepPicksPerDay = 2;
+
+        // Bottling — seal the flask while a needle sits in the sweet band.
+        private TextMeshProUGUI _bottlingHint;
+        private Image _sealBand, _sealNeedle;
+        private Button _sealBtn;
+        private int _sealAttemptsLeft;
+        private const int SealAttemptsPerDay = 3;
 
         protected override void Build()
         {
@@ -60,19 +79,21 @@ namespace AlchemistsArsenal.UI
             rail.rectTransform.offsetMin = rail.rectTransform.offsetMax = Vector2.zero;
             var railStack = UIFactory.VStack(rail.transform, 8f, new RectOffset(8, 8, 12, 12));
             UIFactory.Stretch((RectTransform)railStack.transform);
-            _counterTab = Tab(railStack.transform, "COUNTER", () => SwitchTab(false));
-            _cauldronTab = Tab(railStack.transform, "CAULDRON", () => SwitchTab(true));
-            LockedTab(railStack.transform, "PREP");
-            LockedTab(railStack.transform, "BOTTLING");
+            _counterTab = Tab(railStack.transform, "COUNTER", () => SwitchTab(StationTab.Counter));
+            _cauldronTab = Tab(railStack.transform, "CAULDRON", () => SwitchTab(StationTab.Cauldron));
+            _prepTab = Tab(railStack.transform, "PREP", () => SwitchTab(StationTab.Prep));
+            _bottlingTab = Tab(railStack.transform, "BOTTLING", () => SwitchTab(StationTab.Bottling));
 
             // centre panels
             _counterPanel = BuildCounterPanel();
             _cauldronPanel = BuildCauldronPanel();
+            _prepPanel = BuildPrepPanel();
+            _bottlingPanel = BuildBottlingPanel();
 
             // order dock
             BuildOrderDock();
 
-            SwitchTab(false);
+            SwitchTab(StationTab.Counter);
         }
 
         private TextMeshProUGUI _biomeChip, _forecastText, _recText, _ticketName;
@@ -142,6 +163,72 @@ namespace AlchemistsArsenal.UI
             return p;
         }
 
+        private RectTransform BuildPrepPanel()
+        {
+            var p = UIFactory.Panel(transform, UITheme.Ink800, "PrepPanel");
+            p.rectTransform.anchorMin = new Vector2(0.09f, 0f); p.rectTransform.anchorMax = new Vector2(0.72f, 0.93f);
+            p.rectTransform.offsetMin = new Vector2(16, 16); p.rectTransform.offsetMax = new Vector2(-16, -16);
+
+            UIFactory.Label(p.transform, $"PREP — add matching-element herbs for a bonus ({PrepPicksPerDay} per day)", 16,
+                UITheme.Candle, TextAlignmentOptions.TopLeft).rectTransform.offsetMin = new Vector2(16, -44);
+
+            _prepHint = UIFactory.Label(p.transform, "", 16, UITheme.ParchmentDim, TextAlignmentOptions.TopLeft);
+            var hrt = _prepHint.rectTransform;
+            hrt.anchorMin = new Vector2(0f, 0.68f); hrt.anchorMax = new Vector2(1f, 0.82f);
+            hrt.offsetMin = new Vector2(18, 0); hrt.offsetMax = new Vector2(-18, 0);
+
+            var row = UIFactory.HStack(p.transform, 14f, new RectOffset(24, 24, 0, 0));
+            var rrt = (RectTransform)row.transform;
+            rrt.anchorMin = new Vector2(0f, 0.32f); rrt.anchorMax = new Vector2(1f, 0.64f);
+            rrt.offsetMin = rrt.offsetMax = Vector2.zero;
+
+            _herbButtons.Clear();
+            foreach (ElementType e in new[]
+                     { ElementType.Nature, ElementType.Fire, ElementType.Water, ElementType.Poison, ElementType.Arcane })
+            {
+                ElementType element = e; // capture per-iteration value
+                var b = UIFactory.Button(row.transform, element.ToString().ToUpper(), () => PickHerb(element), primary: false);
+                b.image.color = UITheme.Element(element);
+                b.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1;
+                _herbButtons.Add(b);
+            }
+            return p.rectTransform;
+        }
+
+        private RectTransform BuildBottlingPanel()
+        {
+            var p = UIFactory.Panel(transform, UITheme.Ink800, "BottlingPanel");
+            p.rectTransform.anchorMin = new Vector2(0.09f, 0f); p.rectTransform.anchorMax = new Vector2(0.72f, 0.93f);
+            p.rectTransform.offsetMin = new Vector2(16, 16); p.rectTransform.offsetMax = new Vector2(-16, -16);
+
+            UIFactory.Label(p.transform, $"BOTTLING — seal it while the needle is in the band ({SealAttemptsPerDay} per day)", 16,
+                UITheme.Candle, TextAlignmentOptions.TopLeft).rectTransform.offsetMin = new Vector2(16, -44);
+
+            _bottlingHint = UIFactory.Label(p.transform, "", 18, UITheme.ParchmentDim, TextAlignmentOptions.Center, true);
+            var brt = _bottlingHint.rectTransform;
+            brt.anchorMin = new Vector2(0.1f, 0.62f); brt.anchorMax = new Vector2(0.9f, 0.72f);
+            brt.offsetMin = brt.offsetMax = Vector2.zero;
+
+            var gaugeBg = UIFactory.Panel(p.transform, UITheme.Ink700, "SealGauge");
+            var grt = gaugeBg.rectTransform;
+            grt.anchorMin = new Vector2(0.1f, 0.46f); grt.anchorMax = new Vector2(0.9f, 0.56f);
+            grt.offsetMin = grt.offsetMax = Vector2.zero;
+
+            _sealBand = UIFactory.Panel(gaugeBg.transform, new Color(UITheme.Ok.r, UITheme.Ok.g, UITheme.Ok.b, 0.45f), "Band");
+            _sealBand.rectTransform.anchorMin = new Vector2(0.42f, 0f); _sealBand.rectTransform.anchorMax = new Vector2(0.58f, 1f);
+            _sealBand.rectTransform.offsetMin = _sealBand.rectTransform.offsetMax = Vector2.zero;
+
+            _sealNeedle = UIFactory.Panel(gaugeBg.transform, UITheme.Candle, "Needle");
+            _sealNeedle.rectTransform.anchorMin = _sealNeedle.rectTransform.anchorMax = new Vector2(0f, 0.5f);
+            _sealNeedle.rectTransform.sizeDelta = new Vector2(6, 44);
+
+            _sealBtn = UIFactory.Button(p.transform, "SEAL", Seal);
+            var sart = _sealBtn.image.rectTransform;
+            sart.anchorMin = new Vector2(0.38f, 0.2f); sart.anchorMax = new Vector2(0.62f, 0.32f);
+            sart.offsetMin = sart.offsetMax = Vector2.zero;
+            return p.rectTransform;
+        }
+
         private void BuildOrderDock()
         {
             var dock = UIFactory.FramedPanel(transform, "OrderDock");
@@ -185,13 +272,6 @@ namespace AlchemistsArsenal.UI
             return b;
         }
 
-        private void LockedTab(Transform parent, string text)
-        {
-            var b = UIFactory.Button(parent, text + "\n(locked)", null, primary: false);
-            b.interactable = false;
-            b.gameObject.AddComponent<LayoutElement>().minHeight = 76;
-        }
-
         // ------------------------------------------------------------- behaviour
 
         protected override void OnShow()
@@ -212,6 +292,7 @@ namespace AlchemistsArsenal.UI
                 GameLoopManager.Instance.OnMorningTimeChanged += SetClock;
             HookOrder();
             RefreshOrder();
+            SwitchTab(StationTab.Counter); // fresh day starts back at the Counter
         }
 
         protected override void OnHide()
@@ -223,16 +304,28 @@ namespace AlchemistsArsenal.UI
             UnhookOrder();
         }
 
-        private void SwitchTab(bool cauldron)
+        private void SwitchTab(StationTab tab)
         {
-            if (cauldron && !TutorialManager.CauldronUnlocked) return; // Day-1 gate
-            _cauldron = cauldron;
-            _counterPanel.gameObject.SetActive(!cauldron);
-            _cauldronPanel.gameObject.SetActive(cauldron);
-            if (_bg != null) _bg.enabled = !cauldron; // let the world pot show on the Cauldron tab
-            Tint(_counterTab, !cauldron);
-            Tint(_cauldronTab, cauldron);
-            if (_cauldronTab != null) _cauldronTab.interactable = TutorialManager.CauldronUnlocked;
+            if (tab != StationTab.Counter && !TutorialManager.StationsUnlocked) return; // Day-1 gate, until the order is accepted
+
+            _activeTab = tab;
+            _counterPanel.gameObject.SetActive(tab == StationTab.Counter);
+            _cauldronPanel.gameObject.SetActive(tab == StationTab.Cauldron);
+            _prepPanel.gameObject.SetActive(tab == StationTab.Prep);
+            _bottlingPanel.gameObject.SetActive(tab == StationTab.Bottling);
+            if (_bg != null) _bg.enabled = tab != StationTab.Cauldron; // let the world pot show only on the Cauldron tab
+
+            Tint(_counterTab, tab == StationTab.Counter);
+            Tint(_cauldronTab, tab == StationTab.Cauldron);
+            Tint(_prepTab, tab == StationTab.Prep);
+            Tint(_bottlingTab, tab == StationTab.Bottling);
+            bool unlocked = TutorialManager.StationsUnlocked;
+            if (_cauldronTab != null) _cauldronTab.interactable = unlocked;
+            if (_prepTab != null) _prepTab.interactable = unlocked;
+            if (_bottlingTab != null) _bottlingTab.interactable = unlocked;
+
+            if (tab == StationTab.Prep) RefreshPrep();
+            if (tab == StationTab.Bottling) RefreshBottling();
             AudioManager.Play(Sfx.Tab);
         }
 
@@ -280,9 +373,11 @@ namespace AlchemistsArsenal.UI
         {
             GameLoopManager.Instance.ConfirmOrder($"{_chosenElement} Flask", _chosenElement);
             AudioManager.Play(Sfx.Confirm);
+            _prepPicksLeft = PrepPicksPerDay;
+            _sealAttemptsLeft = SealAttemptsPerDay;
             HookOrder();
             RefreshOrder();
-            SwitchTab(true);
+            SwitchTab(StationTab.Cauldron);
         }
 
         // --- order + heat binding ---
@@ -367,6 +462,95 @@ namespace AlchemistsArsenal.UI
             else if (heat01 < lo) { _statusText.text = "TOO COLD — STIR FASTER"; _statusText.color = UITheme.Water; _heatFill.color = UITheme.Water; }
             else if (heat01 > hi) { _statusText.text = "OVERHEATING — EASE OFF"; _statusText.color = UITheme.Danger; _heatFill.color = UITheme.Danger; }
             else { _statusText.text = "BREWING PERFECTLY — QUALITY CLIMBING"; _statusText.color = UITheme.Ok; _heatFill.color = UITheme.Ok; }
+        }
+
+        // ------------------------------------------------------------------ Prep
+
+        private void PickHerb(ElementType element)
+        {
+            var order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
+            if (order == null || _prepPicksLeft <= 0) return;
+
+            bool match = element == order.element;
+            if (match) order.ApplyBonus(10, "Prep", $"Added {element} essence — matches the order");
+            else order.ApplyDeduction(6, "Prep", $"Added {element} essence — wrong element for {order.element}");
+
+            _prepPicksLeft--;
+            AudioManager.Play(match ? Sfx.Confirm : Sfx.Deny);
+            RefreshPrep();
+            RefreshOrder();
+        }
+
+        private void RefreshPrep()
+        {
+            if (_prepHint == null) return;
+            var order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
+            if (order == null)
+            {
+                _prepHint.text = "Accept an order at the Counter first.";
+                SetHerbButtonsInteractable(false);
+                return;
+            }
+            _prepHint.text = _prepPicksLeft > 0
+                ? $"{_prepPicksLeft} herb(s) left today — match the order's element ({order.element}) for a bonus."
+                : "No herbs left today.";
+            SetHerbButtonsInteractable(_prepPicksLeft > 0);
+        }
+
+        private void SetHerbButtonsInteractable(bool on)
+        {
+            foreach (var b in _herbButtons) if (b != null) b.interactable = on;
+        }
+
+        // -------------------------------------------------------------- Bottling
+
+        private void Seal()
+        {
+            var order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
+            if (order == null || _sealAttemptsLeft <= 0) return;
+
+            float needle01 = SealNeedle01();
+            float dist = Mathf.Abs(needle01 - 0.5f); // 0 = dead centre of the 0.42-0.58 band
+            bool inBand = dist <= 0.08f;
+
+            _sealAttemptsLeft--;
+            if (inBand)
+            {
+                int bonus = Mathf.RoundToInt(Mathf.Lerp(14f, 6f, dist / 0.08f));
+                order.ApplyBonus(bonus, "Bottling", $"Sealed clean (+{bonus})");
+                AudioManager.Play(Sfx.Seal);
+            }
+            else
+            {
+                order.ApplyDeduction(8, "Bottling", "Sealed off-centre");
+                AudioManager.Play(Sfx.Deny);
+            }
+            RefreshBottling();
+            RefreshOrder();
+        }
+
+        private void RefreshBottling()
+        {
+            if (_bottlingHint == null) return;
+            var order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
+            if (order == null)
+            {
+                _bottlingHint.text = "Accept an order at the Counter first.";
+                if (_sealBtn != null) _sealBtn.interactable = false;
+                return;
+            }
+            _bottlingHint.text = _sealAttemptsLeft > 0 ? $"{_sealAttemptsLeft} seal(s) left today" : "No seals left today.";
+            if (_sealBtn != null) _sealBtn.interactable = _sealAttemptsLeft > 0;
+        }
+
+        private static float SealNeedle01() => Mathf.PingPong(Time.unscaledTime * 0.6f, 1f);
+
+        private void Update()
+        {
+            if (_activeTab != StationTab.Bottling || _sealNeedle == null) return;
+            float t = SealNeedle01();
+            _sealNeedle.rectTransform.anchorMin = new Vector2(t, 0.5f);
+            _sealNeedle.rectTransform.anchorMax = new Vector2(t, 0.5f);
         }
     }
 }

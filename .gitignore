@@ -88,6 +88,11 @@ crashlytics-build.properties
 .claude/settings.local.json
 .claude/projects/
 
+# --- game-tester skill: headless playtest output (local, regenerated per run) ---
+/headless-playtest.log
+/headless-playtest-report.txt
+/headless-screens/
+
 # --- Large binary assets (uncomment per project need) ------------
 # *.mp4
 # *.mov

@@ -10,15 +10,18 @@ namespace AlchemistsArsenal.UI
 {
     /// <summary>
     /// Day-1 guided tutorial FSM (DESIGN.md §7.11 / eval-audio-usability): slows the
-    /// morning budget, gates the Cauldron tab until the order is accepted, and walks
-    /// the player Counter → Cauldron with a spotlight + coach bubble. Runs once per
-    /// save (<see cref="RunState.tutorialCompleted"/>).
+    /// morning budget, gates the Cauldron/Prep/Bottling tabs until the Counter order
+    /// is accepted, and walks the player Counter → Cauldron with a top-docked coach
+    /// bubble + pointer arrow. Runs once per save (<see cref="RunState.tutorialCompleted"/>).
     /// </summary>
     public class TutorialManager : MonoBehaviour
     {
         public static TutorialManager Instance { get; private set; }
         public static bool Active { get; private set; }
-        public static bool CauldronUnlocked { get; private set; } = true;
+
+        /// <summary>Gates the Cauldron/Prep/Bottling tabs until the Day-1 Counter
+        /// order is accepted (there's nothing for them to act on before that).</summary>
+        public static bool StationsUnlocked { get; private set; } = true;
 
         private enum Step { Idle, Welcome, Counter, Cauldron, Done }
         private Step _step = Step.Idle;
@@ -55,7 +58,7 @@ namespace AlchemistsArsenal.UI
         private void StartTutorial()
         {
             Active = true;
-            CauldronUnlocked = false;
+            StationsUnlocked = false;
             if (GameLoopManager.Instance != null) GameLoopManager.Instance.BudgetRateMultiplier = 0.35f;
             _group.alpha = 1f;
             StartCoroutine(Run());
@@ -83,7 +86,7 @@ namespace AlchemistsArsenal.UI
             while (CraftingManager.Instance == null || CraftingManager.Instance.CurrentOrder == null)
                 yield return null;
 
-            CauldronUnlocked = true;
+            StationsUnlocked = true;
             _step = Step.Cauldron;
             Show("CAULDRON tab. Hold the mouse over the pot and stir in circles — keep the gauge in the GREEN and the BREW bar fills. When it's READY, send it.",
                 "3 / 3", new Vector2(0.4f, 0.45f));
@@ -98,7 +101,7 @@ namespace AlchemistsArsenal.UI
 
             _step = Step.Done;
             Show("That's the loop. Finish the brew if you like, then SEND TO EXPEDITION.\nTime runs at normal speed from tomorrow.\n\n<size=75%>(click to continue)</size>",
-                "done", new Vector2(0.85f, 0.35f));
+                "done", new Vector2(0.86f, 0.14f));
             AudioManager.Play(Sfx.Chime);
             yield return WaitForClickOr(8f);
 
@@ -108,7 +111,7 @@ namespace AlchemistsArsenal.UI
         private void Finish()
         {
             Active = false;
-            CauldronUnlocked = true;
+            StationsUnlocked = true;
             if (GameLoopManager.Instance != null) GameLoopManager.Instance.BudgetRateMultiplier = 1f;
             var s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
             if (s != null) { s.tutorialCompleted = true; SaveSystem.Instance.MarkDirty(); }
@@ -117,9 +120,12 @@ namespace AlchemistsArsenal.UI
 
         // ------------------------------------------------------------- overlay
 
-        // The coach bubble is docked to the BOTTOM of the screen and kept short, so
-        // it never sits over the Counter / Cauldron working area (playtest note).
-        // A bobbing arrow points at whatever the current step is about.
+        // The coach bubble is docked to the TOP of the screen, right under the top
+        // bar — every interactive control in the Morning screen (tabs on the far
+        // left rail, ACCEPT/SEND/SEAL buttons near the bottom) lives well below this
+        // strip, so the bubble can never sit on top of something the player needs to
+        // click (playtest note: it previously did, twice). A small downward-pointing
+        // arrow sits just above whatever the current step is about.
 
         private void BuildOverlay()
         {
@@ -133,16 +139,17 @@ namespace AlchemistsArsenal.UI
             _group.alpha = 0f;
             _group.blocksRaycasts = false; // never eat clicks — the player still runs the shop
 
-            _arrow = UIFactory.Panel(go.transform, UITheme.Candle, "Arrow").rectTransform;
+            _arrow = UIFactory.Panel(go.transform, new Color(0f, 0f, 0f, 0f), "Arrow").rectTransform;
             var ai = _arrow.GetComponent<Image>();
-            ai.sprite = Combat.PlaceholderArt.Make(Combat.PlaceholderArt.Shape.Diamond, UITheme.Candle, UITheme.Ink900);
+            ai.sprite = Art.PixelSprites.PointerArrow();
+            ai.color = Color.white; // sprite is already tinted candle-gold
             ai.raycastTarget = false;
-            _arrow.sizeDelta = new Vector2(40, 40);
+            _arrow.sizeDelta = new Vector2(36, 20);
 
             var bubble = UIFactory.Panel(go.transform, UITheme.Parchment, "Coach");
             _coach = bubble.rectTransform;
-            _coach.anchorMin = new Vector2(0.18f, 0.02f);
-            _coach.anchorMax = new Vector2(0.82f, 0.16f);
+            _coach.anchorMin = new Vector2(0.14f, 0.79f);
+            _coach.anchorMax = new Vector2(0.86f, 0.915f);
             _coach.offsetMin = _coach.offsetMax = Vector2.zero;
             bubble.raycastTarget = false;
 
@@ -153,21 +160,20 @@ namespace AlchemistsArsenal.UI
         }
 
         private RectTransform _coach, _arrow;
-        private Vector2 _pointAt = new Vector2(0.5f, 0.5f);
 
         private void Show(string text, string dots, Vector2 pointAt)
         {
             _bubble.text = text;
             _dots.text = dots;
-            _pointAt = pointAt;
             _arrow.anchorMin = _arrow.anchorMax = pointAt;
         }
 
         private void Update()
         {
             if (_group == null || _group.alpha < 0.5f || _arrow == null) return;
-            float bob = Mathf.Sin(Time.unscaledTime * 5f) * 7f;
-            _arrow.anchoredPosition = new Vector2(0f, bob);
+            // Sits above the target and bobs, tip pointing down at it — never on it.
+            float bob = Mathf.Sin(Time.unscaledTime * 5f) * 6f;
+            _arrow.anchoredPosition = new Vector2(0f, 30f + bob);
         }
     }
 }
