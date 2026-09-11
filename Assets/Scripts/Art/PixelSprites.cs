@@ -59,19 +59,36 @@ namespace AlchemistsArsenal.Art
         };
 
         private static readonly Dictionary<string, Sprite> _cache = new Dictionary<string, Sprite>();
-        private static Material _unlit;
 
-        public static Material Unlit
+        // ONE material PER TEXTURE — never one shared material for every sprite.
+        //
+        // This was a real, shipped bug: every world sprite was assigned the same
+        // single Material instance. A SpriteRenderer normally supplies its own
+        // sprite's texture per draw, but once several renderers share one material
+        // the batcher groups them and the whole batch draws with a single bound
+        // texture — so the adventurer rendered with whatever the monsters' texture
+        // was. It looked correct whenever no monster was on screen (fight start,
+        // between waves, after the last kill) and "changed skin" the instant a wave
+        // walked in, copying exactly that wave's monster — including the boss fight,
+        // where the adventurer and the boss drew as the same sprite at two sizes.
+        //
+        // Keyed by texture so sprites sharing a texture still batch together.
+        private static readonly Dictionary<Texture, Material> _materials = new Dictionary<Texture, Material>();
+
+        /// <summary>The unlit material for this sprite's texture (2D URP needs an
+        /// unlit shader or sprites render black with no Light2D in the scene).</summary>
+        public static Material MaterialFor(Sprite sprite)
         {
-            get
-            {
-                if (_unlit == null)
-                {
-                    var s = Shader.Find("Sprites/Default");
-                    _unlit = s != null ? new Material(s) : null;
-                }
-                return _unlit;
-            }
+            if (sprite == null || sprite.texture == null) return null;
+            if (_materials.TryGetValue(sprite.texture, out Material cached) && cached != null) return cached;
+
+            Shader shader = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default")
+                            ?? Shader.Find("Sprites/Default");
+            if (shader == null) return null;
+
+            var material = new Material(shader) { name = "PixelUnlit_" + sprite.texture.name, mainTexture = sprite.texture };
+            _materials[sprite.texture] = material;
+            return material;
         }
 
         // ---- public accessors ----------------------------------------------
