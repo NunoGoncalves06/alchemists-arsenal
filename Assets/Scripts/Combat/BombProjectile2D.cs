@@ -132,7 +132,21 @@ namespace AlchemistsArsenal.Combat
         private void TryQueueFromContact(Collider2D other)
         {
             if (_detonated || other == null) return;
-            if (other.attachedRigidbody == _rb) return; // ignore self
+            if (other.attachedRigidbody == _rb) return; // ignore the bomb's own body
+            // Ignore the thrower's own side (Team.Adventurer) too — the bomb spawns
+            // AT the thrower's position (BallisticBombLauncher fires it from Origin
+            // = self.Position), so its trigger collider starts out overlapping the
+            // thrower's. Without this it queued detonation on the very first
+            // physics step, right at the thrower's feet, before it ever flew toward
+            // the target — every throw was a point-blank self-detonation (confirmed
+            // by a player report: a bomb visibly leaves the adventurer and vanishes
+            // immediately, and the adventurer's own health drops — see Detonate()
+            // for why that also damaged them). Team-filtered rather than checking
+            // the specific thrower instance, matching BossAttackExecutor's existing
+            // pattern (it filters to Team.Adventurer-only targets) — this also means
+            // a second adventurer, if one's ever added, can't catch a stray blast.
+            ICombatant hitCombatant = other.GetComponentInParent<ICombatant>();
+            if (hitCombatant != null && hitCombatant.Team == Team.Adventurer) return;
             _detonateQueued = true;
         }
 
@@ -158,7 +172,23 @@ namespace AlchemistsArsenal.Combat
                 if (hit == null) continue;
 
                 Rigidbody2D hitRb = hit.attachedRigidbody;
-                if (hitRb != null && hitRb != _rb)
+                if (hitRb == _rb) continue; // never the bomb's own body
+
+                IDamageable damageable = hit.GetComponentInParent<IDamageable>();
+                ICombatant combatant = hit.GetComponentInParent<ICombatant>();
+
+                // Never the thrower's own side — a bomb doesn't hurt (or knock back)
+                // whoever threw it. Epicenter can legitimately still be close to the
+                // thrower (a short throw, or the target closed distance before it
+                // landed), so this has to be checked here too, not just as the
+                // early-detonation guard in TryQueueFromContact above. This was the
+                // actual bug behind "no monsters die and my own health drops": with
+                // no exclusion at all, and the adventurer's own element (Nature)
+                // being exactly what Fire bombs get a x2 bonus against, a
+                // self-detonation even LOGGED as a "successful x2 elemental hit".
+                if (combatant != null && combatant.Team == Team.Adventurer) continue;
+
+                if (hitRb != null)
                 {
                     // Radial impulse, linear inverse-distance falloff to the blast edge.
                     Vector2 toHit = hitRb.position - epicenter;
@@ -169,8 +199,6 @@ namespace AlchemistsArsenal.Combat
                     hitRb.AddForceAtPosition(dir * (knockbackImpulse * falloff), epicenter, ForceMode2D.Impulse);
                 }
 
-                IDamageable damageable = hit.GetComponentInParent<IDamageable>();
-                ICombatant combatant = hit.GetComponentInParent<ICombatant>();
                 if (damageable == null || combatant == null || _bomb == null) continue;
 
                 float elementMultiplier = elementalEnabled && _matrix != null
