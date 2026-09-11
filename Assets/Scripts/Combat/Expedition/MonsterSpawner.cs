@@ -36,7 +36,7 @@ namespace AlchemistsArsenal.Combat
 
             go.AddComponent<MonsterTag>().Data = data; // instance -> archetype, for loot / telemetry
 
-            AddSprite(go, data.Sprite != null ? data.Sprite : PixelSprites.Monster(data.DisplayName), 5, 1f);
+            AddSprite(go, data.Sprite != null ? data.Sprite : PixelSprites.Monster(data.DisplayName), 5);
             go.SetActive(true);
             return go;
         }
@@ -58,7 +58,7 @@ namespace AlchemistsArsenal.Combat
             var phase = go.AddComponent<BossPhaseManager>();
             phase.Configure(boss, executor);
 
-            AddSprite(go, PixelSprites.Boss(), 5, 1f);
+            AddSprite(go, PixelSprites.Boss(), 5);
             go.transform.localScale = Vector3.one * 2.2f;
             go.SetActive(true);
             return go;
@@ -83,7 +83,7 @@ namespace AlchemistsArsenal.Combat
             return go;
         }
 
-        private static void AddSprite(GameObject go, Sprite sprite, int sortingOrder, float worldSize)
+        private static void AddSprite(GameObject go, Sprite sprite, int sortingOrder)
         {
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = sprite;

@@ -78,6 +78,10 @@ namespace AlchemistsArsenal.UI
                     _font = TMP_FontAsset.CreateFontAsset(os);
                     if (_font != null) _font.name = "RuntimeUIFont";
                 }
+                Debug.LogWarning(_font != null
+                    ? "[UITheme] TMP Essentials not imported — built a runtime font from a system font. " +
+                      "Import Window ▸ TextMeshPro ▸ Import TMP Essential Resources for crisp text."
+                    : "[UITheme] No TMP font available and the runtime fallback failed — import TMP Essential Resources.");
                 return _font;
             }
         }
