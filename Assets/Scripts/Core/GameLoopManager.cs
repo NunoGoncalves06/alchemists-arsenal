@@ -163,7 +163,11 @@ namespace AlchemistsArsenal.Core
             _expeditionRoot = new GameObject("~ExpeditionWorld");
             _expeditionWorld = _expeditionRoot.AddComponent<ExpeditionWorld>();
             _expeditionWorld.OnFinished += HandleExpeditionFinished;
-            _expeditionWorld.Build(biome, PendingLoadout, adventurerCount: 1);
+
+            // Day 1 is the teaching run — no boss, just the waves.
+            bool enableBoss = SaveSystem.Instance == null || SaveSystem.Instance.State == null
+                || SaveSystem.Instance.State.day > 1;
+            _expeditionWorld.Build(biome, PendingLoadout, adventurerCount: 1, enableBoss: enableBoss);
 
             SetPhase(GamePhase.Afternoon);
         }

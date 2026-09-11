@@ -12,13 +12,19 @@ namespace AlchemistsArsenal.Crafting
         [SerializeField] private float stirringRadius = 3f;
         [SerializeField] private float stirForceMultiplier = 15f;
         [SerializeField] private float torqueMultiplier = 8f;
+        [Tooltip("Mouse world-speed that counts as a full-power stir. Higher = less twitchy.")]
+        [SerializeField] private float stirSpeedForFullPower = 7f;
         [SerializeField] private LayerMask herbLayerMask;
 
         [Header("Heat Mechanics Settings")]
-        [SerializeField] private float heatGainRate = 0.25f;
-        [SerializeField] private float heatDecayRate = 0.12f;
+        [SerializeField] private float heatGainRate = 0.45f;
+        [SerializeField] private float heatDecayRate = 0.28f;
         [Range(0f, 1f)] [SerializeField] private float minOptimalHeat = 0.4f;
         [Range(0f, 1f)] [SerializeField] private float maxOptimalHeat = 0.7f;
+
+        [Header("Brew")]
+        [Tooltip("Seconds of green-zone stirring to finish the brew. When done, quality locks.")]
+        [SerializeField] private float brewSeconds = 12f;
 
         [Header("Quality Penalty Settings")]
         [SerializeField] private int baseDeductionPoints = 5;
@@ -29,12 +35,22 @@ namespace AlchemistsArsenal.Crafting
         private Vector3 mouseVelocity;
         private float smoothedStirSpeed;
         private float nextDeductionTime;
+        private bool mouseOverPot;
 
         // Public properties and events for UI/Presentation
         public float Heat01 => currentHeat;
         public float MinOptimalHeat => minOptimalHeat;
         public float MaxOptimalHeat => maxOptimalHeat;
         public Action<float> OnHeatChanged;
+
+        /// <summary>0..1 brew completion — climbs only while stirring in the green band.</summary>
+        public float BrewProgress01 { get; private set; }
+
+        /// <summary>Once true, quality is locked in and stirring no longer matters.</summary>
+        public bool IsBrewComplete => BrewProgress01 >= 1f;
+
+        /// <summary>True while the cursor is inside the pot — stirring only bites here (the "spoon").</summary>
+        public bool MouseOverCauldron => mouseOverPot;
 
         /// <summary>
         /// Number of physics steps this manager has processed. Lets tests / tooling
@@ -94,27 +110,22 @@ namespace AlchemistsArsenal.Crafting
             }
             lastMousePosition = currentMousePos;
 
-            // Smooth the stirring speed based on mouse movement speed
-            float rawStirSpeed = mouseVelocity.magnitude;
-            smoothedStirSpeed = Mathf.Lerp(smoothedStirSpeed, rawStirSpeed, Time.deltaTime * 5f);
+            // The spoon only stirs when the cursor is actually in the pot.
+            mouseOverPot = ((Vector2)transform.position - currentMousePos).sqrMagnitude <= stirringRadius * stirringRadius;
 
-            // Heat dynamics: increase with stirring, decay with lack thereof
-            if (smoothedStirSpeed > 1f)
-            {
-                // Stirring generates heat proportionally
-                currentHeat += (smoothedStirSpeed * 0.02f + heatGainRate) * Time.deltaTime;
-            }
-            else
-            {
-                // Decay heat when not stirring
-                currentHeat -= heatDecayRate * Time.deltaTime;
-            }
+            // Normalised stir power (0..1). Clamped so a fast flick can't spike the
+            // heat — a 2 cm twitch is a small nudge, not a jump to max.
+            float rawStirSpeed = mouseOverPot ? mouseVelocity.magnitude : 0f;
+            smoothedStirSpeed = Mathf.Lerp(smoothedStirSpeed, rawStirSpeed, Time.deltaTime * 6f);
+            float stirPower = Mathf.Clamp01(smoothedStirSpeed / Mathf.Max(0.01f, stirSpeedForFullPower));
 
+            // Heat dynamics: rises with stir power, decays when the spoon is idle.
+            currentHeat += (stirPower > 0.05f ? stirPower * heatGainRate : -heatDecayRate) * Time.deltaTime;
             currentHeat = Mathf.Clamp01(currentHeat);
             OnHeatChanged?.Invoke(currentHeat);
 
-            // Handle potion quality deduction based on heat score
-            CheckHeatQualityImpact();
+            // Handle potion quality change based on heat score
+            CheckHeatQualityImpact(stirPower);
         }
 
         private void FixedUpdate()
@@ -127,8 +138,8 @@ namespace AlchemistsArsenal.Crafting
 
         private void ApplyStirringForces()
         {
-            // Only apply force if user is actively moving the mouse/stirring
-            if (mouseVelocity.sqrMagnitude < 0.1f) return;
+            // Only apply force if the spoon is in the pot and actually moving.
+            if (!mouseOverPot || mouseVelocity.sqrMagnitude < 0.1f) return;
 
             // Find all herb rigidbodies in the stirring radius
             Collider2D[] colliders = Physics2D.OverlapCircleAll(transform.position, stirringRadius, herbLayerMask);
@@ -164,20 +175,25 @@ namespace AlchemistsArsenal.Crafting
             }
         }
 
-        private void CheckHeatQualityImpact()
+        private void CheckHeatQualityImpact(float stirPower)
         {
             ActiveOrder activeOrder = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
             if (activeOrder == null) return;
 
-            // Check if heat is out of bounds
-            bool isTooCold = currentHeat < minOptimalHeat;
-            bool isTooHot = currentHeat > maxOptimalHeat;
+            // Brew is finished — quality is locked, the player just needs to send it.
+            if (IsBrewComplete) return;
 
-            if (!isTooCold && !isTooHot)
+            bool inGreen = currentHeat >= minOptimalHeat && currentHeat <= maxOptimalHeat;
+            bool stirring = stirPower > 0.05f;
+
+            if (inGreen && stirring)
             {
-                // In the green band: clean brewing *raises* quality back toward 100
-                // (the "climb from the born-at-25 floor" half of the model — reviewer X4).
-                if (Time.time >= nextDeductionTime && smoothedStirSpeed > 1f)
+                // Green band + stirring: the brew advances and quality climbs from
+                // the born-at-25 floor (reviewer X4). Progress gives the minigame a
+                // definite end instead of stirring forever.
+                BrewProgress01 = Mathf.Clamp01(BrewProgress01 + Time.deltaTime / Mathf.Max(1f, brewSeconds));
+
+                if (Time.time >= nextDeductionTime)
                 {
                     activeOrder.ApplyBonus(baseDeductionPoints, "Cauldron Brewing",
                         $"Held the green zone ({currentHeat:P0})", Time.time);
@@ -186,32 +202,23 @@ namespace AlchemistsArsenal.Crafting
                 return;
             }
 
-            if (isTooCold || isTooHot)
+            if (!inGreen && Time.time >= nextDeductionTime)
             {
-                if (Time.time >= nextDeductionTime)
+                int penalty = baseDeductionPoints;
+                string reason;
+                if (currentHeat < minOptimalHeat)
                 {
-                    int finalDeduction = baseDeductionPoints;
-                    string reason = "";
-
-                    if (isTooCold)
-                    {
-                        reason = $"Brewing temperature too cold ({currentHeat:P0} < {minOptimalHeat:P0})";
-                        // Scaled penalty based on how far off it is
-                        float severity = (minOptimalHeat - currentHeat) / minOptimalHeat;
-                        finalDeduction += Mathf.RoundToInt(severity * 5f);
-                    }
-                    else if (isTooHot)
-                    {
-                        reason = $"Brewing temperature too hot ({currentHeat:P0} > {maxOptimalHeat:P0})";
-                        float severity = (currentHeat - maxOptimalHeat) / (1f - maxOptimalHeat);
-                        finalDeduction += Mathf.RoundToInt(severity * 10f); // Overheating is more penalizing!
-                    }
-
-                    activeOrder.ApplyDeduction(finalDeduction, "Cauldron Brewing", reason, Time.time);
-                    Debug.LogWarning($"[QUALITY PENALTY] {reason}. Deducted {finalDeduction} points. New Quality: {activeOrder.qualityScore}");
-
-                    nextDeductionTime = Time.time + deductionInterval;
+                    reason = $"Too cold ({currentHeat:P0}) — stir faster";
+                    penalty += Mathf.RoundToInt((minOptimalHeat - currentHeat) / minOptimalHeat * 4f);
                 }
+                else
+                {
+                    reason = $"Overheating ({currentHeat:P0}) — ease off";
+                    penalty += Mathf.RoundToInt((currentHeat - maxOptimalHeat) / (1f - maxOptimalHeat) * 6f);
+                }
+
+                activeOrder.ApplyDeduction(penalty, "Cauldron Brewing", reason, Time.time);
+                nextDeductionTime = Time.time + deductionInterval;
             }
         }
 

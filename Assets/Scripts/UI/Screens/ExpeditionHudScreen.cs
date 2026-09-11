@@ -62,6 +62,16 @@ namespace AlchemistsArsenal.UI
             _speed2 = MiniBtn(ctrl.transform, "2x", () => SetFast(true));
             _pause = MiniBtn(ctrl.transform, "II", TogglePause);
 
+            // NEXT WAVE — clear the current wave and move on (playtest: waves drag).
+            _nextWave = UIFactory.Button(transform, "NEXT WAVE", () =>
+            {
+                if (_world != null && _world.Expedition != null) _world.Expedition.SkipCurrentWave();
+            }, primary: false);
+            var nwrt = _nextWave.image.rectTransform;
+            nwrt.anchorMin = new Vector2(0.44f, 0.24f); nwrt.anchorMax = new Vector2(0.56f, 0.29f);
+            nwrt.offsetMin = nwrt.offsetMax = Vector2.zero;
+            _nextWave.gameObject.SetActive(false);
+
             _ticker = UIFactory.Label(transform, "", 15, UITheme.Parchment, TextAlignmentOptions.Center);
             var trt = _ticker.rectTransform;
             trt.anchorMin = new Vector2(0.25f, 0.18f); trt.anchorMax = new Vector2(0.75f, 0.22f);
@@ -75,7 +85,7 @@ namespace AlchemistsArsenal.UI
             var scrim = UIFactory.Box(_slabPanel, new Color(0f, 0f, 0f, 0.6f), _slabPanel);
             _slab = UIFactory.Label(_slabPanel, "", 60, UITheme.Candle, TextAlignmentOptions.Center, true);
             UIFactory.Stretch(_slab.rectTransform);
-            _continueBtn = UIFactory.Button(_slabPanel, "CONTINUE  ▶", () => GameLoopManager.Instance.BeginEvening());
+            _continueBtn = UIFactory.Button(_slabPanel, "CONTINUE", () => GameLoopManager.Instance.BeginEvening());
             var cbrt = _continueBtn.image.rectTransform;
             cbrt.anchorMin = new Vector2(0.4f, 0.3f); cbrt.anchorMax = new Vector2(0.6f, 0.38f);
             cbrt.offsetMin = cbrt.offsetMax = Vector2.zero;
@@ -83,6 +93,7 @@ namespace AlchemistsArsenal.UI
         }
 
         private Image _bossBar;
+        private Button _nextWave;
 
         private Button MiniBtn(Transform p, string t, System.Action a)
         {
@@ -155,6 +166,10 @@ namespace AlchemistsArsenal.UI
             bool boss = exp.Phase == ExpeditionPhase.BossFight && exp.BossInstance != null;
             if (_bossBar.gameObject.activeSelf != boss) _bossBar.gameObject.SetActive(boss);
             if (_pips.gameObject.activeSelf != boss) _pips.gameObject.SetActive(boss);
+
+            bool canSkip = exp.Phase == ExpeditionPhase.Waves;
+            if (_nextWave != null && _nextWave.gameObject.activeSelf != canSkip)
+                _nextWave.gameObject.SetActive(canSkip);
 
             string banner;
             if (boss)

@@ -22,10 +22,10 @@ namespace AlchemistsArsenal.Core
         /// <summary>Ammo the bomb ships with, by grade — a cleaner brew fills more flasks.</summary>
         private static int AmmoFor(PotionGrade grade) => grade switch
         {
-            PotionGrade.Perfect => 8,
-            PotionGrade.Great => 7,
-            PotionGrade.Okay => 5,
-            _ => 3,
+            PotionGrade.Perfect => 30,
+            PotionGrade.Great => 24,
+            PotionGrade.Okay => 18,
+            _ => 12,
         };
 
         public static AdventurerLoadout Build(ActiveOrder order)

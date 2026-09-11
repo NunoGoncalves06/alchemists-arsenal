@@ -26,7 +26,6 @@ namespace AlchemistsArsenal.UI
         private Canvas _canvas;
         private CanvasGroup _group;
         private TextMeshProUGUI _bubble, _dots;
-        private RectTransform _spotlight;
 
         private void Awake()
         {
@@ -74,34 +73,34 @@ namespace AlchemistsArsenal.UI
         private IEnumerator Run()
         {
             _step = Step.Welcome;
-            Show("Day one. Time moves slowly today — take it in.\nStart at the Counter on the left.\n\n<size=70%>(click to continue)</size>", "1 / 3",
-                new Vector2(0.16f, 0.5f), new Vector2(300, 480));
-            yield return WaitForClickOr(6f);
+            Show("Day one. Time is paused while we get you set up.\nWe run the shop in the morning, then send Rookie out to fight in the afternoon.\n\n<size=75%>(click to continue)</size>",
+                "1 / 3", new Vector2(0.5f, 0.5f));
+            yield return WaitForClickOr(8f);
 
             _step = Step.Counter;
-            Show("Read the incoming waves, then press ACCEPT to choose what to brew.", "2 / 3",
-                new Vector2(0.4f, 0.28f), new Vector2(760, 120));
+            Show("COUNTER tab (left). Read the incoming waves, then press ACCEPT ORDER to pick what to brew.",
+                "2 / 3", new Vector2(0.06f, 0.55f));
             while (CraftingManager.Instance == null || CraftingManager.Instance.CurrentOrder == null)
                 yield return null;
 
             CauldronUnlocked = true;
             _step = Step.Cauldron;
-            Show("Now the Cauldron. Move the mouse in circles over the pot and keep the needle in the GREEN — quality climbs while you hold it.",
-                "3 / 3", new Vector2(0.4f, 0.5f), new Vector2(560, 260));
-            float held = 0f;
-            while (held < 4f)
+            Show("CAULDRON tab. Hold the mouse over the pot and stir in circles — keep the gauge in the GREEN and the BREW bar fills. When it's READY, send it.",
+                "3 / 3", new Vector2(0.4f, 0.45f));
+            while (true)
             {
+                var pot = Crafting.PhysicsCauldronManager.Instance;
                 var o = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
-                held += (o != null && o.qualityScore > ActiveOrder.StartingQuality + 8) ? Time.unscaledDeltaTime * 2f : 0f;
-                if (o != null && o.qualityScore >= 60) break;
+                if (pot != null && pot.BrewProgress01 >= 0.4f) break;
+                if (o != null && o.qualityScore >= 55) break;
                 yield return null;
             }
 
             _step = Step.Done;
-            Show("You've got it. Seal it and send Rookie off. Time runs normal from tomorrow.\n\n<size=70%>(click to continue)</size>", "done",
-                new Vector2(0.85f, 0.5f), new Vector2(300, 400));
+            Show("That's the loop. Finish the brew if you like, then SEND TO EXPEDITION.\nTime runs at normal speed from tomorrow.\n\n<size=75%>(click to continue)</size>",
+                "done", new Vector2(0.85f, 0.35f));
             AudioManager.Play(Sfx.Chime);
-            yield return WaitForClickOr(6f);
+            yield return WaitForClickOr(8f);
 
             Finish();
         }
@@ -118,6 +117,10 @@ namespace AlchemistsArsenal.UI
 
         // ------------------------------------------------------------- overlay
 
+        // The coach bubble is docked to the BOTTOM of the screen and kept short, so
+        // it never sits over the Counter / Cauldron working area (playtest note).
+        // A bobbing arrow points at whatever the current step is about.
+
         private void BuildOverlay()
         {
             var go = new GameObject("TutorialCanvas", typeof(RectTransform));
@@ -128,55 +131,42 @@ namespace AlchemistsArsenal.UI
             go.AddComponent<GraphicRaycaster>();
             _group = go.AddComponent<CanvasGroup>();
             _group.alpha = 0f;
-            _group.blocksRaycasts = false;
-
-            var scrim = UIFactory.Panel(go.transform, new Color(0.05f, 0.03f, 0.06f, 0.55f), "Scrim");
-            UIFactory.Stretch(scrim.rectTransform);
-            scrim.raycastTarget = false;
-
-            _spotlight = UIFactory.Panel(go.transform, new Color(0f, 0f, 0f, 0f), "Spot").rectTransform;
-            var so = _spotlight.GetComponent<Image>();
-            so.sprite = Combat.PlaceholderArt.Make(Combat.PlaceholderArt.Shape.Disc, new Color(0f, 0f, 0f, 0f), UITheme.Candle);
-            so.raycastTarget = false;
+            _group.blocksRaycasts = false; // never eat clicks — the player still runs the shop
 
             _arrow = UIFactory.Panel(go.transform, UITheme.Candle, "Arrow").rectTransform;
             var ai = _arrow.GetComponent<Image>();
             ai.sprite = Combat.PlaceholderArt.Make(Combat.PlaceholderArt.Shape.Diamond, UITheme.Candle, UITheme.Ink900);
             ai.raycastTarget = false;
-            _arrow.sizeDelta = new Vector2(48, 48);
+            _arrow.sizeDelta = new Vector2(40, 40);
 
             var bubble = UIFactory.Panel(go.transform, UITheme.Parchment, "Coach");
             _coach = bubble.rectTransform;
-            _bubble = UIFactory.Label(bubble.transform, "", 18, UITheme.Ink900, TextAlignmentOptions.TopLeft);
-            UIFactory.Stretch(_bubble.rectTransform, 14f);
+            _coach.anchorMin = new Vector2(0.18f, 0.02f);
+            _coach.anchorMax = new Vector2(0.82f, 0.16f);
+            _coach.offsetMin = _coach.offsetMax = Vector2.zero;
+            bubble.raycastTarget = false;
+
+            _bubble = UIFactory.Label(bubble.transform, "", 17, UITheme.Ink900, TextAlignmentOptions.Left);
+            UIFactory.Stretch(_bubble.rectTransform, 16f);
             _dots = UIFactory.Label(bubble.transform, "", 12, UITheme.WoodDark, TextAlignmentOptions.BottomRight);
             UIFactory.Stretch(_dots.rectTransform, 8f);
         }
 
         private RectTransform _coach, _arrow;
-        private Vector2 _arrowAnchor;
+        private Vector2 _pointAt = new Vector2(0.5f, 0.5f);
 
-        private void Show(string text, string dots, Vector2 anchorCenter, Vector2 size)
+        private void Show(string text, string dots, Vector2 pointAt)
         {
             _bubble.text = text;
             _dots.text = dots;
-            _coach.anchorMin = _coach.anchorMax = anchorCenter;
-            _coach.sizeDelta = size;
-            _coach.anchoredPosition = Vector2.zero;
-            _spotlight.anchorMin = _spotlight.anchorMax = anchorCenter;
-            _spotlight.sizeDelta = size * 1.4f;
-
-            // Arrow sits just off the spotlight, nudged back toward screen centre so
-            // it reads as "look here".
-            Vector2 toCentre = (new Vector2(0.5f, 0.5f) - anchorCenter);
-            _arrowAnchor = anchorCenter + toCentre.normalized * 0.08f;
-            _arrow.anchorMin = _arrow.anchorMax = _arrowAnchor;
+            _pointAt = pointAt;
+            _arrow.anchorMin = _arrow.anchorMax = pointAt;
         }
 
         private void Update()
         {
             if (_group == null || _group.alpha < 0.5f || _arrow == null) return;
-            float bob = Mathf.Sin(Time.unscaledTime * 6f) * 8f;
+            float bob = Mathf.Sin(Time.unscaledTime * 5f) * 7f;
             _arrow.anchoredPosition = new Vector2(0f, bob);
         }
     }

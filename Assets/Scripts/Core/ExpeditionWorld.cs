@@ -28,7 +28,7 @@ namespace AlchemistsArsenal.Core
         private readonly List<CombatantBody> _party = new List<CombatantBody>();
         private BiomeData _biome;
 
-        public void Build(BiomeData biome, AdventurerLoadout loadout, int adventurerCount)
+        public void Build(BiomeData biome, AdventurerLoadout loadout, int adventurerCount, bool enableBoss = true)
         {
             _biome = biome;
             transform.position = Vector3.zero;
@@ -51,6 +51,14 @@ namespace AlchemistsArsenal.Core
             ground.transform.localScale = new Vector3(biome.ArenaWidth + 8f, 14f, 1f);
             PixelArt.AddDisc(ground, biome.GroundTint, -10); // diameter 0 = keep the scale set above
 
+            // Invisible arena bounds so nobody (adventurer especially) walks off camera.
+            float halfW = biome.ArenaWidth * 0.5f + 1.5f;
+            const float halfH = 7f;
+            BuildWall(new Vector2(-halfW, 0f), new Vector2(1f, halfH * 2f));
+            BuildWall(new Vector2(halfW, 0f), new Vector2(1f, halfH * 2f));
+            BuildWall(new Vector2(0f, halfH), new Vector2(halfW * 2f, 1f));
+            BuildWall(new Vector2(0f, -halfH), new Vector2(halfW * 2f, 1f));
+
             var considerations = DefaultExpeditionData.AdventurerConsiderations();
             adventurerCount = Mathf.Clamp(adventurerCount, 1, 4);
             for (int i = 0; i < adventurerCount; i++)
@@ -68,7 +76,15 @@ namespace AlchemistsArsenal.Core
             // Configure() starts the run on the same frame — begin telemetry first.
             Telemetry.Begin(Expedition, biome.BiomeName, adventurerCount);
             Expedition.OnFinished += HandleFinished;
-            Expedition.Configure(biome, spawner);
+            Expedition.Configure(biome, spawner, enableBoss);
+        }
+
+        private void BuildWall(Vector2 pos, Vector2 size)
+        {
+            var wall = new GameObject("ArenaWall");
+            wall.transform.SetParent(transform, false);
+            wall.transform.position = pos;
+            wall.AddComponent<BoxCollider2D>().size = size;
         }
 
         private void HandleFinished(bool won)
