@@ -74,7 +74,7 @@ namespace AlchemistsArsenal.Core
             Telemetry = gameObject.AddComponent<ExpeditionTelemetry>();
 
             // Configure() starts the run on the same frame — begin telemetry first.
-            Telemetry.Begin(Expedition, biome.BiomeName, adventurerCount);
+            Telemetry.Begin(Expedition, biome.BiomeName, adventurerCount, biome.Waves.Count);
             Expedition.OnFinished += HandleFinished;
             Expedition.Configure(biome, spawner, enableBoss);
         }
@@ -99,7 +99,7 @@ namespace AlchemistsArsenal.Core
             // under this root and die with it; stray projectiles get swept here.
             MonsterRegistry.Clear();
             AdventurerRegistry.Clear();
-            foreach (var p in FindObjectsByType<BombProjectile2D>(FindObjectsSortMode.None))
+            foreach (var p in FindObjectsByType<BombProjectile2D>(FindObjectsInactive.Include, FindObjectsSortMode.None))
                 if (p != null) Destroy(p.gameObject);
         }
 
@@ -110,7 +110,12 @@ namespace AlchemistsArsenal.Core
             var go = new GameObject($"Adventurer_{index + 1}");
             go.transform.SetParent(transform, false);
             go.SetActive(false);
-            go.transform.position = new Vector2(-_biome.ArenaWidth * 0.5f + 2f, y);
+            // Was 2 units from the left edge — with the arena walls (ExpeditionWorld
+            // now builds them) that's almost no room to Retreat into: fleeing straight
+            // away from an approaching monster pins the adventurer against its own
+            // spawn wall almost immediately. Starting a quarter of the way into the
+            // arena gives real maneuvering room in both directions.
+            go.transform.position = new Vector2(-_biome.ArenaWidth * 0.25f, y);
 
             var rb = go.AddComponent<Rigidbody2D>();
             rb.gravityScale = 0f;
@@ -119,7 +124,10 @@ namespace AlchemistsArsenal.Core
             go.AddComponent<CircleCollider2D>().radius = 0.4f;
 
             RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
-            int maxHp = 120 + (s != null && s.HasUpgrade(UpgradeCatalog.ThickBoots) ? 30 : 0);
+            // 120 -> 150 base: a single adventurer facing 3+ monsters at once was
+            // dying before the AI/movement fixes had a real chance to work
+            // (playtest: near-instant losses). Thick Boots still stacks on top.
+            int maxHp = 150 + (s != null && s.HasUpgrade(UpgradeCatalog.ThickBoots) ? 30 : 0);
 
             var body = go.AddComponent<CombatantBody>();
             body.Initialise(Team.Adventurer, ElementType.Nature, maxHp);

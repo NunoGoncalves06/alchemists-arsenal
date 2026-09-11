@@ -121,8 +121,8 @@ namespace AlchemistsArsenal.UI
             foreach (Transform c in _body) Destroy(c.gameObject);
             RunState s = SaveSystem.Instance.State;
 
-            UIFactory.Label(_body, $"UPGRADES — permanent, spend gold from today's run ({s.gold} g on hand)", 16,
-                UITheme.Candle, TextAlignmentOptions.TopLeft).rectTransform.offsetMin = new Vector2(0, -30);
+            UIFactory.TopLabel(_body, $"UPGRADES — permanent, spend gold from today's run ({s.gold} g on hand)", 16, UITheme.Candle,
+                bandHeight: 40f, padX: 0f);
 
             var col = UIFactory.VStack(_body, 10f, new RectOffset(0, 0, 44, 0));
             var crt = (RectTransform)col.transform;
@@ -137,7 +137,14 @@ namespace AlchemistsArsenal.UI
 
                 var text = new GameObject("Text", typeof(RectTransform));
                 text.transform.SetParent(h.transform, false);
-                text.AddComponent<LayoutElement>().flexibleWidth = 1;
+                // flexibleHeight matters here too — h's childForceExpandHeight is
+                // false, so without it "text" collapses to ~0 height and both
+                // labels inside render stacked at the same spot instead of one
+                // above the other (playtest screenshot: title and description
+                // overlapping, unreadable — same root cause as the Report columns).
+                var textLE = text.AddComponent<LayoutElement>();
+                textLE.flexibleWidth = 1;
+                textLE.flexibleHeight = 1;
                 var tv = UIFactory.VStack(text.transform, 2f);
                 UIFactory.Stretch((RectTransform)tv.transform);
                 UIFactory.Label(tv.transform, up.DisplayName, 18, UITheme.Parchment, TextAlignmentOptions.TopLeft, true);

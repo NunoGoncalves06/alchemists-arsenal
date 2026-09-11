@@ -105,8 +105,7 @@ namespace AlchemistsArsenal.UI
             p.rectTransform.anchorMin = new Vector2(0.09f, 0f); p.rectTransform.anchorMax = new Vector2(0.72f, 0.93f);
             p.rectTransform.offsetMin = new Vector2(16, 16); p.rectTransform.offsetMax = new Vector2(-16, -16);
 
-            UIFactory.Label(p.transform, "COUNTER — read the afternoon, pick what to brew", 16, UITheme.Candle,
-                TextAlignmentOptions.TopLeft).rectTransform.offsetMin = new Vector2(16, -44);
+            UIFactory.TopLabel(p.transform, "COUNTER — read the afternoon, pick what to brew", 16, UITheme.Candle);
 
             _forecastText = UIFactory.Label(p.transform, "", 17, UITheme.Parchment, TextAlignmentOptions.TopLeft);
             var frt = _forecastText.rectTransform;
@@ -135,8 +134,7 @@ namespace AlchemistsArsenal.UI
             p.anchorMin = new Vector2(0.09f, 0f); p.anchorMax = new Vector2(0.72f, 0.93f);
             p.offsetMin = new Vector2(16, 16); p.offsetMax = new Vector2(-16, -16);
 
-            UIFactory.Label(p, "CAULDRON — mouse over the pot and stir in circles, hold the green", 16, UITheme.Candle,
-                TextAlignmentOptions.TopLeft).rectTransform.offsetMin = new Vector2(4, -44);
+            UIFactory.TopLabel(p, "CAULDRON — mouse over the pot and stir in circles, hold the green", 16, UITheme.Candle, padX: 4f);
 
             // brew-progress bar (fills while stirring in the green — the minigame's end)
             var brewBg = UIFactory.Bar(p, UITheme.Ink700, UITheme.Candle, out _brewFill);
@@ -169,8 +167,7 @@ namespace AlchemistsArsenal.UI
             p.rectTransform.anchorMin = new Vector2(0.09f, 0f); p.rectTransform.anchorMax = new Vector2(0.72f, 0.93f);
             p.rectTransform.offsetMin = new Vector2(16, 16); p.rectTransform.offsetMax = new Vector2(-16, -16);
 
-            UIFactory.Label(p.transform, $"PREP — add matching-element herbs for a bonus ({PrepPicksPerDay} per day)", 16,
-                UITheme.Candle, TextAlignmentOptions.TopLeft).rectTransform.offsetMin = new Vector2(16, -44);
+            UIFactory.TopLabel(p.transform, $"PREP — add matching-element herbs for a bonus ({PrepPicksPerDay} per day)", 16, UITheme.Candle);
 
             _prepHint = UIFactory.Label(p.transform, "", 16, UITheme.ParchmentDim, TextAlignmentOptions.TopLeft);
             var hrt = _prepHint.rectTransform;
@@ -201,8 +198,7 @@ namespace AlchemistsArsenal.UI
             p.rectTransform.anchorMin = new Vector2(0.09f, 0f); p.rectTransform.anchorMax = new Vector2(0.72f, 0.93f);
             p.rectTransform.offsetMin = new Vector2(16, 16); p.rectTransform.offsetMax = new Vector2(-16, -16);
 
-            UIFactory.Label(p.transform, $"BOTTLING — seal it while the needle is in the band ({SealAttemptsPerDay} per day)", 16,
-                UITheme.Candle, TextAlignmentOptions.TopLeft).rectTransform.offsetMin = new Vector2(16, -44);
+            UIFactory.TopLabel(p.transform, $"BOTTLING — seal it while the needle is in the band ({SealAttemptsPerDay} per day)", 16, UITheme.Candle);
 
             _bottlingHint = UIFactory.Label(p.transform, "", 18, UITheme.ParchmentDim, TextAlignmentOptions.Center, true);
             var brt = _bottlingHint.rectTransform;
@@ -306,7 +302,15 @@ namespace AlchemistsArsenal.UI
 
         private void SwitchTab(StationTab tab)
         {
-            if (tab != StationTab.Counter && !TutorialManager.StationsUnlocked) return; // Day-1 gate, until the order is accepted
+            // Day-1 gate, until the order is accepted. TutorialManager.StationsUnlocked
+            // flips on ITS OWN coroutine once it notices the order, which is not
+            // guaranteed to have happened yet in the very same frame AcceptOrder()
+            // creates that order and immediately tries to switch here — checking
+            // CurrentOrder directly as a fallback closes that race (confirmed via a
+            // headless-playtest screenshot: ACCEPT ORDER silently failed to switch to
+            // the Cauldron tab despite creating the order correctly).
+            bool hasOrder = CraftingManager.Instance != null && CraftingManager.Instance.CurrentOrder != null;
+            if (tab != StationTab.Counter && !TutorialManager.StationsUnlocked && !hasOrder) return;
 
             _activeTab = tab;
             _counterPanel.gameObject.SetActive(tab == StationTab.Counter);
@@ -405,6 +409,16 @@ namespace AlchemistsArsenal.UI
 
         private void RefreshOrder()
         {
+            // Self-healing: HookOrder() previously only ran from OnShow (when an
+            // order may not exist yet) and AcceptOrder (the ACCEPT button's own
+            // handler) — an order created any other way (verified via the headless
+            // playtest's driver, which calls GameLoopManager.ConfirmOrder directly)
+            // left the ticket panel permanently stale since nothing had subscribed
+            // to OnQualityChanged yet. HookOrder() is idempotent, so calling it here
+            // too costs nothing and makes this screen correct regardless of how the
+            // order came to exist.
+            HookOrder();
+
             var order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
             bool has = order != null;
             _sendBtn.interactable = has;

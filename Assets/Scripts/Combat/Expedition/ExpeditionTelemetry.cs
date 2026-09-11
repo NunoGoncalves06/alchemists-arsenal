@@ -16,7 +16,14 @@ namespace AlchemistsArsenal.Combat
         private float _startTime;
         private bool _finished;
 
-        public void Begin(ExpeditionManager expedition, string biomeName, int partyCount)
+        /// <summary><paramref name="totalWaves"/> is passed explicitly rather than
+        /// read off <paramref name="expedition"/>.TotalWaves: the caller begins
+        /// telemetry BEFORE calling <see cref="ExpeditionManager.Configure"/> (so
+        /// the OnWaveStarted/OnFinished subscriptions are wired before the run
+        /// coroutine can fire them), which means <c>expedition.biome</c> — and so
+        /// <c>TotalWaves</c> — isn't set yet at this point; reading it here always
+        /// captured 0 (playtest: the Evening report showed "Waves cleared: 0 / 0").</summary>
+        public void Begin(ExpeditionManager expedition, string biomeName, int partyCount, int totalWaves)
         {
             _expedition = expedition;
             _startTime = Time.time;
@@ -24,7 +31,7 @@ namespace AlchemistsArsenal.Combat
             {
                 biomeName = biomeName,
                 partyTotal = Mathf.Max(1, partyCount),
-                totalWaves = expedition != null ? expedition.TotalWaves : 0,
+                totalWaves = totalWaves,
             };
 
             BombProjectile2D.OnDetonatedGlobal += OnDetonated;

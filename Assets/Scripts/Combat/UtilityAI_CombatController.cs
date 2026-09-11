@@ -26,8 +26,12 @@ namespace AlchemistsArsenal.Combat
         [SerializeField] private List<UtilityConsideration> considerations = new List<UtilityConsideration>();
 
         [Header("Decision Tuning")]
-        [Min(0.02f)] [SerializeField] private float decisionInterval = 0.35f;
-        [Range(0f, 1f)] [SerializeField] private float scoreThreshold = 0.15f;
+        [Min(0.02f)] [SerializeField] private float decisionInterval = 0.25f;
+        // Lowered from 0.15 — at 0.15 the adventurer would often just stand there
+        // not throwing while every candidate scored a little under the bar, which
+        // reads as "nothing is happening" / "combat feels broken" far more than a
+        // slightly-suboptimal throw does (playtest: "combat is all fucked").
+        [Range(0f, 1f)] [SerializeField] private float scoreThreshold = 0.08f;
 
         [Header("Debug")]
         [SerializeField] private bool logDecisions;

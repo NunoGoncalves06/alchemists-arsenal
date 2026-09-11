@@ -81,6 +81,21 @@ namespace AlchemistsArsenal.Combat
                     BombData bomb = readyBombs[b];
                     if (bomb == null) continue;
 
+                    // Hard range gate. DistanceConsideration's response curve tails
+                    // off to 0.15, not 0, past MaxRange (by design — "very far" still
+                    // reads as a coherent point on the curve) — with IAUS's
+                    // compensation factor and a couple of other favourable axes
+                    // (elemental matchup, a healthy self), that was enough to clear
+                    // the score threshold from the opening distance, well outside the
+                    // bomb's actual range. The adventurer would open a fight throwing
+                    // at targets it had no real chance of hitting (by the time a
+                    // long-flight-time bomb lands, a moving target isn't where it was
+                    // aimed), burning ammo before the fight even started (playtest:
+                    // "combat is all fucked"). A flat distance gate is a firmer fix
+                    // than re-tuning the curve — it can never be out-scored by other
+                    // axes.
+                    if (distance > bomb.MaxRange) continue;
+
                     int clusterCount = CountCluster(monsters, target.Position, bomb.BlastRadius);
 
                     var ctx = new UtilityContext(
