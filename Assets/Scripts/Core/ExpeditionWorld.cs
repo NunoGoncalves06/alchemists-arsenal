@@ -139,9 +139,21 @@ namespace AlchemistsArsenal.Core
             ai.Configure(body, loadout, matrix, considerations);
             go.AddComponent<BallisticBombLauncher>().Configure(ai, matrix);
 
+            // A player-marker ring under the adventurer's feet — no monster has one —
+            // plus a larger sprite than before. Exhaustive code search found no
+            // mechanism for the sprite/colour to actually change at runtime (every
+            // SpriteRenderer in the project is created once and never touched
+            // again), so this isn't chasing a confirmed swap bug; it's making the
+            // adventurer impossible to mistake for a monster regardless of cause —
+            // a fast-moving 16px sprite at typical arena zoom is genuinely hard to
+            // track by eye once several monsters close in around it (playtest).
+            var marker = new GameObject("PlayerMarker");
+            marker.transform.SetParent(go.transform, false);
+            PixelArt.AddDisc(marker, new Color(0.35f, 0.95f, 1f, 0.6f), 4, 1.15f);
+
             var art = new GameObject("Art");
             art.transform.SetParent(go.transform, false);
-            PixelArt.AddSprite(art, Art.PixelSprites.Rookie(), 6, 1.5f);
+            PixelArt.AddSprite(art, Art.PixelSprites.Rookie(), 6, 1.9f);
             go.SetActive(true);
         }
     }

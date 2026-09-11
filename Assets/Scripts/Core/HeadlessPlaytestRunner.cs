@@ -163,12 +163,14 @@ namespace AlchemistsArsenal.Core
                     foreach (var step in WaitForPhase(GamePhase.Afternoon, 5f)) { if (_errorCount > 0) yield break; yield return step; }
                     if (_errorCount > 0) yield break;
 
-                    // A couple of seconds into the fight — enough for the adventurer to
-                    // have closed in and thrown at least once — for a mid-combat capture.
-                    foreach (var step in SettleFrames(90)) yield return step;
-                    Capture($"day{day}_afternoon_fight");
-
-                    foreach (var step in WaitForExpeditionEnd(90f)) { if (_errorCount > 0) yield break; yield return step; }
+                    // A screenshot roughly every second for the whole fight, not just
+                    // one frame at the start — a player reported the adventurer's
+                    // sprite visibly changing partway through combat, which a single
+                    // "just after Afternoon begins" + a "DEFEAT screen" capture can
+                    // never catch (the DEFEAT frame is taken after the adventurer's
+                    // corpse is already gone — there's no "damaged but still alive"
+                    // frame in that pair at all).
+                    foreach (var step in WaitForExpeditionEndWithCaptures(90f, $"day{day}_afternoon")) { if (_errorCount > 0) yield break; yield return step; }
                     if (_errorCount > 0) yield break;
                     foreach (var step in Settle($"day{day}_afternoon_result")) yield return step;
 
@@ -222,9 +224,13 @@ namespace AlchemistsArsenal.Core
                 Log($"Phase -> {phase} ({Time.unscaledTime - start:F1}s)");
             }
 
-            private IEnumerable WaitForExpeditionEnd(float timeoutSeconds)
+            /// <summary>Like WaitForExpeditionEnd, but takes a screenshot roughly
+            /// every <paramref name="captureEvery"/> real seconds while it waits, so
+            /// the fight's whole timeline is visible afterward, not just one frame.</summary>
+            private IEnumerable WaitForExpeditionEndWithCaptures(float timeoutSeconds, string namePrefix, float captureEvery = 1f)
             {
                 float start = Time.unscaledTime;
+                float nextCapture = start;
                 ExpeditionWorld world = GameLoopManager.Instance.CurrentExpedition;
                 if (world == null || world.Expedition == null)
                 {
@@ -234,11 +240,17 @@ namespace AlchemistsArsenal.Core
 
                 while (world.Expedition.Phase != ExpeditionPhase.Won && world.Expedition.Phase != ExpeditionPhase.Lost)
                 {
-                    if (Time.unscaledTime - start > timeoutSeconds)
+                    float now = Time.unscaledTime;
+                    if (now - start > timeoutSeconds)
                     {
                         Fail($"Expedition never resolved within {timeoutSeconds}s " +
                              $"(stuck at {world.Expedition.Phase}, wave {world.Expedition.WaveNumber}/{world.Expedition.TotalWaves}).");
                         yield break;
+                    }
+                    if (now >= nextCapture)
+                    {
+                        Capture($"{namePrefix}_t{Mathf.RoundToInt(now - start):00}s");
+                        nextCapture = now + captureEvery;
                     }
                     yield return null;
                 }
