@@ -322,7 +322,57 @@ The round 1–4 fixes hold up. The one real miss (R7) is fixed. Approve.
 
 Rounds 1–5 applied **~45 fixes**. Round 5 is the first with no critical/blocker
 and no new bug class — only a single missed-earlier fix (now closed) and notes.
-**The reviewer loop has converged for the code.** The two open items are not
+**The reviewer loop has converged for the code.**
+
+---
+
+## Round 6 — art system + editor-setup fixes (`adversarial-reviewer`)
+
+**Scope:** `PixelSprites.cs` (hand-authored string-grid sprites), the wiring into
+`MonsterSpawner`/`ExpeditionWorld`/`ShopWorld`/`UIFactory`/`BootScreen`, the
+runtime TMP font fallback (`UITheme.Font`), and the persistent `BootCamera`
+(fixes the reported "Display 1 No cameras rendering").
+**Verdict:** 🟠 **CONCERNS** — 0 critical, 3 warnings, notes. All applied.
+
+### WARNINGS
+
+**A1 — ragged sprite grids skew the sprite silently.** Row-length in the string
+constants wasn't validated; a typo'd row (28 vs 29 chars) shifts pixels.
+→ **Fixed:** `BakeTexture` logs a loud warning on a non-uniform grid, and all
+sprite constants were normalised to uniform width.
+
+**A2 — the runtime TMP font fallback can produce a non-null-but-glyphless
+asset**, giving invisible text with no signal.
+→ **Fixed:** `UITheme.Font` now logs which path it took (imported essentials vs.
+runtime fallback vs. total failure) so a broken build is diagnosable, and the
+`ART_BRIEF.md` documents the real fix (`Import TMP Essential Resources`, and how
+to recover if that importer errors — delete `Library/`, reopen).
+
+**A3 — two URP Base cameras** (`BootCamera` depth −100 + the world camera
+depth −1) render each frame; ordering is by depth and normally just works, but
+it wants an editor check.
+→ **Kept** with a comment; if URP complains, the fallback is "BootCamera only,
+repositioned by the loop" (a mechanical change). Documented in `ART_BRIEF.md`.
+
+### NOTES (applied / accepted)
+- `PixelSprites` static cache handles Play-mode-reload destroyed sprites via the
+  `s != null` Unity check (same pattern as `PlaceholderArt`).
+- `Monster(string)` uses a `Contains` dispatch chain — fine for 6 archetypes,
+  documented; a `MonsterData.artKey` field is the Phase-2 cleanup.
+- `ElementSwap` tint glyphs (`g/G/H/n/N`) documented in the palette comments.
+- No security surface: all sprite data is compile-time constants; the font
+  fallback reads OS fonts by hardcoded name (standard Unity API).
+
+### Rubric re-check after the art pass
+- **Assets (cat 3):** L0 → **L1 (solid)**. ~18 original pixel sprites authored
+  in-repo (cauldron, adventurer, 5 monsters, boss, icons, 9-slice, flask, herb,
+  coin, logo), wired in; Credits screen states "made in-house". Reaches L2 with
+  the team's Aseprite pass — now a small, scoped job (`ART_BRIEF.md` manifest).
+- **Story (cat 2):** still L1; the diary now plays authored `cutsceneFrames`
+  when present, so L2 is just ~3 short cutscene sequences (scoped in the brief).
+
+**Net:** the two below-L2 categories both moved from "blocked on a big art
+effort" to "a small, well-defined art task with the code path already there". The two open items are not
 code: (a) the **art pass** (task 0.13 — hard submission gate; Story + Assets
 reach L2 only with real sprites), and (b) **running it in Unity** — everything
 here is compile-verified + covered by `GameLoopSimulationTest` for the pure
