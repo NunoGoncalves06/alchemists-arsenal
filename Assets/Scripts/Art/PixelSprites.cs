@@ -146,7 +146,16 @@ namespace AlchemistsArsenal.Art
             int w = 0;
             foreach (var r in rows) if (r.Length > w) w = r.Length;
 
-            var tex = new Texture2D(w, h, TextureFormat.RGBA32, false)
+            // Every row must be the same width — a ragged constant is an authoring
+            // typo that would skew the sprite. Warn loudly; render it padded.
+            foreach (var r in rows)
+                if (r.Length != w)
+                {
+                    Debug.LogWarning($"[PixelSprites] ragged sprite: a row is {r.Length} wide, expected {w}. Fix the string grid.");
+                    break;
+                }
+
+            var tex = new Texture2D(Mathf.Max(1, w), Mathf.Max(1, h), TextureFormat.RGBA32, false)
             { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "px" };
             var px = new Color32[w * h];
 
@@ -182,40 +191,38 @@ namespace AlchemistsArsenal.Art
         //  SPRITE DATA  (top row = top of image)
         // ================================================================
 
-        // 30 x 30 — the bubbling cauldron (matches the reference: fat body, 3 legs,
-        // side handles, lighter rim, green brew + rising bubbles)
+        // 28 x 28 — the bubbling cauldron (reference: fat body, 3 legs, side
+        // handles, lighter rim, green brew + rising bubbles)
         private static readonly string[] CAULDRON =
         {
-            "..............................",
-            "..............HH..............",
-            "..............HH..............",
-            "..................H...........",
-            ".................HHH..........",
-            "..................H...........",
-            "............H........H........",
-            "...........HHH......HHH.......",
-            "............H........H........",
-            "....KKKKKKKKKKKKKKKKKKKKKKKK...",
-            "...K3333333333333333333333 3K..",
-            "..K3KKKKKKKKKKKKKKKKKKKKKKKK3K.",
-            "..K3K1gG H g GH g G H gG1K3K.",
-            "..K31KgGHGgGHGH GgGHGgGHg1K3K.",
-            ".KK311KKKKKKKKKKKKKKKKKK11 3KK.",
-            "K3K 1111111111111111111111 K3K",
-            "K3K1 111111111111111111111 1K3K",
-            ".K31 12222222222222222222 21K3K",
-            ".K21 12222222222222222222 21 2K",
-            ".K21 1222222333333222222221  2K",
-            ".K21 1222233444444332222221 2K.",
-            ".K21  12222333333322222221  2K.",
-            "..K21  1222222222222222221 2K..",
-            "..K221  1222222222222221  22K..",
-            "...K221  11222222222211  22K...",
-            "....K2221   1111111111  222K...",
-            ".....KK2221           1222KK...",
-            "......K.KKK22222222222KKK.K....",
-            ".....KKK...KKKK...KKKK...KKK...",
-            "....K11K....K11K...K11K...K1K..",
+            ".............................",
+            "..............H..............",
+            ".............HHH.............",
+            "..............H..............",
+            "..........H.......H..........",
+            ".........HHH.....HHH.........",
+            "..........H.......H..........",
+            "...KKKKKKKKKKKKKKKKKKKKKK....",
+            "..K33333333333333333333K3K...",
+            ".K3KKKKKKKKKKKKKKKKKKKKKK3K..",
+            ".K3KgGHGgGHGgGHGgGHGgGHK3K...",
+            ".K3KGgGHGgGHGgGHGgGHGgGK3K...",
+            "KK31KKKKKKKKKKKKKKKKKK13KK...",
+            "K3K111111111111111111111K3K..",
+            "K3K122222222222222222221K3K..",
+            ".K3122222222222222222222 3K..",
+            ".K212222222233332222222212K..",
+            ".K212222223344443222222212K..",
+            ".K2122222233333322222222 2K..",
+            "..K2122222223333222222221K...",
+            "..K221222222222222222221 K...",
+            "...K221222222222222221 2K....",
+            "....K2221111111111111 22K....",
+            ".....KK2211111111111122KK....",
+            "......KKKK222222222 KKKK.....",
+            ".....K11K..KK...KK..K11K.....",
+            "....K11K...K1K...K1K..K1K....",
+            "....KKK....KKK...KKK..KKK....",
         };
 
         // 16 x 16 witch-hat + moon crest for the boot splash
@@ -298,64 +305,64 @@ namespace AlchemistsArsenal.Art
             "..KKK.....KKK...",
         };
 
-        // 14 x 14 — Emberling (fire imp)
+        // 13 x 14 — Emberling (fire imp)
         private static readonly string[] EMBERLING =
         {
-            "......YY......",
-            ".....YRRY.....",
-            "....KRRRRK....",
-            "...KRrRRrRK...",
-            "..KRRRKRRRK...",
-            "..KRRKYKRRK...",
-            "..KRRRRRRRK...",
-            "..KRrRRRRrK...",
-            "...KRRRRRK....",
-            "....KRKRK.....",
-            "....KRK.KRK...",
-            "...KRK...KRK..",
-            "...KK.....KK..",
+            "......YY.....",
+            ".....YRRY....",
+            "....KRRRRK...",
+            "...KRrRRrRK..",
+            "..KRRRKRRRK..",
+            "..KRRKYKRRK..",
+            "..KRRRRRRRK..",
+            "..KRrRRRRrK..",
+            "...KRRRRRK...",
+            "....KRKRK....",
+            "....KRK.KRK..",
+            "...KRK...KRK.",
+            "...KK.....KK.",
             ".............",
         };
 
-        // 14 x 14 — Frostkin (water/ice)
+        // 13 x 14 — Frostkin (water/ice)
         private static readonly string[] FROSTKIN =
         {
-            "......CC......",
-            ".....CBBC.....",
-            "....KBBBBK....",
-            "...KBbBBbBK...",
-            "..KBBBKBBBK...",
-            "..KBBKCKBBK...",
-            "..KBBBBBBBK...",
-            "..KBbBBBBbK...",
-            "..KBBBBBBBK...",
-            "...KBCBCBK....",
-            "...KBK.KBK....",
-            "..KBK...KBK...",
-            "..KK.....KK...",
+            "......CC.....",
+            ".....CBBC....",
+            "....KBBBBK...",
+            "...KBbBBbBK..",
+            "..KBBBKBBBK..",
+            "..KBBKCKBBK..",
+            "..KBBBBBBBK..",
+            "..KBbBBBBbK..",
+            "..KBBBBBBBK..",
+            "...KBCBCBK...",
+            "...KBK.KBK...",
+            "..KBK...KBK..",
+            "..KK.....KK..",
             ".............",
         };
 
-        // 14 x 14 — Coven Acolyte (arcane)
+        // 13 x 14 — Coven Acolyte (arcane)
         private static readonly string[] ACOLYTE =
         {
-            "......KK......",
-            ".....KppK.....",
-            "....KpMMpK....",
-            "...KpMMMMpK...",
-            "...KpMsMspK...",
-            "...KpMMMMpK...",
-            "..KppMMMMppK..",
-            "..KpPPPPPPpK..",
-            "..KpPpPPpPpK..",
-            "..KpPPPPPPpK..",
-            "...KpPPPPpK...",
-            "...KppKKppK...",
-            "..KKK...KKK...",
+            "......KK.....",
+            ".....KppK....",
+            "....KpMMpK...",
+            "...KpMMMMpK..",
+            "...KpMsMspK..",
+            "...KpMMMMpK..",
+            "..KppMMMMppK.",
+            "..KpPPPPPPpK.",
+            "..KpPpPPpPpK.",
+            "..KpPPPPPPpK.",
+            "...KpPPPPpK..",
+            "...KppKKppK..",
+            "..KKK...KKK..",
             ".............",
         };
 
-        // 14 x 14 — Miremaw (poison)
+        // 13 x 13 — Miremaw (poison)
         private static readonly string[] MIREMAW =
         {
             ".............",
@@ -370,7 +377,6 @@ namespace AlchemistsArsenal.Art
             "..KpMMMMMpK..",
             "..KppKpKppK..",
             "..KK..K..KK..",
-            ".............",
             ".............",
         };
 
