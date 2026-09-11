@@ -68,26 +68,41 @@ the same save file) if the Editor already has the project open. Tell the user
 you need it closed rather than silently failing; if you can't confirm it's
 closed, ask.
 
+**ALWAYS launch through a self-enforced hard timeout — never invoke
+`Unity.exe` bare.** A run with no external driver has no timeout of its own;
+one run was left going for ~9 hours before the user killed it by hand. Use
+`<scratchpad>/run_headless_playtest.sh` (default cap 8 minutes — pass a
+different number of minutes as `$1` if you have a reason to):
+
 ```bash
-"/c/Program Files/Unity/Hub/Editor/6000.6.0f1/Editor/Unity.exe" \
-  -batchmode -projectPath "C:/Game-Dev/Game-Repo" \
-  -executeMethod AlchemistsArsenal.EditorTools.HeadlessPlaytest.RunFullLoop \
-  -logFile "C:/Game-Dev/Game-Repo/headless-playtest.log"
+bash "<scratchpad>/run_headless_playtest.sh"
 echo "exit code: $?"
 cat "C:/Game-Dev/Game-Repo/headless-playtest-report.txt"
 ```
 
-**Do NOT add `-nographics`** (screenshots need real rendering) **and do NOT
-add `-quit`.** `RunFullLoop()` returns immediately after arming the flag and
-starting Play Mode — the actual work hasn't happened yet at that point — so
-`-quit` would exit Unity before `HeadlessPlaytestRunner` ever got to run (the
-very first version of this tool hit exactly that: immediate shutdown after
-one log line, which could be mistaken for a fast pass but was actually
-nothing running at all). `HeadlessPlaytestRunner.Finish()` calls
-`EditorApplication.Exit` itself once the loop genuinely finishes.
+If that script isn't in the current scratchpad, recreate it: launch
+`Unity.exe -batchmode -projectPath "C:/Game-Dev/Game-Repo" -executeMethod
+AlchemistsArsenal.EditorTools.HeadlessPlaytest.RunFullLoop -logFile
+"C:/Game-Dev/Game-Repo/headless-playtest.log"` backgrounded (`&`) from
+*inside* the script, capture its PID, poll every few seconds, and
+`taskkill`/`Stop-Process -Force` it (and re-check the process is actually
+gone) once the cap is hit — a shell-level `timeout` command's exit does not
+reliably kill everything a backgrounded `run_in_background: true` Bash call
+spawned, and an outer tool's own `timeout` parameter does not reliably apply
+to a backgrounded command either, so the kill has to be self-enforced inside
+the script, not delegated. **Do NOT add `-nographics`** (screenshots need
+real rendering) **and do NOT add `-quit`** — `RunFullLoop()` returns
+immediately after arming the flag and starting Play Mode, before any of the
+actual work has run, so `-quit` exits Unity before `HeadlessPlaytestRunner`
+ever gets to run (the very first version of this tool hit exactly that:
+looked like an instant pass, was actually nothing running at all).
+`HeadlessPlaytestRunner.Finish()` calls `EditorApplication.Exit` itself once
+the loop genuinely finishes — that's the *intended* exit path; the script's
+timeout is strictly the backstop for when that doesn't happen.
 
-Run it with `run_in_background: true` (Bash tool) and poll rather than
-blocking. When it's done:
+Run the script with `run_in_background: true` (Bash tool) and poll rather
+than blocking — it has its own timeout, so it will always return one way or
+another; you never need to kill it from your side. When it's done:
 
 1. Check exit code and `headless-playtest-report.txt` for `RESULT: PASS` vs
    `FAIL` — if FAIL, the report names the failing step with elapsed time; grep
@@ -122,10 +137,10 @@ What Tier 2 does **not** cover even with screenshots:
 
 ## If you add a new gameplay/UI system
 
-Add a step to `HeadlessPlaytest.Drive()` that exercises it AND captures a
-screenshot of it (or a new `[MenuItem]` entry point for something outside the
-day loop) rather than leaving it uncovered — the skill is only as good as
-what it drives and looks at.
+Add a step to `HeadlessPlaytestRunner.Driver.Drive()` (NOT
+`HeadlessPlaytest.cs` — that file is just the CLI entry point now, see Tier 2)
+that exercises it AND captures a screenshot of it, rather than leaving it
+uncovered — the skill is only as good as what it drives and looks at.
 
 ## Optional upgrade path: a live Editor bridge
 

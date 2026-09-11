@@ -40,6 +40,12 @@ namespace AlchemistsArsenal.Core
             float cdMult = s != null && s.HasUpgrade(UpgradeCatalog.QuickHands) ? 0.75f : 1f;
             int ammoBonus = s != null && s.HasUpgrade(UpgradeCatalog.SpareVials) ? 5 : 0;
 
+            // Day 1 is a first-timer's fight with whatever quality potion they
+            // managed on their very first try at the cauldron — a flat "beginner's
+            // luck" bonus keeps that fight winnable instead of a rough first
+            // impression (playtest: "combat is all fucked" on day 1 specifically).
+            if (s != null && s.day <= 1) dmgMult *= 1.5f;
+
             // Base stats are the "spec" of the potion; the 0..1 quality that scales
             // damage/blast/elemental is carried separately via the live ActiveOrder.
             BombData bomb = BombData.Create(

@@ -46,10 +46,19 @@ namespace AlchemistsArsenal.Combat
             switch (index)
             {
                 case 0:
+                    // Wave 1 was 3x Treant landing almost together (0.7s apart) —
+                    // against a lone adventurer that's an instant 3-way pile-on before
+                    // the AI/movement even gets a foothold (playtest: near-instant
+                    // losses on the very first fight). 2x, spread further apart, gives
+                    // the opening fight room to actually be fought.
                     b.Configure(Names[0], Themes[0], Tints[0], 24f, new[]
                     {
-                        BiomeData.MakeWave(MonsterData.Create("Bark Treant", ElementType.Nature, 55, 1.5f, 3, 6, "Emberleaf", 0.4f), 3, 0.7f, 1f),
-                        BiomeData.MakeWave(MonsterData.Create("Thornling", ElementType.Nature, 34, 2.6f, 2, 5, ""), 4, 0.5f, 1.4f),
+                        BiomeData.MakeWave(MonsterData.Create("Bark Treant", ElementType.Nature, 55, 1.5f, 3, 6, "Emberleaf", 0.4f), 2, 1.1f, 1f),
+                        // Wave 2's 4 Thornlings (2.6 move speed — the fastest early
+                        // monster) landing 0.5s apart was the actual killer once wave 1
+                        // stopped being one (playtest: consistently 2-for-2 on wave 1,
+                        // then dead a few seconds into wave 2). 3x, spread further apart.
+                        BiomeData.MakeWave(MonsterData.Create("Thornling", ElementType.Nature, 34, 2.6f, 2, 5, ""), 3, 0.8f, 1.4f),
                         BiomeData.MakeWave(MonsterData.Create("Mossback", ElementType.Water, 46, 1.9f, 4, 8, "Frostmoss", 0.3f), 3, 0.6f, 1.4f),
                     }, DefaultExpeditionData.BuildBoss("Elder Woodwose", ElementType.Nature, 300));
                     break;

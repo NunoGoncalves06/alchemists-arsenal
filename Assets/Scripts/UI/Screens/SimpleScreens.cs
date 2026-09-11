@@ -254,8 +254,13 @@ namespace AlchemistsArsenal.UI
         protected override void Build()
         {
             UIFactory.Box(transform, UITheme.Ink800, Rt);
-            UIFactory.Label(transform, "TODAY'S PARTY", 30, UITheme.Candle, TextAlignmentOptions.Top, true)
-                .rectTransform.anchorMin = new Vector2(0f, 0.78f);
+            // anchorMin alone (no anchorMax) left anchorMax at a bare RectTransform's
+            // default — an inverted/zero-size rect above anchorMin — collapsing the
+            // title (playtest: found via the same bug class as "THE FOREST ROAD").
+            var title = UIFactory.Label(transform, "TODAY'S PARTY", 30, UITheme.Candle, TextAlignmentOptions.Top, true);
+            title.rectTransform.anchorMin = new Vector2(0f, 0.72f);
+            title.rectTransform.anchorMax = new Vector2(1f, 0.9f);
+            title.rectTransform.offsetMin = title.rectTransform.offsetMax = Vector2.zero;
 
             var card = UIFactory.Panel(transform, UITheme.Ink700, "Card");
             var crt = card.rectTransform;
@@ -294,8 +299,7 @@ namespace AlchemistsArsenal.UI
         protected override void Build()
         {
             UIFactory.Box(transform, UITheme.Ink900, Rt);
-            UIFactory.Label(transform, "THE FOREST ROAD", 30, UITheme.Candle, TextAlignmentOptions.TopLeft, true)
-                .rectTransform.offsetMin = new Vector2(32, -60);
+            UIFactory.TopLabel(transform, "THE FOREST ROAD", 30, UITheme.Candle, bandHeight: 60f, padX: 32f);
             _dynamic = UIFactory.Root(transform, "Dynamic");
         }
 
@@ -330,12 +334,19 @@ namespace AlchemistsArsenal.UI
                 }
             }
 
+            // No anchors were ever set here (only offsetMin/offsetMax) — same bug
+            // class as "THE FOREST ROAD" above: collapsed to a tiny default box and
+            // word-wrapped one character per line (confirmed via a headless-playtest
+            // screenshot). Anchored as a proper bottom-left band, clear of SLEEP
+            // (which sits at x 0.68-0.95).
             var hint = UIFactory.Label(_dynamic,
                 "The road already moved forward when you cleared the biome. Sleeping just passes the night.\n" +
                 "Replay a cleared biome for half the fee (loot still counts) — you never get stuck.",
                 16, UITheme.ParchmentDim, TextAlignmentOptions.BottomLeft);
+            hint.rectTransform.anchorMin = new Vector2(0f, 0f);
+            hint.rectTransform.anchorMax = new Vector2(0.65f, 0.3f);
             hint.rectTransform.offsetMin = new Vector2(32, 24);
-            hint.rectTransform.offsetMax = new Vector2(-500, 80);
+            hint.rectTransform.offsetMax = new Vector2(-16, 0);
 
             var sleep = UIFactory.Button(_dynamic, "SLEEP", () => GameLoopManager.Instance.Sleep(-1));
             var srt = sleep.image.rectTransform;

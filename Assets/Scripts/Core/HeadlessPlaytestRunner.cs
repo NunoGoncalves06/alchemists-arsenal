@@ -1,6 +1,7 @@
 #if UNITY_EDITOR
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
@@ -110,14 +111,22 @@ namespace AlchemistsArsenal.Core
                     if (_errorCount > 0) yield break;
                     foreach (var step in Settle($"day{day}_morning_counter")) yield return step;
 
-                    // Morning: accept an order (same call ACCEPT ORDER makes), then
-                    // check in on Cauldron/Prep/Bottling via the screen's own
-                    // SwitchTab — see the class doc's "reflection note" in the Editor
-                    // half for why there's no simulated mouse click here.
-                    GameLoopManager.Instance.ConfirmOrder("Headless Test Flask", ElementType.Fire);
+                    // Morning: call MorningScreen's own AcceptOrder() — the exact
+                    // method the ACCEPT ORDER button's onClick calls — rather than
+                    // GameLoopManager.ConfirmOrder directly. Calling the manager API
+                    // only LOOKED equivalent: it skipped AcceptOrder's own
+                    // HookOrder()+RefreshOrder() (left the ticket panel stuck on
+                    // "No order yet") and its Prep/Bottling daily-pick reset (left
+                    // both permanently reading "No herbs/seals left today") — both
+                    // confirmed via screenshot review. AcceptOrder() also switches to
+                    // the Cauldron tab itself. See the class doc's "reflection note"
+                    // for why this goes through reflection rather than a simulated
+                    // mouse click.
+                    object morningScreen = UIManager.Instance != null ? UIManager.Instance.ScreenOf(ScreenId.Morning) : null;
+                    CallPrivate(morningScreen, "AcceptOrder");
                     yield return null;
                     ActiveOrder order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
-                    if (order == null) { Fail("ConfirmOrder did not produce a CurrentOrder."); yield break; }
+                    if (order == null) { Fail("AcceptOrder did not produce a CurrentOrder."); yield break; }
                     Log($"Order '{order.potionName}' accepted, quality {order.qualityScore} ({order.GetGrade()})");
 
                     // TutorialManager flips StationsUnlocked on its own coroutine once
@@ -127,12 +136,9 @@ namespace AlchemistsArsenal.Core
                     // (unscaled — TimeControl's speed-up doesn't touch it) before it
                     // even reaches the Counter step that unlocks these tabs, so the
                     // timeout here has to clear that, not just network jitter.
-                    foreach (var step in WaitUntil(() => TutorialManager.StationsUnlocked, 15f, "StationsUnlocked after ConfirmOrder"))
+                    foreach (var step in WaitUntil(() => TutorialManager.StationsUnlocked, 15f, "StationsUnlocked after AcceptOrder"))
                         yield return step;
                     if (_errorCount > 0) yield break;
-
-                    object morningScreen = UIManager.Instance != null ? UIManager.Instance.ScreenOf(ScreenId.Morning) : null;
-                    SwitchMorningTab(morningScreen, "Cauldron");
                     foreach (var step in Settle($"day{day}_morning_cauldron")) yield return step;
 
                     // A moment of real simulated time so the world pot + heat gauge +
@@ -265,20 +271,99 @@ namespace AlchemistsArsenal.Core
             }
 
             // -------------------------------------------------------- screenshots
+            //
+            // ScreenCapture.CaptureScreenshot does NOT work here: it captures at
+            // WaitForEndOfFrame, which never fires in windowless batchmode (no real
+            // frame is ever presented) — the very first real run of this tool
+            // "passed" with every checkpoint logged, and headless-screens/ came back
+            // completely empty. Rendering a dedicated camera to a RenderTexture and
+            // reading it back with ReadPixels works instead: it's pure GPU work with
+            // no dependency on a window or frame presentation. The one thing that
+            // breaks with that approach is the UI — every canvas in this project is
+            // ScreenSpaceOverlay, which draws straight to the (nonexistent) window
+            // and is invisible to ANY camera — so canvases are retargeted to
+            // ScreenSpaceCamera pointed at the capture camera for the duration of
+            // the shot, then restored. This picks up every canvas generically
+            // (FindObjectsByType), not just UIManager's — TutorialManager builds its
+            // own overlay canvas and it needs capturing too.
+
+            private Camera _captureCam;
+            private RenderTexture _captureRT;
+            private const int CapW = 1600, CapH = 900;
+
+            private void EnsureCaptureCamera()
+            {
+                if (_captureCam != null) return;
+                var go = new GameObject("~HeadlessCaptureCamera");
+                go.transform.SetParent(transform, false);
+                _captureCam = go.AddComponent<Camera>();
+                _captureCam.enabled = false; // rendered manually via Render(), never by the normal camera loop
+                _captureRT = new RenderTexture(CapW, CapH, 24, RenderTextureFormat.ARGB32);
+            }
 
             private void Capture(string name)
             {
+                Texture2D tex = null;
+                var restore = new List<(Canvas canvas, RenderMode mode, Camera cam, float plane)>();
                 try
                 {
+                    EnsureCaptureCamera();
+
+                    Camera world = Camera.main;
+                    if (world != null)
+                    {
+                        _captureCam.CopyFrom(world); // matches framing/zoom/clear colour — copies targetTexture too, reset below
+                    }
+                    else
+                    {
+                        _captureCam.orthographic = true;
+                        _captureCam.orthographicSize = 5f;
+                        _captureCam.transform.position = new Vector3(0f, 0f, -10f);
+                        _captureCam.clearFlags = CameraClearFlags.SolidColor;
+                        _captureCam.backgroundColor = new Color(0.106f, 0.078f, 0.122f); // ink-900, matches Bootstrap's own fallback
+                    }
+                    _captureCam.targetTexture = _captureRT;
+                    _captureCam.enabled = false;
+
+                    foreach (var c in FindObjectsByType<Canvas>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                    {
+                        if (c.renderMode != RenderMode.ScreenSpaceOverlay) continue;
+                        restore.Add((c, c.renderMode, c.worldCamera, c.planeDistance));
+                        c.renderMode = RenderMode.ScreenSpaceCamera;
+                        c.worldCamera = _captureCam;
+                        c.planeDistance = 1f;
+                    }
+
+                    _captureCam.Render();
+
+                    RenderTexture prevActive = RenderTexture.active;
+                    RenderTexture.active = _captureRT;
+                    tex = new Texture2D(CapW, CapH, TextureFormat.RGB24, false);
+                    tex.ReadPixels(new Rect(0, 0, CapW, CapH), 0, 0);
+                    tex.Apply();
+                    RenderTexture.active = prevActive;
+
                     string dir = Path.Combine(Directory.GetCurrentDirectory(), ScreensDir);
                     Directory.CreateDirectory(dir);
                     string path = Path.Combine(dir, name + ".png");
-                    ScreenCapture.CaptureScreenshot(path);
+                    File.WriteAllBytes(path, tex.EncodeToPNG());
                     Log($"Screenshot: {ScreensDir}/{name}.png");
                 }
                 catch (Exception e)
                 {
                     Log($"Screenshot '{name}' failed (non-fatal): {e.Message}");
+                }
+                finally
+                {
+                    foreach (var (canvas, mode, cam, plane) in restore)
+                    {
+                        if (canvas == null) continue;
+                        canvas.renderMode = mode;
+                        canvas.worldCamera = cam;
+                        canvas.planeDistance = plane;
+                    }
+                    if (_captureCam != null) _captureCam.targetTexture = null;
+                    if (tex != null) Destroy(tex);
                 }
             }
 

@@ -25,6 +25,7 @@ namespace AlchemistsArsenal.UI
 
         private enum Step { Idle, Welcome, Counter, Cauldron, Done }
         private Step _step = Step.Idle;
+        private Coroutine _runCoroutine;
 
         private Canvas _canvas;
         private CanvasGroup _group;
@@ -52,7 +53,19 @@ namespace AlchemistsArsenal.UI
         {
             var s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
             if (phase == GamePhase.Morning && s != null && !s.tutorialCompleted && _step == Step.Idle)
+            {
                 StartTutorial();
+            }
+            else if (Active && phase != GamePhase.Morning)
+            {
+                // The player moved faster than the tutorial's own pacing — accepted
+                // the order and hit SEND before the Cauldron/Done steps finished on
+                // their own. Without this, the overlay (sorting order 200, above the
+                // game UI's 100) stayed visible at full alpha straight through
+                // Handoff and into the fight: stale coach-bubble text and a bobbing
+                // arrow floating over combat (playtest: "combat is all fucked").
+                CancelTutorial();
+            }
         }
 
         private void StartTutorial()
@@ -61,7 +74,13 @@ namespace AlchemistsArsenal.UI
             StationsUnlocked = false;
             if (GameLoopManager.Instance != null) GameLoopManager.Instance.BudgetRateMultiplier = 0.35f;
             _group.alpha = 1f;
-            StartCoroutine(Run());
+            _runCoroutine = StartCoroutine(Run());
+        }
+
+        private void CancelTutorial()
+        {
+            if (_runCoroutine != null) { StopCoroutine(_runCoroutine); _runCoroutine = null; }
+            Finish();
         }
 
         private static IEnumerator WaitForClickOr(float seconds)
@@ -110,6 +129,8 @@ namespace AlchemistsArsenal.UI
 
         private void Finish()
         {
+            _runCoroutine = null;
+            _step = Step.Idle; // so a later NEW GAME (fresh save) can re-trigger its own tutorial
             Active = false;
             StationsUnlocked = true;
             if (GameLoopManager.Instance != null) GameLoopManager.Instance.BudgetRateMultiplier = 1f;
@@ -146,10 +167,14 @@ namespace AlchemistsArsenal.UI
             ai.raycastTarget = false;
             _arrow.sizeDelta = new Vector2(36, 20);
 
+            // Kept within x <= 0.70: the Morning screen's Order Dock starts at 0.72,
+            // and the bubble previously reached to 0.86 — overlapping the dock's
+            // Ticket panel and garbling its text behind the bubble (playtest
+            // screenshot review).
             var bubble = UIFactory.Panel(go.transform, UITheme.Parchment, "Coach");
             _coach = bubble.rectTransform;
-            _coach.anchorMin = new Vector2(0.14f, 0.79f);
-            _coach.anchorMax = new Vector2(0.86f, 0.915f);
+            _coach.anchorMin = new Vector2(0.10f, 0.79f);
+            _coach.anchorMax = new Vector2(0.70f, 0.915f);
             _coach.offsetMin = _coach.offsetMax = Vector2.zero;
             bubble.raycastTarget = false;
 

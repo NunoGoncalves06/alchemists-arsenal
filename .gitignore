@@ -93,6 +93,10 @@ crashlytics-build.properties
 /headless-playtest-report.txt
 /headless-screens/
 
+# --- Unity auto-recovery (written on an unclean Editor shutdown) ---
+/Assets/_Recovery/
+/Assets/_Recovery.meta
+
 # --- Large binary assets (uncomment per project need) ------------
 # *.mp4
 # *.mov

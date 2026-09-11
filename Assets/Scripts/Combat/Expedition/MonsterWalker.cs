@@ -21,7 +21,10 @@ namespace AlchemistsArsenal.Combat
         [Header("Contact damage (basic monsters)")]
         [SerializeField] private bool dealsContactDamage = true;
         [SerializeField] private int contactDamage = 6;
-        [SerializeField] private float contactInterval = 0.8f;
+        // 0.8 -> 1.1: getting boxed in by 2-3 monsters at once was enough DPS to
+        // drop a full-health adventurer before it could retreat or the AI could
+        // meaningfully fight back (playtest: near-instant losses).
+        [SerializeField] private float contactInterval = 1.1f;
 
         private Rigidbody2D _rb;
         private CombatantBody _body;

@@ -91,6 +91,32 @@ namespace AlchemistsArsenal.UI
             return t;
         }
 
+        /// <summary>
+        /// A single-line header label banded to the TOP edge of its parent, full
+        /// width. Exists because the old pattern — <c>Label(...).rectTransform
+        /// .offsetMin = new Vector2(x, -h)</c> with no anchors touched — left
+        /// anchorMin == anchorMax at a bare RectTransform's default (a small fixed
+        /// point, not a stretched rect), so the label collapsed to Unity's ~100px
+        /// default box and TMP word-wrapped the text one character per line. That
+        /// shipped in seven places (every Morning-screen station header, the
+        /// Upgrades header, HandoffScreen's "TODAY'S PARTY", BiomeMapScreen's "THE
+        /// FOREST ROAD" — the last one was caught by a headless-playtest screenshot
+        /// rendering as a single vertical column of individual letters). Always
+        /// anchor top-band labels through this helper instead of a bare Label +
+        /// one-line offset tweak.
+        /// </summary>
+        public static TextMeshProUGUI TopLabel(Transform parent, string text, int size, Color color,
+            float bandHeight = 44f, float padX = 16f, bool bold = true)
+        {
+            var label = Label(parent, text, size, color, TextAlignmentOptions.TopLeft, bold);
+            var rt = label.rectTransform;
+            rt.anchorMin = new Vector2(0f, 1f);
+            rt.anchorMax = new Vector2(1f, 1f);
+            rt.offsetMin = new Vector2(padX, -bandHeight);
+            rt.offsetMax = new Vector2(-padX, 0f);
+            return label;
+        }
+
         public static Button Button(Transform parent, string text, Action onClick, bool primary = true)
         {
             var img = Panel(parent, primary ? UITheme.Candle : UITheme.Ink700, "Button");

@@ -22,9 +22,9 @@ namespace AlchemistsArsenal.Combat
         public enum MoveState { Approach, Reposition, Throw, Retreat }
 
         [Header("Steering")]
-        [Min(0f)] [SerializeField] private float moveSpeed = 3.5f;
-        [Min(0f)] [SerializeField] private float steerAccel = 18f;
-        [Min(0f)] [SerializeField] private float maxSteerForce = 28f;
+        [Min(0f)] [SerializeField] private float moveSpeed = 4.2f;
+        [Min(0f)] [SerializeField] private float steerAccel = 22f;
+        [Min(0f)] [SerializeField] private float maxSteerForce = 32f;
 
         [Header("Spacing (auto-filled from the loadout if one is set)")]
         [SerializeField] private AdventurerLoadout loadout;
@@ -35,7 +35,7 @@ namespace AlchemistsArsenal.Combat
         [Min(0.1f)] [SerializeField] private float throwTolerance = 2.5f;
 
         [Header("Retreat")]
-        [Range(0f, 1f)] [SerializeField] private float retreatHealthFraction = 0.3f;
+        [Range(0f, 1f)] [SerializeField] private float retreatHealthFraction = 0.4f;
         [SerializeField] private bool logStateChanges;
 
         public MoveState State { get; private set; } = MoveState.Approach;
