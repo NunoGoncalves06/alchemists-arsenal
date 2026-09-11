@@ -37,6 +37,14 @@ namespace AlchemistsArsenal.Crafting
         private float nextDeductionTime;
         private bool mouseOverPot;
 
+        // Room temperature (0.2) starts below the green band (0.4-0.7) by design —
+        // the player has to warm the pot up. Without this flag the cold-penalty
+        // clock started ticking the instant an order existed, even while the player
+        // was still reading the Counter forecast and hadn't opened the Cauldron tab
+        // yet (headless-playtest: quality had already dropped 25 -> 16 before the
+        // driver ever switched tabs). No penalty accrues until the first real stir.
+        private bool everStirred;
+
         // Public properties and events for UI/Presentation
         public float Heat01 => currentHeat;
         public float MinOptimalHeat => minOptimalHeat;
@@ -118,6 +126,7 @@ namespace AlchemistsArsenal.Crafting
             float rawStirSpeed = mouseOverPot ? mouseVelocity.magnitude : 0f;
             smoothedStirSpeed = Mathf.Lerp(smoothedStirSpeed, rawStirSpeed, Time.deltaTime * 6f);
             float stirPower = Mathf.Clamp01(smoothedStirSpeed / Mathf.Max(0.01f, stirSpeedForFullPower));
+            if (stirPower > 0.05f) everStirred = true;
 
             // Heat dynamics: rises with stir power, decays when the spoon is idle.
             currentHeat += (stirPower > 0.05f ? stirPower * heatGainRate : -heatDecayRate) * Time.deltaTime;
@@ -182,6 +191,10 @@ namespace AlchemistsArsenal.Crafting
 
             // Brew is finished — quality is locked, the player just needs to send it.
             if (IsBrewComplete) return;
+
+            // Nothing to penalise yet — the player hasn't opened the pot at all
+            // (room temperature starts cold by design; that's not a mistake to punish).
+            if (!everStirred) return;
 
             bool inGreen = currentHeat >= minOptimalHeat && currentHeat <= maxOptimalHeat;
             bool stirring = stirPower > 0.05f;

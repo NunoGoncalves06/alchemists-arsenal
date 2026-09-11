@@ -84,6 +84,11 @@ crashlytics-build.properties
 /installer/Output/
 
 
+# --- headless playtest output (local, regenerated per run) ---
+/headless-playtest.log
+/headless-playtest-report.txt
+/headless-screens/
+
 # --- Large binary assets (uncomment per project need) ------------
 # *.mp4
 # *.mov

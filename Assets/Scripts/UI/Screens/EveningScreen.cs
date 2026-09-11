@@ -4,14 +4,17 @@ using UnityEngine.UI;
 using TMPro;
 using AlchemistsArsenal.Core;
 using AlchemistsArsenal.Combat;
+using AlchemistsArsenal.Data;
 using AlchemistsArsenal.Audio;
 
 namespace AlchemistsArsenal.UI
 {
     /// <summary>
-    /// Evening shell — Phase 0 ships the Report + a Diary tab (DESIGN.md §7.9).
+    /// Evening shell — Phase 0 ships Report / Upgrades / Diary tabs (DESIGN.md §7.9).
     /// The pay breakdown shows the grade multiplier explicitly (cat-1 legibility,
-    /// reviewer W-R2b): a Poor potion visibly pays 40%.
+    /// reviewer W-R2b): a Poor potion visibly pays 40%. Upgrades is where the gold
+    /// the report just paid out actually goes — <c>RunState.ownedUpgrades</c> existed
+    /// with no shop to spend it in (playtest note).
     /// </summary>
     public class EveningScreen : GameScreen
     {
@@ -27,6 +30,7 @@ namespace AlchemistsArsenal.UI
             srt.anchorMin = new Vector2(0f, 0.92f); srt.anchorMax = new Vector2(1f, 1f);
             srt.offsetMin = srt.offsetMax = Vector2.zero;
             Tab(strip.transform, "REPORT", ShowReport);
+            Tab(strip.transform, "UPGRADES", ShowUpgrades);
             Tab(strip.transform, "DIARY", () => { DiaryScreen.OpenEntryId = null; DiaryScreen.FromOpeningCinematic = false; UIManager.Instance.Show(ScreenId.Diary); });
 
             _gold = UIFactory.Label(strip.transform, "", 18, UITheme.Candle, TextAlignmentOptions.Right, true);
@@ -112,10 +116,65 @@ namespace AlchemistsArsenal.UI
             if (r.bombs.Count == 0) UIFactory.Label(c3, "  (no bombs thrown)", 15, UITheme.ParchmentDim);
         }
 
+        private void ShowUpgrades()
+        {
+            foreach (Transform c in _body) Destroy(c.gameObject);
+            RunState s = SaveSystem.Instance.State;
+
+            UIFactory.Label(_body, $"UPGRADES — permanent, spend gold from today's run ({s.gold} g on hand)", 16,
+                UITheme.Candle, TextAlignmentOptions.TopLeft).rectTransform.offsetMin = new Vector2(0, -30);
+
+            var col = UIFactory.VStack(_body, 10f, new RectOffset(0, 0, 44, 0));
+            var crt = (RectTransform)col.transform;
+            UIFactory.Stretch(crt);
+
+            foreach (var up in UpgradeCatalog.All)
+            {
+                var row = UIFactory.FramedPanel(col.transform, "UpgradeRow");
+                row.gameObject.AddComponent<LayoutElement>().minHeight = 74;
+                var h = UIFactory.HStack(row.transform, 16f, new RectOffset(16, 16, 10, 10));
+                UIFactory.Stretch((RectTransform)h.transform);
+
+                var text = new GameObject("Text", typeof(RectTransform));
+                text.transform.SetParent(h.transform, false);
+                text.AddComponent<LayoutElement>().flexibleWidth = 1;
+                var tv = UIFactory.VStack(text.transform, 2f);
+                UIFactory.Stretch((RectTransform)tv.transform);
+                UIFactory.Label(tv.transform, up.DisplayName, 18, UITheme.Parchment, TextAlignmentOptions.TopLeft, true);
+                UIFactory.Label(tv.transform, up.Description, 14, UITheme.ParchmentDim, TextAlignmentOptions.TopLeft);
+
+                bool owned = s.HasUpgrade(up.Id);
+                bool canAfford = s.gold >= up.Cost;
+                string id = up.Id; int cost = up.Cost;
+                var buy = UIFactory.Button(h.transform, owned ? "OWNED" : $"BUY — {cost} g",
+                    owned ? (System.Action)null : () => BuyUpgrade(id, cost), primary: !owned);
+                buy.interactable = !owned && canAfford;
+                buy.gameObject.AddComponent<LayoutElement>().minWidth = 160;
+            }
+        }
+
+        private void BuyUpgrade(string id, int cost)
+        {
+            RunState s = SaveSystem.Instance.State;
+            if (s.HasUpgrade(id) || s.gold < cost) return;
+            s.AddGold(-cost);
+            s.ownedUpgrades.Add(id);
+            SaveSystem.Instance.MarkDirty();
+            AudioManager.Play(Sfx.Coin);
+            _gold.text = $"{s.gold} g";
+            ShowUpgrades();
+        }
+
         private Transform Column(Transform parent, string title)
         {
             var panel = UIFactory.FramedPanel(parent, "Col");
-            var le = panel.gameObject.AddComponent<LayoutElement>(); le.flexibleWidth = 1;
+            // flexibleHeight matters here: the HStack's childForceExpandHeight is
+            // false, so without it each column collapses to the 9-slice sprite's
+            // native (tiny) preferred height instead of filling the report — that
+            // was the "not even readable" squished-column bug.
+            var le = panel.gameObject.AddComponent<LayoutElement>();
+            le.flexibleWidth = 1;
+            le.flexibleHeight = 1;
             var v = UIFactory.VStack(panel.transform, 8f, new RectOffset(16, 16, 16, 16));
             UIFactory.Stretch((RectTransform)v.transform);
             UIFactory.Label(v.transform, title, 14, UITheme.ParchmentDim, TextAlignmentOptions.TopLeft, true);

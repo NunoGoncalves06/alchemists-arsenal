@@ -118,8 +118,11 @@ namespace AlchemistsArsenal.Core
             rb.freezeRotation = true;
             go.AddComponent<CircleCollider2D>().radius = 0.4f;
 
+            RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+            int maxHp = 120 + (s != null && s.HasUpgrade(UpgradeCatalog.ThickBoots) ? 30 : 0);
+
             var body = go.AddComponent<CombatantBody>();
-            body.Initialise(Team.Adventurer, ElementType.Nature, 120);
+            body.Initialise(Team.Adventurer, ElementType.Nature, maxHp);
             _party.Add(body);
 
             go.AddComponent<AdventurerMovementController>();
