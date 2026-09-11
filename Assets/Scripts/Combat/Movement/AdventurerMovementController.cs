@@ -32,7 +32,7 @@ namespace AlchemistsArsenal.Combat
         [Min(0f)] [SerializeField] private float minSafeRange = 2.5f;
         [Min(0f)] [SerializeField] private float maxRange = 11f;
         [Tooltip("Distance from idealRange within which the adventurer holds and throws.")]
-        [Min(0.1f)] [SerializeField] private float throwTolerance = 1.5f;
+        [Min(0.1f)] [SerializeField] private float throwTolerance = 2.5f;
 
         [Header("Retreat")]
         [Range(0f, 1f)] [SerializeField] private float retreatHealthFraction = 0.3f;
@@ -74,10 +74,12 @@ namespace AlchemistsArsenal.Combat
             float hp = _body.MaxHP > 0 ? (float)_body.CurrentHP / _body.MaxHP : 1f;
             float d = Vector2.Distance(_rb.position, target.Position);
 
-            if (hp <= retreatHealthFraction || d < minSafeRange) return MoveState.Retreat;
+            // Only a real HP scare makes the adventurer flee — being crowded just
+            // means back off to the firing shell (Reposition), not sprint off-camera
+            // forever (playtest: "disappears into thin air").
+            if (hp <= retreatHealthFraction) return MoveState.Retreat;
             if (Mathf.Abs(d - idealRange) <= throwTolerance) return MoveState.Throw;
-            if (d <= maxRange) return MoveState.Reposition;
-            return MoveState.Approach;
+            return MoveState.Reposition;
         }
 
         private Vector2 DesiredVelocity(ICombatant target)
@@ -98,8 +100,10 @@ namespace AlchemistsArsenal.Combat
 
                 // Approach + Reposition: seek the ideal-range shell. `gap` is
                 // positive when too far (move in), negative when too close (back off).
+                // Inside minSafeRange, back off at full speed.
                 default:
                     float gap = d - idealRange;
+                    if (d < minSafeRange) return -dir * moveSpeed;
                     float speed = Mathf.Clamp(gap, -moveSpeed, moveSpeed);
                     return dir * speed;
             }

@@ -264,7 +264,7 @@ namespace AlchemistsArsenal.UI
             _summary = UIFactory.Label(card.transform, "", 20, UITheme.Parchment, TextAlignmentOptions.Center);
             UIFactory.Stretch(_summary.rectTransform, 16f);
 
-            var begin = UIFactory.Button(transform, "BEGIN EXPEDITION  ▶", () => GameLoopManager.Instance.BeginAfternoon());
+            var begin = UIFactory.Button(transform, "BEGIN EXPEDITION", () => GameLoopManager.Instance.BeginAfternoon());
             var brt = begin.image.rectTransform;
             brt.anchorMin = new Vector2(0.38f, 0.16f); brt.anchorMax = new Vector2(0.62f, 0.26f);
             brt.offsetMin = brt.offsetMax = Vector2.zero;
@@ -337,7 +337,7 @@ namespace AlchemistsArsenal.UI
             hint.rectTransform.offsetMin = new Vector2(32, 24);
             hint.rectTransform.offsetMax = new Vector2(-500, 80);
 
-            var sleep = UIFactory.Button(_dynamic, "SLEEP  ▶", () => GameLoopManager.Instance.Sleep(-1));
+            var sleep = UIFactory.Button(_dynamic, "SLEEP", () => GameLoopManager.Instance.Sleep(-1));
             var srt = sleep.image.rectTransform;
             srt.anchorMin = new Vector2(0.68f, 0.14f); srt.anchorMax = new Vector2(0.95f, 0.24f);
             srt.offsetMin = srt.offsetMax = Vector2.zero;

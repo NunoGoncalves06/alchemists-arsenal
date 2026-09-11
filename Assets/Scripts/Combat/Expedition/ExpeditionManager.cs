@@ -17,16 +17,24 @@ namespace AlchemistsArsenal.Combat
     {
         [SerializeField] private BiomeData biome;
         [SerializeField] private MonsterSpawner spawner;
-        [SerializeField] private float warmupSeconds = 1.5f;
-        [SerializeField] private float gapBetweenWaves = 1.5f;
+        [SerializeField] private float warmupSeconds = 1f;
+        [SerializeField] private float gapBetweenWaves = 0.6f;
         [Tooltip("Safety cap — a wave that hasn't cleared by this is force-ended so the run can't hang.")]
-        [Min(5f)] [SerializeField] private float maxWaveSeconds = 60f;
+        [Min(5f)] [SerializeField] private float maxWaveSeconds = 20f;
+        [Tooltip("Safety cap on the boss fight so the run always resolves.")]
+        [Min(10f)] [SerializeField] private float maxBossSeconds = 45f;
+        [SerializeField] private bool bossEnabled = true;
         [SerializeField] private bool logProgress = true;
 
         public ExpeditionPhase Phase { get; private set; } = ExpeditionPhase.Warmup;
         public int WaveNumber { get; private set; }
         public int TotalWaves => biome != null ? biome.Waves.Count : 0;
         public GameObject BossInstance { get; private set; }
+
+        private bool _skipWaveRequested;
+
+        /// <summary>HUD "NEXT WAVE" button — clear the field now and move on.</summary>
+        public void SkipCurrentWave() => _skipWaveRequested = true;
 
         public event Action<ExpeditionPhase> OnPhaseChanged;
         public event Action<int> OnWaveStarted;
@@ -36,10 +44,11 @@ namespace AlchemistsArsenal.Combat
         private bool _running;
 
         /// <summary>Wire the expedition in code and start it (bootstrap / tests).</summary>
-        public void Configure(BiomeData biome, MonsterSpawner spawner)
+        public void Configure(BiomeData biome, MonsterSpawner spawner, bool enableBoss = true)
         {
             this.biome = biome;
             this.spawner = spawner;
+            bossEnabled = enableBoss;
             TryBegin();
         }
 
@@ -64,6 +73,8 @@ namespace AlchemistsArsenal.Combat
             {
                 BiomeData.Wave wave = waves[w];
                 WaveNumber = w + 1;
+                _skipWaveRequested = false; // reset here, not right before the hold loop —
+                                             // a click during spawn-in must still register.
                 OnWaveStarted?.Invoke(WaveNumber);
                 if (logProgress) Debug.Log($"[Expedition] Wave {WaveNumber}/{waves.Count}: {wave.count}x {(wave.monster != null ? wave.monster.DisplayName : "?")}");
 
@@ -77,26 +88,28 @@ namespace AlchemistsArsenal.Combat
                     if (Phase == ExpeditionPhase.Lost) yield break;
                 }
 
-                // Hold until the field is clear before the next wave — with a
-                // safety cap so a stuck straggler can't hang the whole run.
+                // Hold until the field is clear before the next wave. The wave
+                // auto-advances the instant the last monster dies; a safety cap and
+                // the HUD "NEXT WAVE" button both force it early so it can't drag.
                 float held = 0f;
                 while (LiveMonsters() > 0)
                 {
                     if (AllAdventurersDead()) { Lose(); yield break; }
                     held += Time.deltaTime;
-                    if (held >= maxWaveSeconds)
+                    if (_skipWaveRequested || held >= maxWaveSeconds)
                     {
-                        if (logProgress) Debug.LogWarning($"[Expedition] Wave {WaveNumber} timed out with {LiveMonsters()} left — clearing.");
+                        if (logProgress) Debug.Log($"[Expedition] Wave {WaveNumber} ended early ({LiveMonsters()} left).");
                         DespawnLiveMonsters();
                         break;
                     }
                     yield return null;
                 }
+                _skipWaveRequested = false;
                 yield return WaitOrLose(gapBetweenWaves);
                 if (Phase == ExpeditionPhase.Lost) yield break;
             }
 
-            if (biome.HasBoss)
+            if (biome.HasBoss && bossEnabled)
             {
                 SetPhase(ExpeditionPhase.BossFight);
                 if (logProgress) Debug.Log($"[Expedition] BOSS: {biome.Boss.DisplayName}");
@@ -104,9 +117,16 @@ namespace AlchemistsArsenal.Combat
                 Track(BossInstance);
 
                 CombatantBody bossBody = BossInstance != null ? BossInstance.GetComponent<CombatantBody>() : null;
+                float bossHeld = 0f;
                 while (bossBody != null && bossBody.IsAlive)
                 {
                     if (AllAdventurersDead()) { Lose(); yield break; }
+                    bossHeld += Time.deltaTime;
+                    if (bossHeld >= maxBossSeconds)
+                    {
+                        if (logProgress) Debug.LogWarning("[Expedition] Boss fight timed out — resolving as a clear.");
+                        break;
+                    }
                     yield return null;
                 }
             }

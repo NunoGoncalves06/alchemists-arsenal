@@ -35,7 +35,7 @@ namespace AlchemistsArsenal.UI
             _body = UIFactory.Rect(transform, "Body", new Vector2(0f, 0.12f), new Vector2(1f, 0.92f),
                 new Vector2(28, 0), new Vector2(-28, -12));
 
-            var sleep = UIFactory.Button(transform, "SLEEP  ▶", () => GameLoopManager.Instance.BeginBiomeMap());
+            var sleep = UIFactory.Button(transform, "SLEEP", () => GameLoopManager.Instance.BeginBiomeMap());
             var slrt = sleep.image.rectTransform;
             slrt.anchorMin = new Vector2(0.78f, 0.02f); slrt.anchorMax = new Vector2(0.97f, 0.1f);
             slrt.offsetMin = slrt.offsetMax = Vector2.zero;

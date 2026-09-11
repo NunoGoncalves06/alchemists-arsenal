@@ -20,7 +20,7 @@ namespace AlchemistsArsenal.UI
     public class MorningScreen : GameScreen
     {
         private TextMeshProUGUI _dayText, _goldText, _statusText, _qualityText, _logText;
-        private Image _clockFill, _heatFill, _heatBand, _qualityFill;
+        private Image _clockFill, _heatFill, _heatBand, _qualityFill, _brewFill, _bg;
         private RectTransform _counterPanel, _cauldronPanel;
         private Button _counterTab, _cauldronTab, _sendBtn;
         private ElementType _chosenElement = ElementType.Fire;
@@ -28,7 +28,9 @@ namespace AlchemistsArsenal.UI
 
         protected override void Build()
         {
-            UIFactory.Box(transform, UITheme.Ink900, Rt);
+            // Opaque backdrop for the Counter tab; hidden on the Cauldron tab so the
+            // world cauldron (rendered by ShopCamera behind this overlay) shows through.
+            _bg = UIFactory.Box(transform, UITheme.Ink900, Rt);
 
             // top bar
             var bar = UIFactory.Panel(transform, UITheme.Ink800, "TopBar");
@@ -48,7 +50,7 @@ namespace AlchemistsArsenal.UI
             biomeChip.rectTransform.anchorMin = new Vector2(0.58f, 0f); biomeChip.rectTransform.anchorMax = new Vector2(0.85f, 1f);
             biomeChip.rectTransform.offsetMin = biomeChip.rectTransform.offsetMax = Vector2.zero;
             _biomeChip = biomeChip;
-            var cog = UIFactory.Button(bar.transform, "≡", () => UIManager.Instance.Show(ScreenId.Settings), primary: false);
+            var cog = UIFactory.Button(bar.transform, "MENU", () => UIManager.Instance.Show(ScreenId.Settings), primary: false);
             cog.image.rectTransform.anchorMin = new Vector2(0.92f, 0.15f); cog.image.rectTransform.anchorMax = new Vector2(0.99f, 0.85f);
             cog.image.rectTransform.offsetMin = cog.image.rectTransform.offsetMax = Vector2.zero;
 
@@ -112,8 +114,17 @@ namespace AlchemistsArsenal.UI
             p.anchorMin = new Vector2(0.09f, 0f); p.anchorMax = new Vector2(0.72f, 0.93f);
             p.offsetMin = new Vector2(16, 16); p.offsetMax = new Vector2(-16, -16);
 
-            UIFactory.Label(p, "CAULDRON — stir in circles, hold the needle in the green", 16, UITheme.Candle,
+            UIFactory.Label(p, "CAULDRON — mouse over the pot and stir in circles, hold the green", 16, UITheme.Candle,
                 TextAlignmentOptions.TopLeft).rectTransform.offsetMin = new Vector2(4, -44);
+
+            // brew-progress bar (fills while stirring in the green — the minigame's end)
+            var brewBg = UIFactory.Bar(p, UITheme.Ink700, UITheme.Candle, out _brewFill);
+            var wrt = brewBg.rectTransform;
+            wrt.anchorMin = new Vector2(0.1f, 0.16f); wrt.anchorMax = new Vector2(0.9f, 0.2f);
+            wrt.offsetMin = wrt.offsetMax = Vector2.zero;
+            _brewFill.fillAmount = 0f;
+            UIFactory.Label(brewBg.transform, "BREW", 12, UITheme.Ink900, TextAlignmentOptions.Left, true)
+                .rectTransform.offsetMin = new Vector2(6, 0);
 
             var gaugeBg = UIFactory.Bar(p, UITheme.Ink700, UITheme.Ok, out _heatFill);
             var grt = gaugeBg.rectTransform;
@@ -126,7 +137,7 @@ namespace AlchemistsArsenal.UI
 
             _statusText = UIFactory.Label(p, "ACCEPT AN ORDER FIRST", 20, UITheme.ParchmentDim, TextAlignmentOptions.Center, true);
             var srt = _statusText.rectTransform;
-            srt.anchorMin = new Vector2(0.1f, 0.16f); srt.anchorMax = new Vector2(0.9f, 0.24f);
+            srt.anchorMin = new Vector2(0.1f, 0.24f); srt.anchorMax = new Vector2(0.9f, 0.32f);
             srt.offsetMin = srt.offsetMax = Vector2.zero;
             return p;
         }
@@ -161,7 +172,7 @@ namespace AlchemistsArsenal.UI
             _logText = UIFactory.Label(logBg.transform, "", 14, UITheme.Parchment, TextAlignmentOptions.TopLeft);
             UIFactory.Stretch(_logText.rectTransform, 8f);
 
-            _sendBtn = UIFactory.Button(dock.transform, "SEND TO EXPEDITION  ▶", () => GameLoopManager.Instance.BeginHandoff());
+            _sendBtn = UIFactory.Button(dock.transform, "SEND TO EXPEDITION", () => GameLoopManager.Instance.BeginHandoff());
             _sendBtn.image.rectTransform.anchorMin = new Vector2(0.06f, 0.04f);
             _sendBtn.image.rectTransform.anchorMax = new Vector2(0.94f, 0.13f);
             _sendBtn.image.rectTransform.offsetMin = _sendBtn.image.rectTransform.offsetMax = Vector2.zero;
@@ -218,6 +229,7 @@ namespace AlchemistsArsenal.UI
             _cauldron = cauldron;
             _counterPanel.gameObject.SetActive(!cauldron);
             _cauldronPanel.gameObject.SetActive(cauldron);
+            if (_bg != null) _bg.enabled = !cauldron; // let the world pot show on the Cauldron tab
             Tint(_counterTab, !cauldron);
             Tint(_cauldronTab, cauldron);
             if (_cauldronTab != null) _cauldronTab.interactable = TutorialManager.CauldronUnlocked;
@@ -251,7 +263,7 @@ namespace AlchemistsArsenal.UI
             if (_acceptBtn != null)
             {
                 var lbl = _acceptBtn.GetComponentInChildren<TextMeshProUGUI>();
-                if (lbl != null) lbl.text = $"ACCEPT ORDER — BREW {_chosenElement.ToString().ToUpper()}  ▶";
+                if (lbl != null) lbl.text = $"ACCEPT ORDER — BREW {_chosenElement.ToString().ToUpper()}";
             }
         }
 
@@ -338,7 +350,21 @@ namespace AlchemistsArsenal.UI
             _heatBand.rectTransform.anchorMax = new Vector2(hi, 1f);
 
             if (CraftingManager.Instance == null || CraftingManager.Instance.CurrentOrder == null) return;
-            if (heat01 < lo) { _statusText.text = "TOO COLD — STIR FASTER"; _statusText.color = UITheme.Water; _heatFill.color = UITheme.Water; }
+
+            var pot = PhysicsCauldronManager.Instance;
+            if (_brewFill != null) _brewFill.fillAmount = pot.BrewProgress01;
+
+            if (pot.IsBrewComplete)
+            {
+                _statusText.text = "BREW READY — SEND IT OFF";
+                _statusText.color = UITheme.Candle; _heatFill.color = UITheme.Candle;
+            }
+            else if (!pot.MouseOverCauldron)
+            {
+                _statusText.text = "MOVE THE MOUSE OVER THE POT";
+                _statusText.color = UITheme.ParchmentDim; _heatFill.color = UITheme.ParchmentDim;
+            }
+            else if (heat01 < lo) { _statusText.text = "TOO COLD — STIR FASTER"; _statusText.color = UITheme.Water; _heatFill.color = UITheme.Water; }
             else if (heat01 > hi) { _statusText.text = "OVERHEATING — EASE OFF"; _statusText.color = UITheme.Danger; _heatFill.color = UITheme.Danger; }
             else { _statusText.text = "BREWING PERFECTLY — QUALITY CLIMBING"; _statusText.color = UITheme.Ok; _heatFill.color = UITheme.Ok; }
         }
