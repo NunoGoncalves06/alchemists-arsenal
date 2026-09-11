@@ -46,7 +46,10 @@ namespace AlchemistsArsenal.Core
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = sprite;
             sr.sortingOrder = sortingOrder;
-            if (PixelSprites.Unlit != null) sr.sharedMaterial = PixelSprites.Unlit;
+            // Per-texture material — a single shared one makes the whole batch draw
+            // with one texture (see PixelSprites.MaterialFor).
+            Material mat = PixelSprites.MaterialFor(sprite);
+            if (mat != null) sr.sharedMaterial = mat;
             if (worldWidth > 0f && sprite != null && sprite.bounds.size.x > 0.001f)
                 go.transform.localScale = Vector3.one * (worldWidth / sprite.bounds.size.x);
             return sr;

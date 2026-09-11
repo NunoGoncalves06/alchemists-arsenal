@@ -88,7 +88,10 @@ namespace AlchemistsArsenal.Combat
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = sprite;
             sr.sortingOrder = sortingOrder;
-            if (PixelSprites.Unlit != null) sr.sharedMaterial = PixelSprites.Unlit;
+            // Per-texture material — a single shared one makes the whole batch draw
+            // with one texture (see PixelSprites.MaterialFor).
+            Material mat = PixelSprites.MaterialFor(sprite);
+            if (mat != null) sr.sharedMaterial = mat;
         }
     }
 }
