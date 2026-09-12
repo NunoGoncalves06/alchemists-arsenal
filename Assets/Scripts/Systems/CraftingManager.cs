@@ -22,6 +22,14 @@ namespace AlchemistsArsenal.Systems
 
         public ActiveOrder CurrentOrder { get; private set; }
 
+        /// <summary>
+        /// The day's working mixture — the recipe, the leaves actually crushed into
+        /// it, and whether the mortar work is done. Born with the order, because the
+        /// recipe is decided by what the customer asked for. The Cauldron reads
+        /// <see cref="AlchemistsArsenal.Data.BrewMixture.Ready"/> as its gate.
+        /// </summary>
+        public Data.BrewMixture Mixture { get; private set; }
+
         public Action<ActiveOrder> OnOrderStarted;
         public Action<ActiveOrder> OnOrderCompleted;
         public Action<int, float, float> OnTimerChanged; // station index, current, max
@@ -46,6 +54,7 @@ namespace AlchemistsArsenal.Systems
         {
             string orderId = "ORD-" + UnityEngine.Random.Range(1000, 9999);
             CurrentOrder = new ActiveOrder(orderId, potionName, element);
+            Mixture = new Data.BrewMixture(element);
             OnOrderStarted?.Invoke(CurrentOrder);
         }
 
@@ -58,7 +67,11 @@ namespace AlchemistsArsenal.Systems
         }
 
         /// <summary>Clear the order at the end of the day (called by the loop on AdvanceDay).</summary>
-        public void ClearOrder() => CurrentOrder = null;
+        public void ClearOrder()
+        {
+            CurrentOrder = null;
+            Mixture = null;
+        }
 
         public void UpdateTimer(int stationIndex, float current, float max) =>
             OnTimerChanged?.Invoke(stationIndex, current, max);

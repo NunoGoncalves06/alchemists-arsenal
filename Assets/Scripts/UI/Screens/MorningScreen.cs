@@ -28,11 +28,14 @@ namespace AlchemistsArsenal.UI
     {
         // Named StationTab, not Tab — the headless playtest driver reflects on this
         // name and on SwitchTab(StationTab) to drive the screen like a real click.
-        private enum StationTab { Counter, Cauldron, Prep, Bottling }
+        // Prep comes before the Cauldron: you crush and add the leaves, then you
+        // stir them. The Cauldron refuses to brew until the mixture is ready, so the
+        // rail order is the order the work actually happens in.
+        private enum StationTab { Counter, Prep, Cauldron, Bottling }
 
         private readonly StationPanel[] _stations =
         {
-            new CounterStation(), new CauldronStation(), new PrepStation(), new BottlingStation(),
+            new CounterStation(), new PrepStation(), new CauldronStation(), new BottlingStation(),
         };
         private readonly UIKit.RailTab[] _tabs = new UIKit.RailTab[4];
 
@@ -275,7 +278,7 @@ namespace AlchemistsArsenal.UI
             HookOrder();
             foreach (var station in _stations) station.Refresh();
             RefreshDock();
-            SwitchTab(StationTab.Cauldron);
+            SwitchTab(StationTab.Prep);   // the leaves come before the stirring
         }
 
         private void OnStationChanged()
@@ -370,8 +373,10 @@ namespace AlchemistsArsenal.UI
             var pot = PhysicsCauldronManager.Instance;
             bool brewed = pot != null && pot.IsBrewComplete;
             bool bottled = _stations[(int)StationTab.Bottling].Complete;
+            bool prepped = _stations[(int)StationTab.Prep].Complete;
             _sendHint.text = bottled ? "Sealed and labelled — good to go."
                 : brewed ? "Brewed. Bottle it before you send it."
+                : !prepped ? "Crush and add the leaves at the Prep bench first."
                 : "You can send it early — it just won't be as good.";
         }
 

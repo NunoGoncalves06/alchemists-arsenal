@@ -17,17 +17,31 @@ namespace AlchemistsArsenal.Combat
         [SerializeField] private float spawnEdgeX = 13f;
         [SerializeField] private float spawnBandY = 3f;
 
-        public void Configure(ElementalMatrix matrix, float edgeX)
+        /// <summary>
+        /// Spawn placement runs off this spawner's OWN stream, not UnityEngine.Random.
+        ///
+        /// Sharing the global stream made the fight silently depend on how much
+        /// randomness the rest of the game happened to consume first: adding the Prep
+        /// bench's leaf-drop (which jitters each herb) shifted every monster's spawn
+        /// position, so an unrelated crafting feature flipped both expeditions from
+        /// won to lost. Same seed in, same fight out, regardless of what else drew.
+        /// </summary>
+        private System.Random _rng = new System.Random(12345);
+
+        public void Configure(ElementalMatrix matrix, float edgeX, int seed = 12345)
         {
             elementalMatrix = matrix;
             spawnEdgeX = edgeX;
+            _rng = new System.Random(seed);
         }
+
+        private float SpawnY() => (float)(_rng.NextDouble() * 2.0 - 1.0) * spawnBandY;
 
         public GameObject SpawnMonster(MonsterData data)
         {
             if (data == null) return null;
 
-            Vector2 pos = new Vector2(spawnEdgeX, Random.Range(-spawnBandY, spawnBandY));
+            Vector2 pos = new Vector2(spawnEdgeX, SpawnY());
             var go = NewBody($"Monster_{data.DisplayName}", pos, Team.Monster, data.Element, data.MaxHealth, 0.45f);
             go.transform.SetParent(transform, worldPositionStays: true); // under ExpeditionWorld — torn down with it
 

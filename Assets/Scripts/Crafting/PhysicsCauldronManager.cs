@@ -69,8 +69,32 @@ namespace AlchemistsArsenal.Crafting
         // player ever opened the Cauldron tab).
 
         public float Heat01 => currentHeat;
-        public float MinOptimalHeat => Mathf.Clamp01(bandCenter - bandHalfWidth);
-        public float MaxOptimalHeat => Mathf.Clamp01(bandCenter + bandHalfWidth);
+        public float MinOptimalHeat => Mathf.Clamp01(bandCenter - EffectiveBandHalfWidth);
+        public float MaxOptimalHeat => Mathf.Clamp01(bandCenter + EffectiveBandHalfWidth);
+
+        /// <summary>
+        /// The band the player has to hold, widened or narrowed by how well the
+        /// leaves were prepped. A clean mix is genuinely easier to brew; a ruined one
+        /// leaves you chasing a sliver.
+        /// </summary>
+        private float EffectiveBandHalfWidth => bandHalfWidth * _bandScale;
+
+        private float _bandScale = 1f;
+
+        /// <summary>
+        /// The Prep bench's gate. Stirring an empty pot does nothing at all: you crush
+        /// and add the leaves first, then you stir them. Null mixture (a bare test
+        /// scene, a simulation harness) is treated as ready so nothing that predates
+        /// the recipe system deadlocks.
+        /// </summary>
+        public bool MixtureReady
+        {
+            get
+            {
+                var mix = CraftingManager.Instance != null ? CraftingManager.Instance.Mixture : null;
+                return mix == null || mix.Ready;
+            }
+        }
         public Action<float> OnHeatChanged;
 
         /// <summary>0..1 brew completion — climbs only while stirring correctly in the band.</summary>
@@ -149,6 +173,16 @@ namespace AlchemistsArsenal.Crafting
             if (Instance == this) Instance = null;
         }
 
+        /// <summary>
+        /// Called by the Prep bench once the mortar work is done: how good the mix was
+        /// decides how forgiving this pot is going to be.
+        /// </summary>
+        public void ApplyMix(Data.MixOutcome outcome)
+        {
+            _bandScale = Data.RecipeBook.BandScale(outcome);
+            OnHeatChanged?.Invoke(currentHeat);
+        }
+
         /// <summary>Code-wire the herb layer (ShopWorld builds herbs at runtime).</summary>
         public void Configure(LayerMask herbLayers)
         {
@@ -163,6 +197,7 @@ namespace AlchemistsArsenal.Crafting
         public void BeginBrew(int day)
         {
             RequiredClockwise = day % 2 == 1;
+            _bandScale = 1f;
             BrewProgress01 = 0f;
             currentHeat = 0.2f;
             bandPhase = 0f;
@@ -189,8 +224,10 @@ namespace AlchemistsArsenal.Crafting
             Vector2 rel = mouse - (Vector2)transform.position;
             // Unattended, the spoon is not in the player's hand at all — otherwise a
             // cursor resting over where the pot happens to be would stir it through
-            // whatever panel is covering it.
-            mouseOverPot = Attended && rel.sqrMagnitude <= stirringRadius * stirringRadius;
+            // whatever panel is covering it. And there is nothing to stir until the
+            // leaves are crushed and in.
+            mouseOverPot = Attended && MixtureReady
+                           && rel.sqrMagnitude <= stirringRadius * stirringRadius;
 
             TrackSpin(rel);
 
@@ -280,6 +317,7 @@ namespace AlchemistsArsenal.Crafting
             ActiveOrder activeOrder = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
             if (activeOrder == null) return;
             if (!Attended) return;        // not at this bench — see Attended
+            if (!MixtureReady) return;    // nothing in the pot yet — see MixtureReady
             if (IsBrewComplete) return;   // quality is locked; the player just has to send it
             if (!everStirred) return;     // a cold pot nobody has touched isn't a mistake
 

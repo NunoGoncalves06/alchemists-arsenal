@@ -122,16 +122,38 @@ namespace AlchemistsArsenal.UI.Stations
             bool cw = pot == null || pot.RequiredClockwise;
             _recipeDirection.text = order == null ? "" : cw ? "Turn CLOCKWISE" : "Turn ANTICLOCKWISE";
 
+            var mix = Systems.CraftingManager.Instance != null
+                ? Systems.CraftingManager.Instance.Mixture : null;
+            if (mix != null && !mix.Ready)
+                _recipeDirection.text = "Waiting on the Prep bench";
+
             if (_cwHalf != null && _ccwHalf != null && order != null)
             {
                 _cwHalf.color = cw ? UITheme.Alpha(UITheme.Ok, 0.28f) : UITheme.Alpha(UITheme.Danger, 0.16f);
                 _ccwHalf.color = cw ? UITheme.Alpha(UITheme.Danger, 0.16f) : UITheme.Alpha(UITheme.Ok, 0.28f);
             }
 
-            int added = pot != null ? pot.IngredientCount : 0;
-            _ingredients.text = added > 0
-                ? $"{added} prepped ingredient{(added == 1 ? "" : "s")} in the pot."
-                : "No prepped ingredients yet — see the Prep bench.";
+            if (mix == null)
+            {
+                _ingredients.text = "";
+            }
+            else if (!mix.AllLeavesIn)
+            {
+                _ingredients.text = $"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.Danger)}>" +
+                                    $"{mix.Remaining} leaf/leaves still to crush in.</color>" +
+                                    "  " +
+                                    $"Recipe: {mix.Recipe.Shorthand}";
+            }
+            else if (!mix.Ground)
+            {
+                _ingredients.text = $"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.Candle)}>" +
+                                    "Leaves are in — they still need grinding.</color>";
+            }
+            else
+            {
+                _ingredients.text = $"{mix.Added.Count} leaves ground in. " +
+                                    $"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.Ok)}>Ready to brew.</color>";
+            }
         }
 
         public override void Tick()
@@ -158,6 +180,10 @@ namespace AlchemistsArsenal.UI.Stations
             if (!HasOrder)
             {
                 SetStatus("ACCEPT AN ORDER FIRST", UITheme.TextLow);
+            }
+            else if (!pot.MixtureReady)
+            {
+                SetStatus("CRUSH AND ADD THE LEAVES AT PREP FIRST", UITheme.Danger);
             }
             else if (pot.IsBrewComplete)
             {

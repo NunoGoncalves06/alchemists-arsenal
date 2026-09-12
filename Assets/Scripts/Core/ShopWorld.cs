@@ -48,6 +48,11 @@ namespace AlchemistsArsenal.Core
             glowGo.transform.localPosition = new Vector3(0f, 0.35f, 0f);
             _glow = PixelArt.AddDisc(glowGo, new Color(0.4f, 0.9f, 0.4f, 0.22f), -1, 3.4f);
 
+            // Every leaf that goes in makes the brew flare in that leaf's colour, so a
+            // wrong ingredient is something you SEE react in the pot, not just a line
+            // of red text on the bench.
+            Cauldron.OnIngredientAdded += FlashMix;
+
             var potArt = new GameObject("CauldronArt");
             potArt.transform.SetParent(potGo.transform, false);
             PixelArt.AddSprite(potArt, PixelSprites.Cauldron(), 0, 4.6f);
@@ -92,7 +97,22 @@ namespace AlchemistsArsenal.Core
             spoonGo.AddComponent<CauldronSpoon>().Configure(Cauldron, sr);
         }
 
-        /// <summary>Tint the brew glow to the potion being made, and pulse it with the heat.</summary>
+        private Color _flashColor;
+        private float _flashUntil;
+
+        private void FlashMix(Combat.ElementType element)
+        {
+            _flashColor = PixelArt.Element(element);
+            _flashUntil = Time.time + 0.9f;
+        }
+
+        private void OnDestroy()
+        {
+            if (Cauldron != null) Cauldron.OnIngredientAdded -= FlashMix;
+        }
+
+        /// <summary>Tint the brew glow to the potion being made, pulse it with the heat,
+        /// and flare it in a leaf's colour as that leaf is crushed in.</summary>
         private void Update()
         {
             if (_glow == null || Cauldron == null) return;
@@ -103,8 +123,18 @@ namespace AlchemistsArsenal.Core
 
             float heat = Cauldron.Heat01;
             float pulse = 0.14f + heat * 0.34f + Mathf.Sin(Time.time * 3f) * 0.03f;
+            float scale = 3.2f + heat * 0.8f;
+
+            float flash = Mathf.Clamp01((_flashUntil - Time.time) / 0.9f);
+            if (flash > 0f)
+            {
+                tint = Color.Lerp(tint, _flashColor, flash);
+                pulse += flash * 0.45f;
+                scale += flash * 1.1f;
+            }
+
             _glow.color = new Color(tint.r, tint.g, tint.b, Mathf.Clamp01(pulse));
-            _glow.transform.localScale = Vector3.one * (3.2f + heat * 0.8f);
+            _glow.transform.localScale = Vector3.one * scale;
         }
     }
 }

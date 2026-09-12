@@ -54,7 +54,7 @@ namespace AlchemistsArsenal.UI.Stations
             UIFactory.Stretch(_speech.rectTransform, 12f);
 
             // --- today's road ------------------------------------------------
-            var roadCard = UIKit.Card(root, "Today's road — what Rookie will meet", out Transform road);
+            var roadCard = UIKit.Card(root, "Today's road — what they will meet out there", out Transform road);
             UIFactory.Place(roadCard.rectTransform, 0.36f, 0.44f, 1f, 1f);
             _roadBox = road;
 
@@ -227,6 +227,7 @@ namespace AlchemistsArsenal.UI.Stations
             // wherever the cauldron happened to be left from yesterday.
             var pot = Crafting.PhysicsCauldronManager.Instance;
             if (pot != null) pot.BeginBrew(SaveSystem.Instance != null ? SaveSystem.Instance.State.day : 1);
+
 
             BuildOffers();
             Changed?.Invoke();

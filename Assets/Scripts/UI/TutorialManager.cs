@@ -11,7 +11,7 @@ namespace AlchemistsArsenal.UI
     /// <summary>
     /// Day-1 guided tutorial FSM (DESIGN.md §7.11 / eval-audio-usability): slows the
     /// morning budget, gates the Cauldron/Prep/Bottling tabs until the Counter order
-    /// is accepted, and walks the player Counter → Cauldron with a top-docked coach
+    /// is accepted, and walks the player Counter → Prep → Cauldron with a top-docked coach
     /// bubble + pointer arrow. Runs once per save (<see cref="RunState.tutorialCompleted"/>).
     /// </summary>
     public class TutorialManager : MonoBehaviour
@@ -107,8 +107,8 @@ namespace AlchemistsArsenal.UI
 
             StationsUnlocked = true;
             _step = Step.Cauldron;
-            Show("All four stations are open now. At the CAULDRON, hold the spoon over the pot and stir in circles the way the recipe says — keep the heat inside the moving band and the BREW bar fills.",
-                "3 / 3", new Vector2(0.045f, 0.70f));
+            Show("All four benches are open. Work them in order: at PREP, crush in the leaves the recipe asks for and grind them — nothing goes in the pot until you do. Then the CAULDRON will let you stir.",
+                "3 / 3", new Vector2(0.045f, 0.82f));
             while (true)
             {
                 var pot = Crafting.PhysicsCauldronManager.Instance;
@@ -119,7 +119,7 @@ namespace AlchemistsArsenal.UI
             }
 
             _step = Step.Done;
-            Show("PREP adds ingredients before the brew, BOTTLING pours, seals and labels it after — both move the quality score on the right. When you're happy, SEND TO EXPEDITION.\nTime runs at normal speed from tomorrow.\n\n<size=75%>(click to continue)</size>",
+            Show("A clean mix widens the heat band, so good prep makes the stirring easier. BOTTLING pours, seals and labels it after. When you're happy, SEND TO EXPEDITION.\nTime runs at normal speed from tomorrow.\n\n<size=75%>(click to continue)</size>",
                 "done", new Vector2(0.85f, 0.10f));
             AudioManager.Play(Sfx.Chime);
             yield return WaitForClickOr(8f);
