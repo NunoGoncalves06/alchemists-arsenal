@@ -155,6 +155,14 @@ namespace AlchemistsArsenal.Core
                     foreach (var step in WaitUntil(() => TutorialManager.StationsUnlocked, 15f, "StationsUnlocked after AcceptOrder"))
                         yield return step;
                     if (_errorCount > 0) yield break;
+                    // Prep comes first now: the Cauldron will not brew until the
+                    // recipe's leaves are crushed in and ground, so a driver that
+                    // skipped straight to stirring would sit on a cold pot forever.
+                    SwitchMorningTab(morningScreen, "Prep");
+                    foreach (var step in Settle($"day{day}_morning_prep")) yield return step;
+                    CompletePrep(order);
+
+                    SwitchMorningTab(morningScreen, "Cauldron");
                     foreach (var step in Settle($"day{day}_morning_cauldron")) yield return step;
 
                     // A moment of real simulated time so the world pot + heat gauge +
@@ -165,8 +173,6 @@ namespace AlchemistsArsenal.Core
 
                     if (day == DaysToRun)
                     {
-                        SwitchMorningTab(morningScreen, "Prep");
-                        foreach (var step in Settle($"day{day}_morning_prep")) yield return step;
                         SwitchMorningTab(morningScreen, "Bottling");
                         foreach (var step in Settle($"day{day}_morning_bottling")) yield return step;
                     }
@@ -210,6 +216,37 @@ namespace AlchemistsArsenal.Core
 
                 if (_errorCount == 0) Log("=== FULL LOOP COMPLETED — all days resolved cleanly ===");
                 Finish();
+            }
+
+            /// <summary>
+            /// Follow the day's recipe exactly and grind it. This works the mixture
+            /// directly rather than clicking bench cards: which tray slot holds which
+            /// leaf is a per-day shuffle, and a driver that guessed slots would be
+            /// testing the shuffle rather than the loop. The effects it triggers
+            /// (quality swing, cauldron band width) are the same ones the bench
+            /// applies.
+            /// </summary>
+            private void CompletePrep(ActiveOrder order)
+            {
+                var mix = CraftingManager.Instance != null ? CraftingManager.Instance.Mixture : null;
+                if (mix == null) { Log("No mixture on the order — Prep skipped."); return; }
+
+                var pot = Crafting.PhysicsCauldronManager.Instance;
+                foreach (ElementType leaf in mix.Recipe.Steps)
+                {
+                    if (mix.AllLeavesIn) break;
+                    mix.Added.Add(leaf);
+                    if (pot != null) pot.DropIngredient(leaf);
+                }
+
+                mix.Ground = true;
+                Data.MixOutcome outcome = mix.Evaluate();
+                int delta = Data.RecipeBook.QualityDelta(outcome);
+                if (delta != 0)
+                    order.AdjustQuality(delta, "Prep", $"{outcome} mix — {mix.Recipe.Name}");
+                if (pot != null) pot.ApplyMix(outcome);
+
+                Log($"Prep: {mix.Recipe.Name} ({mix.Recipe.Shorthand}) -> {outcome} mix, quality {order.qualityScore}");
             }
 
             private void SwitchMorningTab(object morningScreen, string stationTabName)

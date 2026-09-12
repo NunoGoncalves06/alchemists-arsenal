@@ -79,7 +79,12 @@ namespace AlchemistsArsenal.Core
 
             var spawner = new GameObject("MonsterSpawner").AddComponent<MonsterSpawner>();
             spawner.transform.SetParent(transform, false);
-            spawner.Configure(matrix, biome.ArenaWidth * 0.5f);
+            // Deterministic per (day, biome) so a fight is reproducible, and isolated
+            // from the global random stream so unrelated features cannot shift it.
+            RunState run = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+            int day = run != null ? run.day : 1;
+            int biomeIndex = run != null ? run.TargetBiomeIndex : 0;
+            spawner.Configure(matrix, biome.ArenaWidth * 0.5f, 7919 * day + 31 * biomeIndex);
 
             Expedition = new GameObject("ExpeditionManager").AddComponent<ExpeditionManager>();
             Expedition.transform.SetParent(transform, false);
