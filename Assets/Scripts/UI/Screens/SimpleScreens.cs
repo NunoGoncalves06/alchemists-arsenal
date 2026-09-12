@@ -4,6 +4,7 @@ using UnityEngine.UI;
 using TMPro;
 using AlchemistsArsenal.Core;
 using AlchemistsArsenal.Combat;
+using AlchemistsArsenal.Data;
 using AlchemistsArsenal.Story;
 
 namespace AlchemistsArsenal.UI
@@ -253,46 +254,80 @@ namespace AlchemistsArsenal.UI
 
     public class HandoffScreen : GameScreen
     {
-        private TextMeshProUGUI _summary;
+        private TextMeshProUGUI _flaskName, _grade, _contract, _quality;
+        private UnityEngine.UI.Image _flaskArt;
 
         protected override void Build()
         {
             UIFactory.Box(transform, UITheme.Ground, Rt);
-            // anchorMin alone (no anchorMax) left anchorMax at a bare RectTransform's
-            // default — an inverted/zero-size rect above anchorMin — collapsing the
-            // title (playtest: found via the same bug class as "THE FOREST ROAD").
-            var title = UIFactory.Title(transform, "Today's party", UITheme.SizeTitle, UITheme.Candle,
-                TextAlignmentOptions.Top);
-            title.rectTransform.anchorMin = new Vector2(0f, 0.72f);
-            title.rectTransform.anchorMax = new Vector2(1f, 0.9f);
-            title.rectTransform.offsetMin = title.rectTransform.offsetMax = Vector2.zero;
 
-            var card = UIFactory.Panel(transform, UITheme.Surface, "Card");
-            var crt = card.rectTransform;
-            crt.anchorMin = new Vector2(0.32f, 0.4f); crt.anchorMax = new Vector2(0.68f, 0.72f);
-            crt.offsetMin = crt.offsetMax = Vector2.zero;
-            _summary = UIFactory.Label(card.transform, "", UITheme.SizeHeading, UITheme.TextHi, TextAlignmentOptions.Center);
-            UIFactory.Stretch(_summary.rectTransform, 16f);
+            var title = UIFactory.Title(transform, "Today's party", UITheme.SizeTitle, UITheme.Candle,
+                TextAlignmentOptions.Center);
+            UIFactory.Place(title.rectTransform, 0f, 0.78f, 1f, 0.88f);
+            var sub = UIFactory.Heading(transform, "what Rookie carries out of the shop", UITheme.TextLow,
+                UITheme.SizeSmall, TextAlignmentOptions.Center);
+            UIFactory.Place(sub.rectTransform, 0f, 0.74f, 1f, 0.78f);
+
+            // A plain bordered surface, not a Card: everything in here is anchored by
+            // hand, so a layout stack would only fight it.
+            var card = UIKit.Surface(transform, out Transform box, UITheme.Surface, UITheme.Line, "PartyCard");
+            UIFactory.Place(card.rectTransform, 0.30f, 0.34f, 0.70f, 0.72f);
+
+            var portrait = UIKit.Portrait(box, Art.PixelSprites.Rookie(), 120f);
+            var frame = (RectTransform)portrait.transform.parent.parent;   // art > mat > frame
+            UIFactory.Place(frame, 0.06f, 0.30f, 0.32f, 0.92f);
+
+            var who = UIFactory.Title(box, "Rookie", UITheme.SizeHeading + 2, UITheme.TextHi);
+            UIFactory.Place(who.rectTransform, 0.36f, 0.74f, 0.96f, 0.92f);
+
+            _flaskArt = UIFactory.Icon(box, Art.PixelSprites.Flask(ElementType.Nature), 56f);
+            UIFactory.Place(_flaskArt.rectTransform, 0.36f, 0.40f, 0.48f, 0.70f);
+
+            _flaskName = UIFactory.Label(box, "", UITheme.SizeBody, UITheme.TextHi, TextAlignmentOptions.Left, true);
+            UIFactory.Place(_flaskName.rectTransform, 0.50f, 0.56f, 0.96f, 0.72f);
+
+            _grade = UIFactory.Label(box, "", UITheme.SizeBody, UITheme.Candle, TextAlignmentOptions.Left);
+            UIFactory.Place(_grade.rectTransform, 0.50f, 0.40f, 0.96f, 0.56f);
+
+            _quality = UIFactory.MonoLabel(box, "", UITheme.SizeSmall, UITheme.TextMid, TextAlignmentOptions.Left);
+            UIFactory.Place(_quality.rectTransform, 0.36f, 0.24f, 0.96f, 0.38f);
+
+            _contract = UIFactory.Label(box, "", UITheme.SizeSmall, UITheme.TextLow, TextAlignmentOptions.Left);
+            UIFactory.Place(_contract.rectTransform, 0.06f, 0.06f, 0.96f, 0.24f);
 
             var begin = UIFactory.Button(transform, "BEGIN EXPEDITION", () => GameLoopManager.Instance.BeginAfternoon());
-            var brt = begin.image.rectTransform;
-            brt.anchorMin = new Vector2(0.38f, 0.16f); brt.anchorMax = new Vector2(0.62f, 0.26f);
-            brt.offsetMin = brt.offsetMax = Vector2.zero;
+            UIFactory.Place(begin.image.rectTransform, 0.38f, 0.18f, 0.62f, 0.27f);
         }
 
         protected override void OnShow()
         {
-            var order = CraftingManager != null ? CraftingManager.CurrentOrder : null;
+            var order = Systems.CraftingManager.Instance != null
+                ? Systems.CraftingManager.Instance.CurrentOrder : null;
+            var job = SaveSystem.Instance != null && SaveSystem.Instance.State != null
+                ? SaveSystem.Instance.State.contract : null;
+
             if (order == null)
             {
-                _summary.text = "Rookie carries a Raw Sludge flask.\nYou didn't finish a potion today.";
+                _flaskArt.sprite = Art.PixelSprites.Flask(ElementType.Poison);
+                _flaskName.text = "Raw Sludge";
+                _grade.text = "<color=#d64550>NOTHING FINISHED</color>";
+                _quality.text = "";
+                _contract.text = "You never took a job today. Rookie goes out with the dregs.";
                 return;
             }
-            _summary.text = $"Rookie carries <b>{order.potionName}</b>\n" +
-                            $"{order.element} · <color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(order.GetGrade()))}>{order.GetGrade()}</color>  ({order.qualityScore}/100)";
-        }
 
-        private static Systems.CraftingManager CraftingManager => Systems.CraftingManager.Instance;
+            var grade = order.GetGrade();
+            _flaskArt.sprite = Art.PixelSprites.Flask(order.element);
+            _flaskName.text = order.potionName;
+            _grade.text = $"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(grade))}>" +
+                          $"{grade.ToString().ToUpperInvariant()}</color>";
+            _quality.text = $"quality {order.qualityScore} / 100";
+            _contract.text = job != null && job.accepted
+                ? job.Meets(grade)
+                    ? $"{job.buyerName} asked for {job.RequiredGrade.ToString().ToUpperInvariant()} or better — this clears it."
+                    : $"{job.buyerName} asked for {job.RequiredGrade.ToString().ToUpperInvariant()} or better. This is short, and they will pay half."
+                : "";
+        }
     }
 
     // ---------------------------------------------------------------- Biome map
@@ -304,60 +339,87 @@ namespace AlchemistsArsenal.UI
         protected override void Build()
         {
             UIFactory.Box(transform, UITheme.Ground, Rt);
+
             var road = UIFactory.Title(transform, "The forest road", UITheme.SizeTitle);
-            UIFactory.Place(road.rectTransform, 0f, 0.88f, 1f, 0.98f, 32f);
+            UIFactory.Place(road.rectTransform, 0f, 0.88f, 1f, 0.97f, 34f);
+            var sub = UIFactory.Heading(transform, "where Rookie walks tomorrow", UITheme.TextLow);
+            UIFactory.Place(sub.rectTransform, 0f, 0.84f, 1f, 0.88f, 36f);
+
             _dynamic = UIFactory.Root(transform, "Dynamic");
         }
 
         protected override void OnShow()
         {
-            foreach (Transform c in _dynamic) Destroy(c.gameObject);
+            for (int i = _dynamic.childCount - 1; i >= 0; i--) Destroy(_dynamic.GetChild(i).gameObject);
             var s = SaveSystem.Instance.State;
 
-            var v = UIFactory.VStack(_dynamic, 8f, new RectOffset(32, 32, 90, 0));
-            var list = (RectTransform)v.transform;
-            list.anchorMin = new Vector2(0f, 0.28f); list.anchorMax = new Vector2(0.62f, 1f);
-            list.offsetMin = list.offsetMax = Vector2.zero;
+            var card = UIKit.Card(_dynamic, "The five roads", out Transform list, spacing: 8f);
+            UIFactory.Place(card.rectTransform, 0.05f, 0.2f, 0.62f, 0.82f);
 
-            for (int i = 0; i < BiomeLibrary.Count; i++)
-            {
-                bool unlocked = s.IsBiomeUnlocked(i);
-                bool current = i == s.currentBiomeIndex;
-                int stars = s.bestGrades[i];
-                string starStr = stars > 0 ? new string('*', stars) : "";
-                var row = UIFactory.HStack(list.transform, 10f);
-                row.gameObject.AddComponent<LayoutElement>().minHeight = 40;
-                UIFactory.ElementBadge(row.transform, BiomeLibrary.Theme(i), 26);
-                var lbl = UIFactory.Label(row.transform, $"{BiomeLibrary.Name(i)}  {starStr}", 18,
-                    current ? UITheme.Candle : (unlocked ? UITheme.Parchment : UITheme.WoodDark));
-                lbl.rectTransform.sizeDelta = new Vector2(340, 30);
+            for (int i = 0; i < BiomeLibrary.Count; i++) BuildRoadRow(list, s, i);
 
-                if (unlocked && stars > 0 && i != s.currentBiomeIndex)
-                {
-                    int idx = i;
-                    var rp = UIFactory.Button(row.transform, "REPLAY", () => GameLoopManager.Instance.Sleep(idx), primary: false);
-                    var le = rp.gameObject.AddComponent<LayoutElement>(); le.minWidth = 100; le.minHeight = 30;
-                }
-            }
+            var hintCard = UIKit.Card(_dynamic, "How the road works", out Transform hint, spacing: 6f);
+            UIFactory.Place(hintCard.rectTransform, 0.05f, 0.04f, 0.62f, 0.17f);
+            UIFactory.Label(hint,
+                "Clearing a biome already moved you forward — sleeping just passes the night.\n" +
+                "Replaying a cleared road pays half the fee (loot still counts), so you can never get stuck.",
+                UITheme.SizeSmall, UITheme.TextMid);
 
-            // No anchors were ever set here (only offsetMin/offsetMax) — same bug
-            // class as "THE FOREST ROAD" above: collapsed to a tiny default box and
-            // word-wrapped one character per line (confirmed via a headless-playtest
-            // screenshot). Anchored as a proper bottom-left band, clear of SLEEP
-            // (which sits at x 0.68-0.95).
-            var hint = UIFactory.Label(_dynamic,
-                "The road already moved forward when you cleared the biome. Sleeping just passes the night.\n" +
-                "Replay a cleared biome for half the fee (loot still counts) — you never get stuck.",
-                16, UITheme.ParchmentDim, TextAlignmentOptions.BottomLeft);
-            hint.rectTransform.anchorMin = new Vector2(0f, 0f);
-            hint.rectTransform.anchorMax = new Vector2(0.65f, 0.3f);
-            hint.rectTransform.offsetMin = new Vector2(32, 24);
-            hint.rectTransform.offsetMax = new Vector2(-16, 0);
+            var next = UIKit.Card(_dynamic, "Tomorrow", out Transform nextBox, spacing: 6f);
+            UIFactory.Place(next.rectTransform, 0.66f, 0.2f, 0.95f, 0.5f);
+            int target = s.TargetBiomeIndex;
+            var themeBadge = UIFactory.ElementBadge(nextBox, BiomeLibrary.Theme(target), 40f);
+            UIFactory.FixedHeight(themeBadge.gameObject, 40f);
+            var where = UIFactory.Title(nextBox, BiomeLibrary.Name(target), UITheme.SizeHeading + 2);
+            UIFactory.FixedHeight(where.gameObject, 34f);
+            UIFactory.Label(nextBox,
+                s.IsReplayDay
+                    ? "A road you have walked before. Half the fee, but pay all the same."
+                    : "The next road you have not cleared.",
+                UITheme.SizeSmall, UITheme.TextMid);
 
             var sleep = UIFactory.Button(_dynamic, "SLEEP", () => GameLoopManager.Instance.Sleep(-1));
-            var srt = sleep.image.rectTransform;
-            srt.anchorMin = new Vector2(0.68f, 0.14f); srt.anchorMax = new Vector2(0.95f, 0.24f);
-            srt.offsetMin = srt.offsetMax = Vector2.zero;
+            UIFactory.Place(sleep.image.rectTransform, 0.66f, 0.06f, 0.95f, 0.15f);
+        }
+
+        private void BuildRoadRow(Transform parent, RunState s, int index)
+        {
+            bool unlocked = s.IsBiomeUnlocked(index);
+            bool current = index == s.TargetBiomeIndex;
+            int stars = s.bestGrades[index];
+
+            Image row = UIKit.Surface(parent, out Transform inner,
+                current ? UITheme.SurfaceTop : UITheme.SurfaceHi,
+                current ? UITheme.Candle : UITheme.LineSoft, "Road");
+            UIFactory.FixedHeight(row.gameObject, 62f);
+
+            var badge = UIFactory.ElementBadge(inner, BiomeLibrary.Theme(index), 30f);
+            UIFactory.Place(badge.rectTransform, 0.02f, 0.24f, 0.08f, 0.76f);
+
+            var name = UIFactory.Label(inner, BiomeLibrary.Name(index), UITheme.SizeBody,
+                current ? UITheme.Candle : unlocked ? UITheme.TextHi : UITheme.TextLow,
+                TextAlignmentOptions.Left, current);
+            UIFactory.Place(name.rectTransform, 0.10f, 0f, 0.52f, 1f);
+
+            var state = UIFactory.Label(inner,
+                current ? "tomorrow's road" : !unlocked ? "locked" : stars > 0 ? "cleared" : "open",
+                UITheme.SizeTiny, UITheme.TextLow, TextAlignmentOptions.Left);
+            UIFactory.Place(state.rectTransform, 0.53f, 0f, 0.70f, 1f);
+
+            for (int i = 0; i < 3; i++)
+            {
+                var star = UIFactory.Icon(inner, Art.PixelSprites.Star(), 20f,
+                    i < stars ? Color.white : UITheme.Alpha(Color.white, 0.14f));
+                UIFactory.Place(star.rectTransform, 0.70f + i * 0.055f, 0.3f, 0.745f + i * 0.055f, 0.7f);
+            }
+
+            if (unlocked && stars > 0 && !current)
+            {
+                int idx = index;
+                var replay = UIFactory.Button(inner, "REPLAY", () => GameLoopManager.Instance.Sleep(idx),
+                    primary: false);
+                UIFactory.Place(replay.image.rectTransform, 0.87f, 0.16f, 0.98f, 0.84f);
+            }
         }
     }
 }

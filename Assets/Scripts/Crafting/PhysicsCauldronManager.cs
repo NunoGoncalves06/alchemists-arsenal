@@ -82,6 +82,16 @@ namespace AlchemistsArsenal.Crafting
         /// <summary>True while the cursor is inside the pot — the spoon only bites here.</summary>
         public bool MouseOverCauldron => mouseOverPot;
 
+        /// <summary>
+        /// True while the player is actually standing at the Cauldron (the tab is
+        /// open). The simulation keeps running either way — the pot really does cool
+        /// down while you are at another bench, which is fair and visible when you
+        /// come back — but nothing is SCORED off it: docking quality every second
+        /// while the player is legitimately picking herbs at the Prep bench is a
+        /// penalty for playing the rest of the game. Set by the Cauldron station.
+        /// </summary>
+        public bool Attended { get; set; }
+
         /// <summary>Which way today's recipe wants the spoon turned.</summary>
         public bool RequiredClockwise { get; private set; }
 
@@ -177,7 +187,10 @@ namespace AlchemistsArsenal.Crafting
             lastMousePosition = mouse;
 
             Vector2 rel = mouse - (Vector2)transform.position;
-            mouseOverPot = rel.sqrMagnitude <= stirringRadius * stirringRadius;
+            // Unattended, the spoon is not in the player's hand at all — otherwise a
+            // cursor resting over where the pot happens to be would stir it through
+            // whatever panel is covering it.
+            mouseOverPot = Attended && rel.sqrMagnitude <= stirringRadius * stirringRadius;
 
             TrackSpin(rel);
 
@@ -266,6 +279,7 @@ namespace AlchemistsArsenal.Crafting
         {
             ActiveOrder activeOrder = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
             if (activeOrder == null) return;
+            if (!Attended) return;        // not at this bench — see Attended
             if (IsBrewComplete) return;   // quality is locked; the player just has to send it
             if (!everStirred) return;     // a cold pot nobody has touched isn't a mistake
 
