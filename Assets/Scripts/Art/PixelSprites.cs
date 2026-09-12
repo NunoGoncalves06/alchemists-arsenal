@@ -104,6 +104,30 @@ namespace AlchemistsArsenal.Art
         /// triangle, not a symmetric diamond (which reads as a ball, not an arrow).</summary>
         public static Sprite PointerArrow() => Bake("pointer_arrow", POINTER_ARROW);
 
+        // --- station iconography + props -------------------------------------
+        public static Sprite Bell() => Bake("bell", BELL);              // Counter
+        public static Sprite Mortar() => Bake("mortar", MORTAR);        // Prep
+        public static Sprite Spoon() => Bake("spoon", SPOON);           // the stirring spoon (world)
+        public static Sprite Star() => Bake("star", STAR);
+        public static Sprite Lock() => Bake("lock", LOCK);
+
+        /// <summary>
+        /// A customer bust for the Counter. Ids come from
+        /// <c>Data.CustomerCatalog</c>; an unknown id falls back to the knight so a
+        /// new catalog entry can never render as nothing.
+        /// </summary>
+        public static Sprite Buyer(string id)
+        {
+            switch ((id ?? "").ToLowerInvariant())
+            {
+                case "herbalist": return Bake("buyer_herbalist", BUYER_HERBALIST);
+                case "merchant": return Bake("buyer_merchant", BUYER_MERCHANT);
+                case "envoy": return Bake("buyer_envoy", BUYER_ENVOY);
+                case "rookie": return Rookie();
+                default: return Bake("buyer_knight", BUYER_KNIGHT);
+            }
+        }
+
         public static Sprite Monster(string name)
         {
             string key = (name ?? "").ToLowerInvariant();
@@ -212,38 +236,41 @@ namespace AlchemistsArsenal.Art
         //  SPRITE DATA  (top row = top of image)
         // ================================================================
 
-        // 28 x 28 — the bubbling cauldron (reference: fat body, 3 legs, side
-        // handles, lighter rim, green brew + rising bubbles)
+        // 28 x 28 — the bubbling cauldron: fat tapering body, 3 legs, side handles,
+        // lighter rim, green brew, rising bubbles. Redrawn on a strict 28-wide grid —
+        // the previous version had rows of two different lengths and handles that
+        // landed on a different column each row, so the right-hand rim rendered as
+        // loose blocks floating off the pot.
         private static readonly string[] CAULDRON =
         {
-            ".............................",
-            "..............H..............",
-            ".............HHH.............",
-            "..............H..............",
-            "..........H.......H..........",
-            ".........HHH.....HHH.........",
-            "..........H.......H..........",
-            "...KKKKKKKKKKKKKKKKKKKKKK....",
-            "..K33333333333333333333K3K...",
-            ".K3KKKKKKKKKKKKKKKKKKKKKK3K..",
-            ".K3KgGHGgGHGgGHGgGHGgGHK3K...",
-            ".K3KGgGHGgGHGgGHGgGHGgGK3K...",
-            "KK31KKKKKKKKKKKKKKKKKK13KK...",
-            "K3K111111111111111111111K3K..",
-            "K3K122222222222222222221K3K..",
-            ".K3122222222222222222222 3K..",
-            ".K212222222233332222222212K..",
-            ".K212222223344443222222212K..",
-            ".K2122222233333322222222 2K..",
-            "..K2122222223333222222221K...",
-            "..K221222222222222222221 K...",
-            "...K221222222222222221 2K....",
-            "....K2221111111111111 22K....",
-            ".....KK2211111111111122KK....",
-            "......KKKK222222222 KKKK.....",
-            ".....K11K..KK...KK..K11K.....",
-            "....K11K...K1K...K1K..K1K....",
-            "....KKK....KKK...KKK..KKK....",
+            ".............HH.............",
+            "............HGGH............",
+            "............HGGH............",
+            ".......HH....HH....HH.......",
+            "......HGGH........HGGH......",
+            "......HGGH........HGGH......",
+            ".......HH..........HH.......",
+            ".KKKKKKKKKKKKKKKKKKKKKKKKKK.",
+            ".K444444444444444444444444K.",
+            ".K333333333333333333333333K.",
+            "KK1GHGGGHGGGHGGGHGGGHGGGH1KK",
+            "KK1GHHGGHHGGHHGGHHGGHHGGH1KK",
+            "KK1KKKKKKKKKKKKKKKKKKKKKK1KK",
+            "K23333333333333333333333332K",
+            "K23333334433333333333333332K",
+            "K23333344443333333333333332K",
+            "K23333344433333333333333332K",
+            "K23333334333333333333333332K",
+            "K23333333333333333333333332K",
+            "K23333333333333333333333332K",
+            "K23333333333333333333333332K",
+            ".K233333333333333333333332K.",
+            "..K2222222222222222222222K..",
+            "...K22222222222222222222K...",
+            ".....K2222222222222222K.....",
+            "......K22222222222222K......",
+            ".......K2K..K2K...K2K.......",
+            ".......K2K..K2K...K2K.......",
         };
 
         // 16 x 16 witch-hat + moon crest for the boot splash
@@ -300,8 +327,8 @@ namespace AlchemistsArsenal.Art
             "..sKttttttKs.L..",
             "...KttttttK..K..",
             "...KwwKKwwK.....",
-            "...Kww.Kww K....",
-            "..Kww..Kww K....",
+            "...Kww.KwwK.....",
+            "..Kww..KwwK.....",
             "..KK....KK......",
         };
 
@@ -441,7 +468,7 @@ namespace AlchemistsArsenal.Art
             "..K......K..",
             ".KKK....KKK.",
             ".K1KKKKKK1K.",
-            "K11111111 1K",
+            "K1111111111K",
             "K1111111111K",
             "K11K1111K11K",
             "K1111111111K",
@@ -459,6 +486,170 @@ namespace AlchemistsArsenal.Art
             "..KyyyK..",
             "...KyK...",
             "....K....",
+        };
+
+        // 12 x 12 — counter service bell (the Counter station's icon)
+        private static readonly string[] BELL =
+        {
+            ".....KK.....",
+            "....KyyK....",
+            "...KyyyyK...",
+            "...KyYYyK...",
+            "..KyYYYYyK..",
+            "..KyYYYYyK..",
+            ".KyYYYYYYyK.",
+            ".KyYYYYYYyK.",
+            "KKKKKKKKKKKK",
+            "....KyyK....",
+            "....KKKK....",
+            "............",
+        };
+
+        // 14 x 11 — mortar and pestle (the Prep station's icon)
+        private static readonly string[] MORTAR =
+        {
+            "..........KK..",
+            ".........KllK.",
+            "........KllK..",
+            ".......KllK...",
+            "..KKKKKKKKKKK.",
+            ".KwWWWWWWWWWwK",
+            ".KwWWWWWWWWWwK",
+            "..KwWWWWWWWwK.",
+            "...KwWWWWWwK..",
+            "....KwwwwwK...",
+            ".....KKKKK....",
+        };
+
+        // 10 x 13 — wooden stirring spoon (follows the cursor over the pot)
+        private static readonly string[] SPOON =
+        {
+            "...KKKK...",
+            "..KWWWWK..",
+            ".KWwwwwWK.",
+            ".KWwwwwWK.",
+            "..KWWWWK..",
+            "...KWWK...",
+            "...KWWK...",
+            "...KWWK...",
+            "...KWWK...",
+            "...KWWK...",
+            "...KWWK...",
+            "...KWWK...",
+            "....KK....",
+        };
+
+        // 9 x 9 — result star
+        private static readonly string[] STAR =
+        {
+            "....K....",
+            "...KYK...",
+            "...KYK...",
+            "KKKKYKKKK",
+            "KYYYYYYYK",
+            ".KYYYYYK.",
+            "..KYKYK..",
+            ".KYK.KYK.",
+            ".K.....K.",
+        };
+
+        // 10 x 11 — padlock, for a station that isn't open yet
+        private static readonly string[] LOCK =
+        {
+            "...KKKK...",
+            "..KllllK..",
+            "..Kl..lK..",
+            "..Kl..lK..",
+            ".KKKKKKKK.",
+            ".KyYYYYyK.",
+            ".KyYKKYyK.",
+            ".KyYKKYyK.",
+            ".KyYYYYyK.",
+            ".KKKKKKKK.",
+            "..........",
+        };
+
+        // --- customer busts (16 x 16) ---------------------------------------
+        // Each buyer reads by silhouette first: helm crest, hood, cap, witch hat.
+
+        private static readonly string[] BUYER_KNIGHT =
+        {
+            "................",
+            "......tttt......",
+            ".....KttttK.....",
+            "....KLLLLLLK....",
+            "...KLLLLLLLLK...",
+            "...KLKKLLKKLK...",
+            "...KLLLLLLLLK...",
+            "...KLKLLLLKLK...",
+            "...KLLKKKKLLK...",
+            "....KLLLLLLK....",
+            "...KlLLLLLLlK...",
+            "..KllLLLLLLllK..",
+            "..KlLLLLLLLLlK..",
+            ".KllLLLLLLLLllK.",
+            ".KlLLLLLLLLLLlK.",
+            ".KKKKKKKKKKKKKK.",
+        };
+
+        private static readonly string[] BUYER_HERBALIST =
+        {
+            "................",
+            "......KKKK......",
+            ".....KnNNnK.....",
+            "....KnNNNNnK....",
+            "....KnSSSSnK....",
+            "....KnSKSKnK....",
+            "....KnSSSSnK....",
+            ".....KnSSnK.....",
+            "....KnnnnnnK....",
+            "...KnNNNNNNnK...",
+            "..KnNNGGGGNNnK..",
+            "..KnNNGHHGNNnK..",
+            "..KnNNGGGGNNnK..",
+            ".KnNNNNNNNNNNnK.",
+            ".KnNNNNNNNNNNnK.",
+            ".KKKKKKKKKKKKKK.",
+        };
+
+        private static readonly string[] BUYER_MERCHANT =
+        {
+            "................",
+            "....KKKKKKKK....",
+            "...KWwwwwwwWK...",
+            "...KWWWWWWWWK...",
+            "....KSSSSSSK....",
+            "....KSKSSKSK....",
+            "....KSSSSSSK....",
+            "....KSKKKKSK....",
+            ".....KSSSSK.....",
+            "...KyyyyyyyyK...",
+            "..KyYYYYYYYYyK..",
+            "..KyYYccccYYyK..",
+            "..KyYYccccYYyK..",
+            ".KyYYYYYYYYYYyK.",
+            ".KyYYYYYYYYYYyK.",
+            ".KKKKKKKKKKKKKK.",
+        };
+
+        private static readonly string[] BUYER_ENVOY =
+        {
+            "................",
+            ".......pp.......",
+            "......pMMp......",
+            ".....pMMMMp.....",
+            "....pMMMMMMp....",
+            "...ppppppppp....",
+            "....KsssssK.....",
+            "....KsKsKsK.....",
+            "....KsssssK.....",
+            ".....KsssK......",
+            "....KpPPPPpK....",
+            "...KpPPPPPPpK...",
+            "..KpPPPMMPPPpK..",
+            ".KpPPPPMMPPPPpK.",
+            ".KpPPPPPPPPPPpK.",
+            ".KKKKKKKKKKKKKK.",
         };
 
         // 12 x 12 — herb leaf (green by default; tinted per element by ElementSwap)
@@ -494,7 +685,7 @@ namespace AlchemistsArsenal.Art
             ".KcGGGGGGcK.",
             ".KcGGGGGGcK.",
             ".KKcGGGGcKK.",
-            "..KKcccc KK.",
+            "..KKccccKK..",
             "...KKKKKK...",
             "............",
         };

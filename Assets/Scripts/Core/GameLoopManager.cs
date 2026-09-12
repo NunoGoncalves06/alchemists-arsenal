@@ -143,6 +143,23 @@ namespace AlchemistsArsenal.Core
                 CraftingManager.Instance.StartNewOrder(potionName, element);
         }
 
+        /// <summary>
+        /// Counter: take the customer's job. Records the contract on the run state
+        /// (so Evening knows what was promised) and opens the matching order — the
+        /// one path from "a buyer asked for something" to "there is a potion to brew".
+        /// </summary>
+        public void AcceptContract(ContractRecord contract)
+        {
+            if (contract == null) return;
+            contract.accepted = true;
+            if (SaveSystem.Instance != null && SaveSystem.Instance.State != null)
+            {
+                SaveSystem.Instance.State.contract = contract;
+                SaveSystem.Instance.MarkDirty();
+            }
+            ConfirmOrder(contract.PotionName, contract.element);
+        }
+
         public void BeginHandoff()
         {
             if (Phase != GamePhase.Morning) { Debug.LogWarning($"[Loop] BeginHandoff from {Phase} ignored"); return; }
@@ -194,10 +211,19 @@ namespace AlchemistsArsenal.Core
             {
                 if (r != null)
                 {
-                    int fee = 0; bool tip = false;
-                    if (r.won) (fee, tip) = Economy.Payout(r.craftedGrade, replay: s.IsReplayDay); // no fee for a lost job (P11)
+                    ContractRecord job = s.contract ?? ContractRecord.None;
+                    r.contractBuyer = job.accepted ? job.buyerName : "";
+                    r.contractTitle = job.accepted ? job.title : "";
+                    r.contractFee = job.accepted ? job.fee : Economy.BaseFee;
+                    r.contractBonus = job.accepted ? job.bonus : 0;
+                    r.contractRequired = job.RequiredGrade;
+
+                    int fee = 0; bool tip = false, met = false;
+                    // No fee at all for a lost job (P11) — the customer got nothing.
+                    if (r.won) (fee, tip, met) = Economy.ContractPayout(r.craftedGrade, job, s.IsReplayDay);
                     r.goldPaidByGrade = fee;
                     r.perfectTip = tip;
+                    r.contractMet = r.won && met;
                     s.AddGold(r.TotalGold); // loot + fee
 
                     if (r.won)
@@ -218,6 +244,7 @@ namespace AlchemistsArsenal.Core
                 s.lastResolvedDay = s.day;
                 s.day++;
                 s.replayBiomeIndex = -1;
+                s.contract = ContractRecord.None; // tomorrow's customer brings their own job
                 if (CraftingManager.Instance != null) CraftingManager.Instance.ClearOrder();
                 SaveSystem.Instance.MarkDirty();
             }

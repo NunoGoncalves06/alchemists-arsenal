@@ -14,7 +14,7 @@ namespace AlchemistsArsenal.UI
     {
         protected override void Build()
         {
-            UIFactory.Box(transform, UITheme.Ink900, Rt);
+            UIFactory.Box(transform, UITheme.Ground, Rt);
 
             var crest = new GameObject("Crest", typeof(RectTransform)).AddComponent<UnityEngine.UI.Image>();
             crest.transform.SetParent(transform, false);
@@ -23,14 +23,15 @@ namespace AlchemistsArsenal.UI
             crest.rectTransform.sizeDelta = new Vector2(160, 160);
             crest.raycastTarget = false;
 
-            var logo = UIFactory.Label(transform, "ALCHEMIST'S ARSENAL", 52, UITheme.Candle,
-                TextAlignmentOptions.Center, bold: true);
+            var logo = UIFactory.Title(transform, "Alchemist's Arsenal", UITheme.SizeDisplay + 6,
+                UITheme.Candle, TextAlignmentOptions.Center);
+            logo.characterSpacing = 3f;
             logo.rectTransform.anchorMin = new Vector2(0.1f, 0.36f);
             logo.rectTransform.anchorMax = new Vector2(0.9f, 0.48f);
             logo.rectTransform.offsetMin = logo.rectTransform.offsetMax = Vector2.zero;
 
-            var tag = UIFactory.Label(transform, "all art · music · sound made in-house", 16, UITheme.ParchmentDim,
-                TextAlignmentOptions.Bottom);
+            var tag = UIFactory.Label(transform, "all art · music · sound made in-house", UITheme.SizeSmall,
+                UITheme.TextLow, TextAlignmentOptions.Bottom);
             UIFactory.Stretch(tag.rectTransform, 24f);
         }
 
@@ -52,12 +53,13 @@ namespace AlchemistsArsenal.UI
 
         protected override void Build()
         {
-            UIFactory.Box(transform, UITheme.Ink800, Rt);
+            UIFactory.Box(transform, UITheme.Ground, Rt);
 
-            var title = UIFactory.Label(transform, "ALCHEMIST'S ARSENAL", 46, UITheme.Candle, TextAlignmentOptions.TopLeft, true);
-            title.rectTransform.anchorMin = new Vector2(0.06f, 0.72f);
-            title.rectTransform.anchorMax = new Vector2(0.6f, 0.86f);
-            title.rectTransform.offsetMin = title.rectTransform.offsetMax = Vector2.zero;
+            var title = UIFactory.Title(transform, "Alchemist's Arsenal", UITheme.SizeDisplay, UITheme.Candle);
+            UIFactory.Place(title.rectTransform, 0.06f, 0.74f, 0.66f, 0.88f);
+            var sub = UIFactory.Heading(transform, "brew in the morning · fight in the afternoon · pay the rent at night",
+                UITheme.TextLow);
+            UIFactory.Place(sub.rectTransform, 0.062f, 0.69f, 0.70f, 0.74f);
 
             var col = UIFactory.VStack(transform, 12f);
             var rt = (RectTransform)col.transform;
@@ -107,8 +109,8 @@ namespace AlchemistsArsenal.UI
     {
         protected override void Build()
         {
-            UIFactory.Box(transform, UITheme.Ink900, Rt);
-            var panel = UIFactory.Panel(transform, UITheme.Ink800, "Panel");
+            UIFactory.Box(transform, UITheme.Alpha(UITheme.Ground, 0.94f), Rt);
+            var panel = UIFactory.Panel(transform, UITheme.Surface, "Panel");
             var prt = panel.rectTransform;
             prt.anchorMin = new Vector2(0.28f, 0.16f); prt.anchorMax = new Vector2(0.72f, 0.84f);
             prt.offsetMin = prt.offsetMax = Vector2.zero;
@@ -116,7 +118,7 @@ namespace AlchemistsArsenal.UI
             var col = UIFactory.VStack(panel.transform, 14f, new RectOffset(24, 24, 24, 24));
             UIFactory.Stretch((RectTransform)col.transform);
 
-            UIFactory.Label(col.transform, "SETTINGS", 28, UITheme.Candle, TextAlignmentOptions.TopLeft, true);
+            UIFactory.Title(col.transform, "Settings", UITheme.SizeTitle);
             Slider(col.transform, "Master volume", () => SettingsService.MasterVolume, v => SettingsService.MasterVolume = v);
             Slider(col.transform, "Music", () => SettingsService.MusicVolume, v => SettingsService.MusicVolume = v);
             Slider(col.transform, "Sound", () => SettingsService.SfxVolume, v => SettingsService.SfxVolume = v);
@@ -170,10 +172,11 @@ namespace AlchemistsArsenal.UI
     {
         protected override void Build()
         {
-            UIFactory.Box(transform, UITheme.Ink900, Rt);
+            UIFactory.Box(transform, UITheme.Ground, Rt);
             var v = UIFactory.VStack(transform, 10f, new RectOffset(80, 80, 60, 60));
             UIFactory.Stretch((RectTransform)v.transform);
-            UIFactory.Label(v.transform, "ALCHEMIST'S ARSENAL", 34, UITheme.Candle, TextAlignmentOptions.Top, true);
+            UIFactory.Title(v.transform, "Alchemist's Arsenal", UITheme.SizeTitle + 4, UITheme.Candle,
+                TextAlignmentOptions.Top);
             UIFactory.Label(v.transform,
                 "A shop-management / auto-battler hybrid.\n\n" +
                 "ALL ART, MUSIC AND SOUND CREATED IN-HOUSE.\n" +
@@ -181,7 +184,7 @@ namespace AlchemistsArsenal.UI
                 "for this project — nothing from an asset store.\n\n" +
                 "Built with Unity 6 · Inno Setup installer · 2D physics, IAUS combat AI,\n" +
                 "a hierarchical boss FSM, and a decaying-quality crafting loop.",
-                18, UITheme.Parchment, TextAlignmentOptions.Top);
+                UITheme.SizeBody, UITheme.TextMid, TextAlignmentOptions.Top);
             var back = UIFactory.Button(v.transform, "BACK", () => UIManager.Instance.Show(ScreenId.MainMenu), primary: false);
             back.gameObject.AddComponent<LayoutElement>().minHeight = 48;
         }
@@ -196,12 +199,13 @@ namespace AlchemistsArsenal.UI
 
         protected override void Build()
         {
-            UIFactory.Box(transform, UITheme.Ink900, Rt);
-            _title = UIFactory.Label(transform, "DAY 1", 56, UITheme.Candle, TextAlignmentOptions.Center, true);
+            UIFactory.Box(transform, UITheme.Ground, Rt);
+            _title = UIFactory.Title(transform, "Day 1", UITheme.SizeDisplay + 10, UITheme.Candle,
+                TextAlignmentOptions.Center);
             var trt = _title.rectTransform;
             trt.anchorMin = new Vector2(0.1f, 0.5f); trt.anchorMax = new Vector2(0.9f, 0.66f);
             trt.offsetMin = trt.offsetMax = Vector2.zero;
-            _flavour = UIFactory.Label(transform, "", 20, UITheme.ParchmentDim, TextAlignmentOptions.Center);
+            _flavour = UIFactory.Label(transform, "", UITheme.SizeHeading, UITheme.TextMid, TextAlignmentOptions.Center);
             var frt = _flavour.rectTransform;
             frt.anchorMin = new Vector2(0.15f, 0.4f); frt.anchorMax = new Vector2(0.85f, 0.5f);
             frt.offsetMin = frt.offsetMax = Vector2.zero;
@@ -211,7 +215,7 @@ namespace AlchemistsArsenal.UI
         {
             var s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
             int biome = s != null ? s.TargetBiomeIndex : 0;
-            _title.text = $"DAY {(s != null ? s.day : 1)} — {BiomeLibrary.Name(biome).ToUpper()}";
+            _title.text = $"Day {(s != null ? s.day : 1)} — {BiomeLibrary.Name(biome)}";
             _flavour.text = s != null && s.IsReplayDay ? "A road you have walked before. Half the pay, but pay all the same."
                 : BiomeFlavour(biome);
             StartCoroutine(Advance());
@@ -253,20 +257,21 @@ namespace AlchemistsArsenal.UI
 
         protected override void Build()
         {
-            UIFactory.Box(transform, UITheme.Ink800, Rt);
+            UIFactory.Box(transform, UITheme.Ground, Rt);
             // anchorMin alone (no anchorMax) left anchorMax at a bare RectTransform's
             // default — an inverted/zero-size rect above anchorMin — collapsing the
             // title (playtest: found via the same bug class as "THE FOREST ROAD").
-            var title = UIFactory.Label(transform, "TODAY'S PARTY", 30, UITheme.Candle, TextAlignmentOptions.Top, true);
+            var title = UIFactory.Title(transform, "Today's party", UITheme.SizeTitle, UITheme.Candle,
+                TextAlignmentOptions.Top);
             title.rectTransform.anchorMin = new Vector2(0f, 0.72f);
             title.rectTransform.anchorMax = new Vector2(1f, 0.9f);
             title.rectTransform.offsetMin = title.rectTransform.offsetMax = Vector2.zero;
 
-            var card = UIFactory.Panel(transform, UITheme.Ink700, "Card");
+            var card = UIFactory.Panel(transform, UITheme.Surface, "Card");
             var crt = card.rectTransform;
             crt.anchorMin = new Vector2(0.32f, 0.4f); crt.anchorMax = new Vector2(0.68f, 0.72f);
             crt.offsetMin = crt.offsetMax = Vector2.zero;
-            _summary = UIFactory.Label(card.transform, "", 20, UITheme.Parchment, TextAlignmentOptions.Center);
+            _summary = UIFactory.Label(card.transform, "", UITheme.SizeHeading, UITheme.TextHi, TextAlignmentOptions.Center);
             UIFactory.Stretch(_summary.rectTransform, 16f);
 
             var begin = UIFactory.Button(transform, "BEGIN EXPEDITION", () => GameLoopManager.Instance.BeginAfternoon());
@@ -298,8 +303,9 @@ namespace AlchemistsArsenal.UI
 
         protected override void Build()
         {
-            UIFactory.Box(transform, UITheme.Ink900, Rt);
-            UIFactory.TopLabel(transform, "THE FOREST ROAD", 30, UITheme.Candle, bandHeight: 60f, padX: 32f);
+            UIFactory.Box(transform, UITheme.Ground, Rt);
+            var road = UIFactory.Title(transform, "The forest road", UITheme.SizeTitle);
+            UIFactory.Place(road.rectTransform, 0f, 0.88f, 1f, 0.98f, 32f);
             _dynamic = UIFactory.Root(transform, "Dynamic");
         }
 
