@@ -25,6 +25,17 @@ namespace AlchemistsArsenal.Core
         public Camera ArenaCamera { get; private set; }
         public IReadOnlyList<CombatantBody> Party => _party;
 
+        /// <summary>
+        /// Who is actually fighting this afternoon. The potion is carried by the
+        /// person who ordered it — a wallguard captain who commissioned a Fire flask
+        /// walks the road himself — so the name and the sprite both come from the
+        /// morning's contract rather than always being Rookie.
+        /// </summary>
+        public string FighterName { get; private set; } = "Rookie";
+
+        /// <summary>Portrait/sprite key for <see cref="FighterName"/>.</summary>
+        public string FighterId { get; private set; } = "rookie";
+
         private readonly List<CombatantBody> _party = new List<CombatantBody>();
         private BiomeData _biome;
 
@@ -59,6 +70,8 @@ namespace AlchemistsArsenal.Core
             BuildWall(new Vector2(0f, halfH), new Vector2(halfW * 2f, 1f));
             BuildWall(new Vector2(0f, -halfH), new Vector2(halfW * 2f, 1f));
 
+            ResolveFighter();
+
             var considerations = DefaultExpeditionData.AdventurerConsiderations();
             adventurerCount = Mathf.Clamp(adventurerCount, 1, 4);
             for (int i = 0; i < adventurerCount; i++)
@@ -77,6 +90,19 @@ namespace AlchemistsArsenal.Core
             Telemetry.Begin(Expedition, biome.BiomeName, adventurerCount, biome.Waves.Count);
             Expedition.OnFinished += HandleFinished;
             Expedition.Configure(biome, spawner, enableBoss);
+        }
+
+        /// <summary>Read the day's customer off the contract; fall back to Rookie.</summary>
+        private void ResolveFighter()
+        {
+            RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+            ContractRecord job = s != null ? s.contract : null;
+            CustomerDefinition buyer = job != null && job.accepted
+                ? CustomerCatalog.ById(job.buyerId)
+                : CustomerCatalog.Rookie;
+
+            FighterName = buyer.DisplayName;
+            FighterId = buyer.PortraitId;
         }
 
         private void BuildWall(Vector2 pos, Vector2 size)
@@ -107,7 +133,11 @@ namespace AlchemistsArsenal.Core
             ElementalMatrix matrix, List<UtilityConsideration> considerations)
         {
             float y = (index - (count - 1) * 0.5f) * 2.2f;
-            var go = new GameObject($"Adventurer_{index + 1}");
+            // Index 0 is the customer who ordered the potion; any extra party members
+            // are Rookie standing in.
+            bool isBuyer = index == 0;
+            string fighterId = isBuyer ? FighterId : "rookie";
+            var go = new GameObject($"Adventurer_{(isBuyer ? FighterName : "Rookie")}");
             go.transform.SetParent(transform, false);
             go.SetActive(false);
             // Was 2 units from the left edge — with the arena walls (ExpeditionWorld
@@ -133,7 +163,11 @@ namespace AlchemistsArsenal.Core
             body.Initialise(Team.Adventurer, ElementType.Nature, maxHp);
             _party.Add(body);
 
-            go.AddComponent<AdventurerMovementController>();
+            var move = go.AddComponent<AdventurerMovementController>();
+            // Deliberately tighter than the arena walls (half-height 7): the band the
+            // fighter circles inside keeps clear of the HUD slabs at the top and
+            // bottom of the screen, so they never end up standing behind a button.
+            move.ConfigureArena(new Vector2(_biome.ArenaWidth * 0.5f + 1f, 5.2f));
 
             var ai = go.AddComponent<UtilityAI_CombatController>();
             ai.Configure(body, loadout, matrix, considerations);
@@ -153,8 +187,12 @@ namespace AlchemistsArsenal.Core
 
             var art = new GameObject("Art");
             art.transform.SetParent(go.transform, false);
-            PixelArt.AddSprite(art, Art.PixelSprites.Rookie(), 6, 1.9f);
+            PixelArt.AddSprite(art, Art.PixelSprites.Fighter(fighterId), 6, 1.9f);
             go.SetActive(true);
+
+            // Everyone in the arena carries a health bar now, the party included —
+            // the HUD card is easy to miss while you are watching the fight itself.
+            HealthBar2D.Attach(body, width: 1.2f, lift: 0.85f);
         }
     }
 }

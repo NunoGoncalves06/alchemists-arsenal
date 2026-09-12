@@ -128,6 +128,23 @@ namespace AlchemistsArsenal.Art
             }
         }
 
+        /// <summary>
+        /// The same character head-to-toe, for the afternoon fight. Whoever ordered
+        /// the potion is who carries it into the biome, so every customer needs two
+        /// views: the shop-window bust above and this full body.
+        /// </summary>
+        public static Sprite Fighter(string id)
+        {
+            switch ((id ?? "").ToLowerInvariant())
+            {
+                case "herbalist": return Bake("fighter_herbalist", FIGHTER_HERBALIST);
+                case "merchant": return Bake("fighter_merchant", FIGHTER_MERCHANT);
+                case "envoy": return Bake("fighter_envoy", FIGHTER_ENVOY);
+                case "knight": return Bake("fighter_knight", FIGHTER_KNIGHT);
+                default: return Rookie();
+            }
+        }
+
         public static Sprite Monster(string name)
         {
             string key = (name ?? "").ToLowerInvariant();
@@ -650,6 +667,96 @@ namespace AlchemistsArsenal.Art
             ".KpPPPPMMPPPPpK.",
             ".KpPPPPPPPPPPpK.",
             ".KKKKKKKKKKKKKK.",
+        };
+
+        // --- full-body fight views (16 x 18, same build as ROOKIE) -----------
+
+        private static readonly string[] FIGHTER_KNIGHT =
+        {
+            "................",
+            ".....tttt.......",
+            "....KttttK......",
+            "....KLLLLK......",
+            "...KLLLLLLK.....",
+            "...KLKLLKLK.....",
+            "...KLLLLLLK.....",
+            "....KLLLLK......",
+            "...KKllllKK...l.",
+            "..KlLLLLLLlK..l.",
+            "..KlLlLLlLlK..l.",
+            "..LKlLLLLlKL..l.",
+            "..LKllllllKL..l.",
+            "...KllllllK...l.",
+            "...KllKKllK...l.",
+            "...Kll.KllK.....",
+            "..Kll..KllK.....",
+            "..KK....KK......",
+        };
+
+        private static readonly string[] FIGHTER_HERBALIST =
+        {
+            "................",
+            "......KKKK......",
+            ".....KnNNnK.....",
+            "....KnNNNNnK....",
+            "....KnSSSSnK....",
+            "....KnSKSKnK....",
+            "....KnSSSSnK....",
+            ".....KnSSnK.....",
+            "....KnnnnnnK....",
+            "...KnNNNNNNnK...",
+            "..KnNNGGGGNNnK..",
+            "..KnNNGHHGNNnK..",
+            "..KnNNGGGGNNnK..",
+            "...KnNNNNNNnK...",
+            "...KnNNNNNNnK...",
+            "...KnnKKKKnnK...",
+            "...KwwK..KwwK...",
+            "...KK......KK...",
+        };
+
+        private static readonly string[] FIGHTER_MERCHANT =
+        {
+            "................",
+            ".....KKKKKK.....",
+            "....KWwwwwWK....",
+            "....KWWWWWWK....",
+            ".....KSSSSK.....",
+            ".....KSKSKK.....",
+            ".....KSSSSK.....",
+            ".....KSKKSK.....",
+            "....KyyyyyyK....",
+            "...KyYYYYYYyK...",
+            "..KyYYccccYYyK..",
+            "..KyYYccccYYyK..",
+            "..KyYYYYYYYYyK..",
+            "...KyYYYYYYyK...",
+            "...KyYYYYYYyK...",
+            "...KyyKKKKyyK...",
+            "...KwwK..KwwK...",
+            "...KK......KK...",
+        };
+
+        private static readonly string[] FIGHTER_ENVOY =
+        {
+            "................",
+            ".......pp.......",
+            "......pMMp......",
+            ".....pMMMMp.....",
+            "....pMMMMMMp....",
+            "...ppppppppp....",
+            "....KsssssK.....",
+            "....KsKsKsK.....",
+            "....KsssssK.....",
+            ".....KsssK......",
+            "....KpPPPPpK....",
+            "...KpPPPPPPpK...",
+            "..KpPPPMMPPPpK..",
+            "..KpPPPMMPPPpK..",
+            "..KpPPPPPPPPpK..",
+            "...KpPPPPPPpK...",
+            "...KppKKKKppK...",
+            "...KK......KK...",
         };
 
         // 12 x 12 — herb leaf (green by default; tinted per element by ElementSwap)

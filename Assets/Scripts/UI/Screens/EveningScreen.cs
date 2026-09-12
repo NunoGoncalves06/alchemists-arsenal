@@ -158,7 +158,7 @@ namespace AlchemistsArsenal.UI
                     r.won
                         ? r.contractMet ? "Contract met — bonus paid in full."
                                         : "Below the grade they asked for. They paid half, and said so."
-                        : "Rookie didn't come back with the job done. No fee.",
+                        : $"{(string.IsNullOrEmpty(r.contractBuyer) ? "They" : r.contractBuyer)} didn't come back with the job done. No fee.",
                     UITheme.SizeBody, r.won && r.contractMet ? UITheme.Ok : UITheme.Danger);
                 UIFactory.Flex(verdict.gameObject, 1f, 0f, minHeight: 44f);
             }
@@ -213,7 +213,7 @@ namespace AlchemistsArsenal.UI
                 UIFactory.Flex(note.gameObject, 1f, 0f, minHeight: 40f);
             }
             if (r.bombs.Count == 0)
-                UIFactory.Label(c, "Rookie never got a flask off.", UITheme.SizeBody, UITheme.TextLow);
+                UIFactory.Label(c, "Never got a flask off out there.", UITheme.SizeBody, UITheme.TextLow);
         }
 
         private void BuildLedgerStrip(ExpeditionReport r)

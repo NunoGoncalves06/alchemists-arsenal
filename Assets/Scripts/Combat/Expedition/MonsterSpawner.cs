@@ -38,6 +38,7 @@ namespace AlchemistsArsenal.Combat
 
             AddSprite(go, data.Sprite != null ? data.Sprite : PixelSprites.Monster(data.DisplayName), 5);
             go.SetActive(true);
+            HealthBar2D.Attach(go.GetComponent<CombatantBody>(), width: 0.9f, lift: 0.62f);
             return go;
         }
 
@@ -61,6 +62,7 @@ namespace AlchemistsArsenal.Combat
             AddSprite(go, PixelSprites.Boss(), 5);
             go.transform.localScale = Vector3.one * 2.2f;
             go.SetActive(true);
+            HealthBar2D.Attach(go.GetComponent<CombatantBody>(), width: 2.6f, lift: 1.5f);
             return go;
         }
 
