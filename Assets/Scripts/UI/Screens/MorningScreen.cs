@@ -2,389 +2,289 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
-using AlchemistsArsenal.Core;
+using AlchemistsArsenal.Art;
+using AlchemistsArsenal.Audio;
 using AlchemistsArsenal.Combat;
+using AlchemistsArsenal.Core;
 using AlchemistsArsenal.Crafting;
 using AlchemistsArsenal.Data;
 using AlchemistsArsenal.Systems;
-using AlchemistsArsenal.Audio;
+using AlchemistsArsenal.UI.Stations;
 
 namespace AlchemistsArsenal.UI
 {
     /// <summary>
-    /// The morning shell (DESIGN.md §7.6). Top bar + a four-tab rail (Counter,
-    /// Cauldron, Prep, Bottling), the active station panel, and the right order dock
-    /// with the live <c>QualityMeter</c> + deduction log. All four stations are
-    /// functional from day 1 — Cauldron/Prep/Bottling unlock together the moment the
-    /// Counter order is accepted (<see cref="TutorialManager.StationsUnlocked"/>);
-    /// there is no separate multi-day unlock gate (playtest: that gate previously had
-    /// no unlock path at all, so Prep/Bottling were permanently locked).
+    /// The morning shell (DESIGN.md §7.6): top bar, the four-station rail, the centre
+    /// column the active <see cref="StationPanel"/> fills, and the right dock that
+    /// carries the job you took and the live quality meter.
+    ///
+    /// The shell owns none of the crafting: each station is its own class under
+    /// <c>UI/Stations</c> and tells the shell, through one callback, when it has
+    /// moved quality. All four are functional from day 1 — the Cauldron, Prep and
+    /// Bottling open the moment a job is accepted at the Counter
+    /// (<see cref="TutorialManager.StationsUnlocked"/>); there is no multi-day gate.
     /// </summary>
     public class MorningScreen : GameScreen
     {
-        // Named StationTab, not Tab — this class also has a Tab(...) rail-button builder method.
+        // Named StationTab, not Tab — the headless playtest driver reflects on this
+        // name and on SwitchTab(StationTab) to drive the screen like a real click.
         private enum StationTab { Counter, Cauldron, Prep, Bottling }
 
-        private TextMeshProUGUI _dayText, _goldText, _statusText, _qualityText, _logText;
-        private Image _clockFill, _heatFill, _heatBand, _qualityFill, _brewFill, _bg;
-        private RectTransform _counterPanel, _cauldronPanel, _prepPanel, _bottlingPanel;
-        private Button _counterTab, _cauldronTab, _prepTab, _bottlingTab, _sendBtn;
-        private ElementType _chosenElement = ElementType.Fire;
+        private readonly StationPanel[] _stations =
+        {
+            new CounterStation(), new CauldronStation(), new PrepStation(), new BottlingStation(),
+        };
+        private readonly UIKit.RailTab[] _tabs = new UIKit.RailTab[4];
+
         private StationTab _activeTab = StationTab.Counter;
+        private int _builtForDay = -1;
 
-        // Prep — pick herbs matching the order's element for a quality bonus.
-        private TextMeshProUGUI _prepHint;
-        private readonly System.Collections.Generic.List<Button> _herbButtons = new System.Collections.Generic.List<Button>();
-        private int _prepPicksLeft;
-        private const int PrepPicksPerDay = 2;
+        private Image _bg;
+        private TextMeshProUGUI _dayText, _goldText, _biomeChip, _clockPct;
+        private Image _clockFill;
+        private UIKit.MeterView _quality;
 
-        // Bottling — seal the flask while a needle sits in the sweet band.
-        private TextMeshProUGUI _bottlingHint;
-        private Image _sealBand, _sealNeedle;
-        private Button _sealBtn;
-        private int _sealAttemptsLeft;
-        private const int SealAttemptsPerDay = 3;
+        // order dock
+        private Image _buyerPortrait;
+        private TextMeshProUGUI _buyerName, _jobTitle, _jobTerms, _gradeText, _logText, _sendHint;
+        private Button _sendBtn;
+
+        // ------------------------------------------------------------------ build
 
         protected override void Build()
         {
-            // Opaque backdrop for the Counter tab; hidden on the Cauldron tab so the
-            // world cauldron (rendered by ShopCamera behind this overlay) shows through.
-            _bg = UIFactory.Box(transform, UITheme.Ink900, Rt);
+            // Opaque ground for every station except the Cauldron, which needs the
+            // world camera behind the overlay to show through.
+            _bg = UIFactory.Box(transform, UITheme.Ground, Rt);
 
-            // top bar
-            var bar = UIFactory.Panel(transform, UITheme.Ink800, "TopBar");
-            bar.rectTransform.anchorMin = new Vector2(0f, 0.93f);
-            bar.rectTransform.anchorMax = new Vector2(1f, 1f);
-            bar.rectTransform.offsetMin = bar.rectTransform.offsetMax = Vector2.zero;
-            _dayText = UIFactory.Label(bar.transform, "DAY 1", 20, UITheme.Candle, TextAlignmentOptions.Left, true);
-            _dayText.rectTransform.anchorMin = new Vector2(0.02f, 0f); _dayText.rectTransform.anchorMax = new Vector2(0.16f, 1f);
-            _dayText.rectTransform.offsetMin = _dayText.rectTransform.offsetMax = Vector2.zero;
-            _goldText = UIFactory.Label(bar.transform, "0 g", 20, UITheme.Parchment, TextAlignmentOptions.Left);
-            _goldText.rectTransform.anchorMin = new Vector2(0.17f, 0f); _goldText.rectTransform.anchorMax = new Vector2(0.28f, 1f);
-            _goldText.rectTransform.offsetMin = _goldText.rectTransform.offsetMax = Vector2.zero;
-            var clockBg = UIFactory.Bar(bar.transform, UITheme.Ink700, UITheme.Candle, out _clockFill);
-            clockBg.rectTransform.anchorMin = new Vector2(0.3f, 0.35f); clockBg.rectTransform.anchorMax = new Vector2(0.55f, 0.65f);
-            clockBg.rectTransform.offsetMin = clockBg.rectTransform.offsetMax = Vector2.zero;
-            var biomeChip = UIFactory.Label(bar.transform, "", 16, UITheme.ParchmentDim, TextAlignmentOptions.Left);
-            biomeChip.rectTransform.anchorMin = new Vector2(0.58f, 0f); biomeChip.rectTransform.anchorMax = new Vector2(0.85f, 1f);
-            biomeChip.rectTransform.offsetMin = biomeChip.rectTransform.offsetMax = Vector2.zero;
-            _biomeChip = biomeChip;
-            var cog = UIFactory.Button(bar.transform, "MENU", () => UIManager.Instance.Show(ScreenId.Settings), primary: false);
-            cog.image.rectTransform.anchorMin = new Vector2(0.92f, 0.15f); cog.image.rectTransform.anchorMax = new Vector2(0.99f, 0.85f);
-            cog.image.rectTransform.offsetMin = cog.image.rectTransform.offsetMax = Vector2.zero;
-
-            // station rail
-            var rail = UIFactory.Panel(transform, UITheme.Ink800, "Rail");
-            rail.rectTransform.anchorMin = new Vector2(0f, 0f); rail.rectTransform.anchorMax = new Vector2(0.09f, 0.93f);
-            rail.rectTransform.offsetMin = rail.rectTransform.offsetMax = Vector2.zero;
-            var railStack = UIFactory.VStack(rail.transform, 8f, new RectOffset(8, 8, 12, 12));
-            UIFactory.Stretch((RectTransform)railStack.transform);
-            _counterTab = Tab(railStack.transform, "COUNTER", () => SwitchTab(StationTab.Counter));
-            _cauldronTab = Tab(railStack.transform, "CAULDRON", () => SwitchTab(StationTab.Cauldron));
-            _prepTab = Tab(railStack.transform, "PREP", () => SwitchTab(StationTab.Prep));
-            _bottlingTab = Tab(railStack.transform, "BOTTLING", () => SwitchTab(StationTab.Bottling));
-
-            // centre panels
-            _counterPanel = BuildCounterPanel();
-            _cauldronPanel = BuildCauldronPanel();
-            _prepPanel = BuildPrepPanel();
-            _bottlingPanel = BuildBottlingPanel();
-
-            // order dock
+            BuildTopBar();
+            BuildCentre();
+            BuildRail();
             BuildOrderDock();
 
             SwitchTab(StationTab.Counter);
         }
 
-        private TextMeshProUGUI _biomeChip, _forecastText, _recText, _ticketName;
-        private Image _ticketBadge;
-
-        private RectTransform BuildCounterPanel()
+        private void BuildTopBar()
         {
-            var p = UIFactory.Panel(transform, UITheme.Ink800, "CounterPanel");
-            p.rectTransform.anchorMin = new Vector2(0.09f, 0f); p.rectTransform.anchorMax = new Vector2(0.72f, 0.93f);
-            p.rectTransform.offsetMin = new Vector2(16, 16); p.rectTransform.offsetMax = new Vector2(-16, -16);
+            var bar = UIFactory.Panel(transform, UITheme.Surface, "TopBar");
+            UIFactory.Place(bar.rectTransform, 0f, 0.935f, 1f, 1f);
+            var edge = UIFactory.Panel(bar.transform, UITheme.Line, "Edge");
+            UIFactory.Place(edge.rectTransform, 0f, 0f, 1f, 0f);
+            edge.rectTransform.sizeDelta = new Vector2(0f, 2f);
 
-            UIFactory.TopLabel(p.transform, "COUNTER — read the afternoon, pick what to brew", 16, UITheme.Candle);
+            _dayText = UIFactory.Title(bar.transform, "DAY 1", UITheme.SizeHeading + 3, UITheme.Candle,
+                TextAlignmentOptions.Left);
+            UIFactory.Place(_dayText.rectTransform, 0.015f, 0f, 0.10f, 1f);
 
-            _forecastText = UIFactory.Label(p.transform, "", 17, UITheme.Parchment, TextAlignmentOptions.TopLeft);
-            var frt = _forecastText.rectTransform;
-            frt.anchorMin = new Vector2(0f, 0.35f); frt.anchorMax = new Vector2(1f, 0.86f);
-            frt.offsetMin = new Vector2(18, 0); frt.offsetMax = new Vector2(-18, 0);
+            var coin = UIFactory.Icon(bar.transform, PixelSprites.Coin(), 22f);
+            UIFactory.Place(coin.rectTransform, 0.105f, 0.3f, 0.125f, 0.72f);
+            _goldText = UIFactory.MonoLabel(bar.transform, "0 g", UITheme.SizeBody, UITheme.TextHi,
+                TextAlignmentOptions.Left);
+            UIFactory.Place(_goldText.rectTransform, 0.128f, 0f, 0.22f, 1f);
 
-            _recText = UIFactory.Label(p.transform, "", 18, UITheme.CandleHot, TextAlignmentOptions.TopLeft);
-            var rrt = _recText.rectTransform;
-            rrt.anchorMin = new Vector2(0f, 0.2f); rrt.anchorMax = new Vector2(1f, 0.34f);
-            rrt.offsetMin = new Vector2(18, 0); rrt.offsetMax = new Vector2(-18, 0);
+            // The clock reads left-to-right on one line: label, track, percentage.
+            // A stacked meter here put its caption above the top edge of the bar and
+            // clipped it (playtest screenshot: "MORNING" sliced in half).
+            var clockLabel = UIFactory.Heading(bar.transform, "Morning", UITheme.TextLow, UITheme.SizeTiny,
+                TextAlignmentOptions.Left);
+            UIFactory.Place(clockLabel.rectTransform, 0.275f, 0.2f, 0.355f, 0.8f);
 
-            _acceptBtn = UIFactory.Button(p.transform, "ACCEPT ORDER", AcceptOrder);
-            var art = _acceptBtn.image.rectTransform;
-            art.anchorMin = new Vector2(0.28f, 0.05f); art.anchorMax = new Vector2(0.72f, 0.16f);
-            art.offsetMin = art.offsetMax = Vector2.zero;
-            return p.rectTransform;
+            var clockTrack = UIFactory.Bar(bar.transform, UITheme.Ground, UITheme.Candle, out _clockFill);
+            UIFactory.Place(clockTrack.rectTransform, 0.36f, 0.34f, 0.55f, 0.66f);
+
+            _clockPct = UIFactory.MonoLabel(bar.transform, "", UITheme.SizeTiny, UITheme.TextLow,
+                TextAlignmentOptions.Left);
+            UIFactory.Place(_clockPct.rectTransform, 0.558f, 0.2f, 0.60f, 0.8f);
+
+            _biomeChip = UIFactory.Label(bar.transform, "", UITheme.SizeSmall, UITheme.TextMid,
+                TextAlignmentOptions.Left);
+            UIFactory.Place(_biomeChip.rectTransform, 0.60f, 0f, 0.86f, 1f);
+
+            var menu = UIFactory.Button(bar.transform, "MENU", () => UIManager.Instance.Show(ScreenId.Settings),
+                primary: false);
+            UIFactory.Place(menu.image.rectTransform, 0.90f, 0.16f, 0.985f, 0.84f);
         }
 
-        private Button _acceptBtn;
-
-        private RectTransform BuildCauldronPanel()
+        private void BuildCentre()
         {
-            // Transparent centre so the world cauldron behind the overlay shows through
-            // and mouse-stirring reaches PhysicsCauldronManager (DESIGN.md §7.6.3 / §11).
-            var p = UIFactory.Root(transform, "CauldronPanel");
-            p.anchorMin = new Vector2(0.09f, 0f); p.anchorMax = new Vector2(0.72f, 0.93f);
-            p.offsetMin = new Vector2(16, 16); p.offsetMax = new Vector2(-16, -16);
-
-            UIFactory.TopLabel(p, "CAULDRON — mouse over the pot and stir in circles, hold the green", 16, UITheme.Candle, padX: 4f);
-
-            // brew-progress bar (fills while stirring in the green — the minigame's end)
-            var brewBg = UIFactory.Bar(p, UITheme.Ink700, UITheme.Candle, out _brewFill);
-            var wrt = brewBg.rectTransform;
-            wrt.anchorMin = new Vector2(0.1f, 0.16f); wrt.anchorMax = new Vector2(0.9f, 0.2f);
-            wrt.offsetMin = wrt.offsetMax = Vector2.zero;
-            _brewFill.fillAmount = 0f;
-            UIFactory.Label(brewBg.transform, "BREW", 12, UITheme.Ink900, TextAlignmentOptions.Left, true)
-                .rectTransform.offsetMin = new Vector2(6, 0);
-
-            var gaugeBg = UIFactory.Bar(p, UITheme.Ink700, UITheme.Ok, out _heatFill);
-            var grt = gaugeBg.rectTransform;
-            grt.anchorMin = new Vector2(0.1f, 0.08f); grt.anchorMax = new Vector2(0.9f, 0.14f);
-            grt.offsetMin = grt.offsetMax = Vector2.zero;
-            _heatBand = UIFactory.Panel(gaugeBg.transform, new Color(UITheme.Ok.r, UITheme.Ok.g, UITheme.Ok.b, 0.35f), "Band");
-            var brt = _heatBand.rectTransform;
-            brt.anchorMin = new Vector2(0.4f, 0f); brt.anchorMax = new Vector2(0.7f, 1f);
-            brt.offsetMin = brt.offsetMax = Vector2.zero;
-
-            _statusText = UIFactory.Label(p, "ACCEPT AN ORDER FIRST", 20, UITheme.ParchmentDim, TextAlignmentOptions.Center, true);
-            var srt = _statusText.rectTransform;
-            srt.anchorMin = new Vector2(0.1f, 0.24f); srt.anchorMax = new Vector2(0.9f, 0.32f);
-            srt.offsetMin = srt.offsetMax = Vector2.zero;
-            return p;
+            var centre = UIFactory.Rect(transform, "Centre", new Vector2(0.085f, 0f), new Vector2(0.70f, 0.935f),
+                new Vector2(14, 14), new Vector2(-14, -14));
+            foreach (var station in _stations)
+                station.Build(centre, OnStationChanged);
         }
 
-        private RectTransform BuildPrepPanel()
+        private void BuildRail()
         {
-            var p = UIFactory.Panel(transform, UITheme.Ink800, "PrepPanel");
-            p.rectTransform.anchorMin = new Vector2(0.09f, 0f); p.rectTransform.anchorMax = new Vector2(0.72f, 0.93f);
-            p.rectTransform.offsetMin = new Vector2(16, 16); p.rectTransform.offsetMax = new Vector2(-16, -16);
+            var rail = UIFactory.Panel(transform, UITheme.Surface, "Rail");
+            UIFactory.Place(rail.rectTransform, 0f, 0f, 0.085f, 0.935f);
+            var edge = UIFactory.Panel(rail.transform, UITheme.Line, "Edge");
+            edge.rectTransform.anchorMin = new Vector2(1f, 0f);
+            edge.rectTransform.anchorMax = new Vector2(1f, 1f);
+            edge.rectTransform.sizeDelta = new Vector2(2f, 0f);
 
-            UIFactory.TopLabel(p.transform, $"PREP — add matching-element herbs for a bonus ({PrepPicksPerDay} per day)", 16, UITheme.Candle);
+            var stack = UIFactory.VStack(rail.transform, 8f, new RectOffset(8, 8, 14, 14));
+            UIFactory.Stretch((RectTransform)stack.transform);
 
-            _prepHint = UIFactory.Label(p.transform, "", 16, UITheme.ParchmentDim, TextAlignmentOptions.TopLeft);
-            var hrt = _prepHint.rectTransform;
-            hrt.anchorMin = new Vector2(0f, 0.68f); hrt.anchorMax = new Vector2(1f, 0.82f);
-            hrt.offsetMin = new Vector2(18, 0); hrt.offsetMax = new Vector2(-18, 0);
-
-            var row = UIFactory.HStack(p.transform, 14f, new RectOffset(24, 24, 0, 0));
-            var rrt = (RectTransform)row.transform;
-            rrt.anchorMin = new Vector2(0f, 0.32f); rrt.anchorMax = new Vector2(1f, 0.64f);
-            rrt.offsetMin = rrt.offsetMax = Vector2.zero;
-
-            _herbButtons.Clear();
-            foreach (ElementType e in new[]
-                     { ElementType.Nature, ElementType.Fire, ElementType.Water, ElementType.Poison, ElementType.Arcane })
+            for (int i = 0; i < _stations.Length; i++)
             {
-                ElementType element = e; // capture per-iteration value
-                var b = UIFactory.Button(row.transform, element.ToString().ToUpper(), () => PickHerb(element), primary: false);
-                b.image.color = UITheme.Element(element);
-                b.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1;
-                _herbButtons.Add(b);
+                var tab = (StationTab)i;
+                _tabs[i] = UIKit.StationTab(stack.transform, _stations[i].RailName.ToUpperInvariant(),
+                    (i + 1).ToString(), _stations[i].RailIcon, () => SwitchTab(tab));
             }
-            return p.rectTransform;
-        }
-
-        private RectTransform BuildBottlingPanel()
-        {
-            var p = UIFactory.Panel(transform, UITheme.Ink800, "BottlingPanel");
-            p.rectTransform.anchorMin = new Vector2(0.09f, 0f); p.rectTransform.anchorMax = new Vector2(0.72f, 0.93f);
-            p.rectTransform.offsetMin = new Vector2(16, 16); p.rectTransform.offsetMax = new Vector2(-16, -16);
-
-            UIFactory.TopLabel(p.transform, $"BOTTLING — seal it while the needle is in the band ({SealAttemptsPerDay} per day)", 16, UITheme.Candle);
-
-            _bottlingHint = UIFactory.Label(p.transform, "", 18, UITheme.ParchmentDim, TextAlignmentOptions.Center, true);
-            var brt = _bottlingHint.rectTransform;
-            brt.anchorMin = new Vector2(0.1f, 0.62f); brt.anchorMax = new Vector2(0.9f, 0.72f);
-            brt.offsetMin = brt.offsetMax = Vector2.zero;
-
-            var gaugeBg = UIFactory.Panel(p.transform, UITheme.Ink700, "SealGauge");
-            var grt = gaugeBg.rectTransform;
-            grt.anchorMin = new Vector2(0.1f, 0.46f); grt.anchorMax = new Vector2(0.9f, 0.56f);
-            grt.offsetMin = grt.offsetMax = Vector2.zero;
-
-            _sealBand = UIFactory.Panel(gaugeBg.transform, new Color(UITheme.Ok.r, UITheme.Ok.g, UITheme.Ok.b, 0.45f), "Band");
-            _sealBand.rectTransform.anchorMin = new Vector2(0.42f, 0f); _sealBand.rectTransform.anchorMax = new Vector2(0.58f, 1f);
-            _sealBand.rectTransform.offsetMin = _sealBand.rectTransform.offsetMax = Vector2.zero;
-
-            _sealNeedle = UIFactory.Panel(gaugeBg.transform, UITheme.Candle, "Needle");
-            _sealNeedle.rectTransform.anchorMin = _sealNeedle.rectTransform.anchorMax = new Vector2(0f, 0.5f);
-            _sealNeedle.rectTransform.sizeDelta = new Vector2(6, 44);
-
-            _sealBtn = UIFactory.Button(p.transform, "SEAL", Seal);
-            var sart = _sealBtn.image.rectTransform;
-            sart.anchorMin = new Vector2(0.38f, 0.2f); sart.anchorMax = new Vector2(0.62f, 0.32f);
-            sart.offsetMin = sart.offsetMax = Vector2.zero;
-            return p.rectTransform;
         }
 
         private void BuildOrderDock()
         {
-            var dock = UIFactory.FramedPanel(transform, "OrderDock");
-            dock.rectTransform.anchorMin = new Vector2(0.72f, 0f); dock.rectTransform.anchorMax = new Vector2(1f, 0.93f);
-            dock.rectTransform.offsetMin = dock.rectTransform.offsetMax = Vector2.zero;
+            var dock = UIFactory.Panel(transform, UITheme.Surface, "OrderDock");
+            UIFactory.Place(dock.rectTransform, 0.70f, 0f, 1f, 0.935f);
+            var edge = UIFactory.Panel(dock.transform, UITheme.Line, "Edge");
+            edge.rectTransform.anchorMin = new Vector2(0f, 0f);
+            edge.rectTransform.anchorMax = new Vector2(0f, 1f);
+            edge.rectTransform.sizeDelta = new Vector2(2f, 0f);
 
-            var ticket = UIFactory.Panel(dock.transform, UITheme.Parchment, "Ticket");
-            ticket.rectTransform.anchorMin = new Vector2(0.06f, 0.72f); ticket.rectTransform.anchorMax = new Vector2(0.94f, 0.96f);
-            ticket.rectTransform.offsetMin = ticket.rectTransform.offsetMax = Vector2.zero;
-            _ticketName = UIFactory.Label(ticket.transform, "No order yet", 18, UITheme.Ink900, TextAlignmentOptions.TopLeft, true);
-            UIFactory.Stretch(_ticketName.rectTransform, 10f);
-            _ticketBadge = UIFactory.ElementBadge(ticket.transform, ElementType.Fire, 22);
-            _ticketBadge.rectTransform.anchorMin = new Vector2(1f, 1f); _ticketBadge.rectTransform.anchorMax = new Vector2(1f, 1f);
-            _ticketBadge.rectTransform.anchoredPosition = new Vector2(-18, -18);
-            _ticketBadge.enabled = false;
+            // --- the job -----------------------------------------------------
+            var jobCard = UIKit.Card(dock.transform, "Today's job", out Transform job, spacing: 6f);
+            UIFactory.Place(jobCard.rectTransform, 0.04f, 0.62f, 0.96f, 0.975f);
 
-            var qBg = UIFactory.Bar(dock.transform, UITheme.Ink700, UITheme.Candle, out _qualityFill);
-            qBg.rectTransform.anchorMin = new Vector2(0.06f, 0.64f); qBg.rectTransform.anchorMax = new Vector2(0.94f, 0.69f);
-            qBg.rectTransform.offsetMin = qBg.rectTransform.offsetMax = Vector2.zero;
-            _qualityFill.fillAmount = ActiveOrder.StartingQuality / 100f;
-            _qualityText = UIFactory.Label(dock.transform, "QUALITY —", 16, UITheme.Candle, TextAlignmentOptions.Left, true);
-            _qualityText.rectTransform.anchorMin = new Vector2(0.06f, 0.58f); _qualityText.rectTransform.anchorMax = new Vector2(0.94f, 0.63f);
-            _qualityText.rectTransform.offsetMin = _qualityText.rectTransform.offsetMax = Vector2.zero;
+            var who = UIFactory.HStack(job, 10f);
+            who.childAlignment = TextAnchor.MiddleLeft;
+            UIFactory.Flex(who.gameObject, 1f, 0f, minHeight: 62f);
+            _buyerPortrait = UIKit.Portrait(who.transform, PixelSprites.Buyer("rookie"), 58f);
+            UIFactory.Flex(_buyerPortrait.transform.parent.parent.gameObject, 0f, 0f, minWidth: 58f, minHeight: 58f);
+            _buyerName = UIFactory.Label(who.transform, "", UITheme.SizeBody, UITheme.TextHi,
+                TextAlignmentOptions.Left, true);
+            UIFactory.Flex(_buyerName.gameObject, 1f, 1f);
 
-            var logBg = UIFactory.Panel(dock.transform, UITheme.Ink900, "Log");
-            logBg.rectTransform.anchorMin = new Vector2(0.06f, 0.16f); logBg.rectTransform.anchorMax = new Vector2(0.94f, 0.56f);
-            logBg.rectTransform.offsetMin = logBg.rectTransform.offsetMax = Vector2.zero;
-            _logText = UIFactory.Label(logBg.transform, "", 14, UITheme.Parchment, TextAlignmentOptions.TopLeft);
-            UIFactory.Stretch(_logText.rectTransform, 8f);
+            _jobTitle = UIFactory.Label(job, "", UITheme.SizeBody, UITheme.Candle);
+            UIFactory.Flex(_jobTitle.gameObject, 1f, 0f, minHeight: 24f);
+            _jobTerms = UIFactory.Label(job, "", UITheme.SizeSmall, UITheme.TextMid);
+            UIFactory.Flex(_jobTerms.gameObject, 1f, 1f, minHeight: 44f);
 
-            _sendBtn = UIFactory.Button(dock.transform, "SEND TO EXPEDITION", () => GameLoopManager.Instance.BeginHandoff());
-            _sendBtn.image.rectTransform.anchorMin = new Vector2(0.06f, 0.04f);
-            _sendBtn.image.rectTransform.anchorMax = new Vector2(0.94f, 0.13f);
-            _sendBtn.image.rectTransform.offsetMin = _sendBtn.image.rectTransform.offsetMax = Vector2.zero;
+            // --- quality -----------------------------------------------------
+            var qualityCard = UIKit.Card(dock.transform, "Potion quality", out Transform quality, spacing: 6f);
+            UIFactory.Place(qualityCard.rectTransform, 0.04f, 0.42f, 0.96f, 0.60f);
+
+            _quality = UIKit.Meter(quality, "Score", UITheme.Candle, withBand: false, height: 20f);
+            UIKit.GradeScale(quality);
+            _gradeText = UIFactory.Label(quality, "", UITheme.SizeBody, UITheme.TextMid,
+                TextAlignmentOptions.Left, true);
+            UIFactory.Flex(_gradeText.gameObject, 1f, 0f, minHeight: 24f);
+
+            // --- ledger ------------------------------------------------------
+            var logCard = UIKit.Card(dock.transform, "What the flask has been through", out Transform log);
+            UIFactory.Place(logCard.rectTransform, 0.04f, 0.13f, 0.96f, 0.40f);
+            _logText = UIFactory.MonoLabel(log, "", UITheme.SizeTiny, UITheme.TextMid);
+            UIFactory.Flex(_logText.gameObject, 1f, 1f);
+
+            // --- send --------------------------------------------------------
+            _sendHint = UIFactory.Label(dock.transform, "", UITheme.SizeTiny, UITheme.TextLow,
+                TextAlignmentOptions.Center);
+            UIFactory.Place(_sendHint.rectTransform, 0.04f, 0.085f, 0.96f, 0.12f);
+
+            _sendBtn = UIFactory.Button(dock.transform, "SEND TO EXPEDITION",
+                () => GameLoopManager.Instance.BeginHandoff());
+            UIFactory.Place(_sendBtn.image.rectTransform, 0.04f, 0.02f, 0.96f, 0.08f);
         }
 
-        private Button Tab(Transform parent, string text, System.Action onClick)
-        {
-            var b = UIFactory.Button(parent, text, onClick, primary: false);
-            b.gameObject.AddComponent<LayoutElement>().minHeight = 76;
-            return b;
-        }
-
-        // ------------------------------------------------------------- behaviour
+        // -------------------------------------------------------------- behaviour
 
         protected override void OnShow()
         {
-            var s = SaveSystem.Instance.State;
+            RunState s = SaveSystem.Instance.State;
             _dayText.text = $"DAY {s.day}";
             _goldText.text = $"{s.gold} g";
-            int biome = s.TargetBiomeIndex;
-            _biomeChip.text = $"{BiomeLibrary.Name(biome)} — today's run";
+            _biomeChip.text = $"{BiomeLibrary.Name(s.TargetBiomeIndex)} — today's road";
 
-            BuildForecast(biome);
-
-            // The adventurer "speaks" their request in Animalese (cat 7).
-            if (CraftingManager.Instance == null || CraftingManager.Instance.CurrentOrder == null)
-                AudioManager.Speak($"bru nu {_chosenElement} fla she wi tch", 1.15f);
+            if (_builtForDay != s.day)
+            {
+                _builtForDay = s.day;
+                foreach (var station in _stations) station.NewDay();
+            }
 
             if (GameLoopManager.Instance != null)
                 GameLoopManager.Instance.OnMorningTimeChanged += SetClock;
             HookOrder();
-            RefreshOrder();
-            SwitchTab(StationTab.Counter); // fresh day starts back at the Counter
+            RefreshDock();
+            SwitchTab(StationTab.Counter); // a fresh morning starts back at the Counter
         }
 
         protected override void OnHide()
         {
             if (GameLoopManager.Instance != null)
                 GameLoopManager.Instance.OnMorningTimeChanged -= SetClock;
-            if (PhysicsCauldronManager.Instance != null)
-                PhysicsCauldronManager.Instance.OnHeatChanged -= SetHeat;
+            _stations[(int)_activeTab].OnExit();
             UnhookOrder();
         }
 
         private void SwitchTab(StationTab tab)
         {
-            // Day-1 gate, until the order is accepted. TutorialManager.StationsUnlocked
+            // Day-1 gate, until the job is accepted. TutorialManager.StationsUnlocked
             // flips on ITS OWN coroutine once it notices the order, which is not
-            // guaranteed to have happened yet in the very same frame AcceptOrder()
-            // creates that order and immediately tries to switch here — checking
-            // CurrentOrder directly as a fallback closes that race (confirmed via a
-            // headless-playtest screenshot: ACCEPT ORDER silently failed to switch to
-            // the Cauldron tab despite creating the order correctly).
+            // guaranteed to have happened in the same frame the Counter creates that
+            // order and immediately switches here — checking CurrentOrder directly as
+            // a fallback closes that race (it previously silently failed to switch).
             bool hasOrder = CraftingManager.Instance != null && CraftingManager.Instance.CurrentOrder != null;
             if (tab != StationTab.Counter && !TutorialManager.StationsUnlocked && !hasOrder) return;
 
+            if (_stations[(int)_activeTab] != null) _stations[(int)_activeTab].OnExit();
             _activeTab = tab;
-            _counterPanel.gameObject.SetActive(tab == StationTab.Counter);
-            _cauldronPanel.gameObject.SetActive(tab == StationTab.Cauldron);
-            _prepPanel.gameObject.SetActive(tab == StationTab.Prep);
-            _bottlingPanel.gameObject.SetActive(tab == StationTab.Bottling);
-            if (_bg != null) _bg.enabled = tab != StationTab.Cauldron; // let the world pot show only on the Cauldron tab
 
-            Tint(_counterTab, tab == StationTab.Counter);
-            Tint(_cauldronTab, tab == StationTab.Cauldron);
-            Tint(_prepTab, tab == StationTab.Prep);
-            Tint(_bottlingTab, tab == StationTab.Bottling);
-            bool unlocked = TutorialManager.StationsUnlocked;
-            if (_cauldronTab != null) _cauldronTab.interactable = unlocked;
-            if (_prepTab != null) _prepTab.interactable = unlocked;
-            if (_bottlingTab != null) _bottlingTab.interactable = unlocked;
+            for (int i = 0; i < _stations.Length; i++)
+                _stations[i].Root.gameObject.SetActive(i == (int)tab);
 
-            if (tab == StationTab.Prep) RefreshPrep();
-            if (tab == StationTab.Bottling) RefreshBottling();
+            StationPanel active = _stations[(int)tab];
+            active.OnEnter();
+
+            // Only the Cauldron shows the world behind the UI.
+            if (_bg != null) _bg.enabled = !active.ShowsWorld;
+
+            RefreshRail();
             AudioManager.Play(Sfx.Tab);
         }
 
-        private static void Tint(Button b, bool active)
+        private void RefreshRail()
         {
-            if (b != null) b.image.color = active ? UITheme.Candle : UITheme.Ink700;
-        }
-
-        private void BuildForecast(int biome)
-        {
-            BiomeData data = BiomeLibrary.Get(biome);
-            var counts = new int[5];
-            var sb = new StringBuilder("INCOMING WAVES\n\n");
-            foreach (var w in data.Waves)
+            bool unlocked = TutorialManager.StationsUnlocked
+                            || (CraftingManager.Instance != null && CraftingManager.Instance.CurrentOrder != null);
+            for (int i = 0; i < _tabs.Length; i++)
             {
-                sb.AppendLine($"  ×{w.count}  {w.monster.DisplayName}  ({w.monster.Element})");
-                counts[(int)w.monster.Element] += w.count;
-            }
-            int total = 0; foreach (int c in counts) total += c;
-            int dominant = 0; for (int i = 1; i < counts.Length; i++) if (counts[i] > counts[dominant]) dominant = i;
-            _forecastText.text = sb.ToString();
-
-            var domElem = (ElementType)dominant;
-            _chosenElement = CounterElement(domElem);
-            _recText.text = total > 0
-                ? $"Mostly {domElem} out there — brew {_chosenElement} for the ×2 matchup."
-                : "Quiet day. Brew whatever you like.";
-            if (_acceptBtn != null)
-            {
-                var lbl = _acceptBtn.GetComponentInChildren<TextMeshProUGUI>();
-                if (lbl != null) lbl.text = $"ACCEPT ORDER — BREW {_chosenElement.ToString().ToUpper()}";
+                if (_tabs[i] == null) continue;
+                bool locked = i != (int)StationTab.Counter && !unlocked;
+                _tabs[i].SetState(i == (int)_activeTab, locked, _stations[i].Complete);
             }
         }
 
-        private static ElementType CounterElement(ElementType attacker) => attacker switch
-        {
-            ElementType.Fire => ElementType.Water,
-            ElementType.Nature => ElementType.Fire,
-            ElementType.Water => ElementType.Nature,
-            ElementType.Poison => ElementType.Arcane,
-            _ => ElementType.Fire,
-        };
-
+        /// <summary>
+        /// Take the first job on the board. Kept as the same private name the
+        /// headless playtest driver reflects on, so the harness still exercises the
+        /// real Counter path rather than calling the manager API behind it.
+        /// </summary>
         private void AcceptOrder()
         {
-            GameLoopManager.Instance.ConfirmOrder($"{_chosenElement} Flask", _chosenElement);
+            SwitchTab(StationTab.Counter);
+            RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+            var offers = ContractBoard.Offers(s != null ? s.day : 1, s != null ? s.TargetBiomeIndex : 0);
+            if (offers.Count == 0 || GameLoopManager.Instance == null) return;
+
+            GameLoopManager.Instance.AcceptContract(offers[0].Clone());
             AudioManager.Play(Sfx.Confirm);
-            _prepPicksLeft = PrepPicksPerDay;
-            _sealAttemptsLeft = SealAttemptsPerDay;
+            var pot = PhysicsCauldronManager.Instance;
+            if (pot != null) pot.BeginBrew(s != null ? s.day : 1);
+
             HookOrder();
-            RefreshOrder();
+            foreach (var station in _stations) station.Refresh();
+            RefreshDock();
             SwitchTab(StationTab.Cauldron);
         }
 
-        // --- order + heat binding ---
+        private void OnStationChanged()
+        {
+            RefreshDock();
+            RefreshRail();
+        }
+
+        // --- order binding ---
 
         private bool _orderHooked;
 
@@ -394,8 +294,6 @@ namespace AlchemistsArsenal.UI
             if (order == null || _orderHooked) return;
             order.OnQualityChanged += OnQuality;
             _orderHooked = true;
-            if (PhysicsCauldronManager.Instance != null)
-                PhysicsCauldronManager.Instance.OnHeatChanged += SetHeat;
         }
 
         private void UnhookOrder()
@@ -405,166 +303,92 @@ namespace AlchemistsArsenal.UI
             _orderHooked = false;
         }
 
-        private void OnQuality(int q) => RefreshOrder();
+        private void OnQuality(int q) => RefreshDock();
 
-        private void RefreshOrder()
+        private void RefreshDock()
         {
-            // Self-healing: HookOrder() previously only ran from OnShow (when an
-            // order may not exist yet) and AcceptOrder (the ACCEPT button's own
-            // handler) — an order created any other way (verified via the headless
-            // playtest's driver, which calls GameLoopManager.ConfirmOrder directly)
-            // left the ticket panel permanently stale since nothing had subscribed
-            // to OnQualityChanged yet. HookOrder() is idempotent, so calling it here
-            // too costs nothing and makes this screen correct regardless of how the
-            // order came to exist.
+            // Self-healing: an order created any way other than through the Counter
+            // (the headless driver, a load) would otherwise leave the dock stale,
+            // because nothing had subscribed to OnQualityChanged yet. HookOrder is
+            // idempotent, so calling it here costs nothing.
             HookOrder();
 
-            var order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
+            ActiveOrder order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
+            ContractRecord job = SaveSystem.Instance != null && SaveSystem.Instance.State != null
+                ? SaveSystem.Instance.State.contract : null;
             bool has = order != null;
+
             _sendBtn.interactable = has;
-            _ticketBadge.enabled = has;
+
+            if (job != null && job.accepted)
+            {
+                CustomerDefinition buyer = CustomerCatalog.ById(job.buyerId);
+                _buyerPortrait.sprite = PixelSprites.Buyer(buyer.PortraitId);
+                _buyerName.text = $"{job.buyerName}\n<size=80%><color=#{ColorUtility.ToHtmlStringRGB(UITheme.TextLow)}>{buyer.Title}</color></size>";
+                _jobTitle.text = $"{job.title} — <b>{job.PotionName}</b>";
+                _jobTerms.text =
+                    $"Wants <color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(job.RequiredGrade))}>" +
+                    $"{job.RequiredGrade.ToString().ToUpperInvariant()}</color> or better.\n" +
+                    $"Pays {job.fee} g, +{job.bonus} g if it lands. Below grade pays half.";
+            }
+            else
+            {
+                _buyerName.text = "Nobody served yet";
+                _jobTitle.text = "";
+                _jobTerms.text = "Step up to the Counter and take one of the three jobs on the board.";
+            }
+
             if (!has)
             {
-                _ticketName.text = "No order yet — accept one at the Counter";
-                _qualityText.text = "QUALITY —";
-                _statusText.text = "ACCEPT AN ORDER FIRST";
+                _quality.Set(0f, "—");
+                _gradeText.text = "No potion on the bench.";
+                _logText.text = "";
+                _sendHint.text = "Take a job first.";
                 return;
             }
-            _ticketName.text = $"{order.potionName}\n<size=70%>{order.element}</size>";
-            _ticketBadge.sprite = Art.PixelSprites.ElementIcon(order.element);
-            _qualityFill.fillAmount = order.qualityScore / 100f;
-            var grade = order.GetGrade();
-            _qualityText.text = $"QUALITY {order.qualityScore} — <color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(grade))}>{grade.ToString().ToUpper()}</color>";
 
-            var sb = new StringBuilder("DEDUCTION LOG\n");
-            int start = Mathf.Max(0, order.deductions.Count - 8);
+            var grade = order.GetGrade();
+            _quality.Set(order.qualityScore / 100f, $"{order.qualityScore} / 100");
+            _quality.SetFillColor(UITheme.GradeColor(grade));
+            _gradeText.text =
+                $"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(grade))}>{grade.ToString().ToUpperInvariant()}</color>" +
+                (job != null && job.accepted
+                    ? job.Meets(grade) ? "  — meets the contract" : "  — below what they asked for"
+                    : "");
+
+            var sb = new StringBuilder();
+            int start = Mathf.Max(0, order.deductions.Count - 9);
             for (int i = start; i < order.deductions.Count; i++)
             {
                 var d = order.deductions[i];
                 string col = d.pointsDelta >= 0 ? "#4fae5a" : "#d64550";
-                sb.AppendLine($"<color={col}>{(d.pointsDelta >= 0 ? "+" : "")}{d.pointsDelta}</color> {d.station} — {d.reason}");
+                sb.AppendLine($"<color={col}>{(d.pointsDelta >= 0 ? "+" : "")}{d.pointsDelta,-3}</color> {d.station}: {d.reason}");
             }
+            if (order.deductions.Count == 0) sb.AppendLine("Nothing done to it yet.");
             _logText.text = sb.ToString();
-        }
-
-        private void SetClock(float t01) => _clockFill.fillAmount = t01;
-
-        private void SetHeat(float heat01)
-        {
-            if (PhysicsCauldronManager.Instance == null) return;
-            _heatFill.fillAmount = heat01;
-            float lo = PhysicsCauldronManager.Instance.MinOptimalHeat;
-            float hi = PhysicsCauldronManager.Instance.MaxOptimalHeat;
-            _heatBand.rectTransform.anchorMin = new Vector2(lo, 0f);
-            _heatBand.rectTransform.anchorMax = new Vector2(hi, 1f);
-
-            if (CraftingManager.Instance == null || CraftingManager.Instance.CurrentOrder == null) return;
 
             var pot = PhysicsCauldronManager.Instance;
-            if (_brewFill != null) _brewFill.fillAmount = pot.BrewProgress01;
-
-            if (pot.IsBrewComplete)
-            {
-                _statusText.text = "BREW READY — SEND IT OFF";
-                _statusText.color = UITheme.Candle; _heatFill.color = UITheme.Candle;
-            }
-            else if (!pot.MouseOverCauldron)
-            {
-                _statusText.text = "MOVE THE MOUSE OVER THE POT";
-                _statusText.color = UITheme.ParchmentDim; _heatFill.color = UITheme.ParchmentDim;
-            }
-            else if (heat01 < lo) { _statusText.text = "TOO COLD — STIR FASTER"; _statusText.color = UITheme.Water; _heatFill.color = UITheme.Water; }
-            else if (heat01 > hi) { _statusText.text = "OVERHEATING — EASE OFF"; _statusText.color = UITheme.Danger; _heatFill.color = UITheme.Danger; }
-            else { _statusText.text = "BREWING PERFECTLY — QUALITY CLIMBING"; _statusText.color = UITheme.Ok; _heatFill.color = UITheme.Ok; }
+            bool brewed = pot != null && pot.IsBrewComplete;
+            bool bottled = _stations[(int)StationTab.Bottling].Complete;
+            _sendHint.text = bottled ? "Sealed and labelled — good to go."
+                : brewed ? "Brewed. Bottle it before you send it."
+                : "You can send it early — it just won't be as good.";
         }
 
-        // ------------------------------------------------------------------ Prep
-
-        private void PickHerb(ElementType element)
+        private void SetClock(float t01)
         {
-            var order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
-            if (order == null || _prepPicksLeft <= 0) return;
-
-            bool match = element == order.element;
-            if (match) order.ApplyBonus(10, "Prep", $"Added {element} essence — matches the order");
-            else order.ApplyDeduction(6, "Prep", $"Added {element} essence — wrong element for {order.element}");
-
-            _prepPicksLeft--;
-            AudioManager.Play(match ? Sfx.Confirm : Sfx.Deny);
-            RefreshPrep();
-            RefreshOrder();
-        }
-
-        private void RefreshPrep()
-        {
-            if (_prepHint == null) return;
-            var order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
-            if (order == null)
+            if (_clockFill != null)
             {
-                _prepHint.text = "Accept an order at the Counter first.";
-                SetHerbButtonsInteractable(false);
-                return;
+                _clockFill.fillAmount = Mathf.Clamp01(t01);
+                _clockFill.color = t01 < 0.25f ? UITheme.Danger : UITheme.Candle;
             }
-            _prepHint.text = _prepPicksLeft > 0
-                ? $"{_prepPicksLeft} herb(s) left today — match the order's element ({order.element}) for a bonus."
-                : "No herbs left today.";
-            SetHerbButtonsInteractable(_prepPicksLeft > 0);
+            if (_clockPct != null) _clockPct.text = $"{Mathf.CeilToInt(t01 * 100f)}%";
         }
-
-        private void SetHerbButtonsInteractable(bool on)
-        {
-            foreach (var b in _herbButtons) if (b != null) b.interactable = on;
-        }
-
-        // -------------------------------------------------------------- Bottling
-
-        private void Seal()
-        {
-            var order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
-            if (order == null || _sealAttemptsLeft <= 0) return;
-
-            float needle01 = SealNeedle01();
-            float dist = Mathf.Abs(needle01 - 0.5f); // 0 = dead centre of the 0.42-0.58 band
-            bool inBand = dist <= 0.08f;
-
-            _sealAttemptsLeft--;
-            if (inBand)
-            {
-                int bonus = Mathf.RoundToInt(Mathf.Lerp(14f, 6f, dist / 0.08f));
-                order.ApplyBonus(bonus, "Bottling", $"Sealed clean (+{bonus})");
-                AudioManager.Play(Sfx.Seal);
-            }
-            else
-            {
-                order.ApplyDeduction(8, "Bottling", "Sealed off-centre");
-                AudioManager.Play(Sfx.Deny);
-            }
-            RefreshBottling();
-            RefreshOrder();
-        }
-
-        private void RefreshBottling()
-        {
-            if (_bottlingHint == null) return;
-            var order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
-            if (order == null)
-            {
-                _bottlingHint.text = "Accept an order at the Counter first.";
-                if (_sealBtn != null) _sealBtn.interactable = false;
-                return;
-            }
-            _bottlingHint.text = _sealAttemptsLeft > 0 ? $"{_sealAttemptsLeft} seal(s) left today" : "No seals left today.";
-            if (_sealBtn != null) _sealBtn.interactable = _sealAttemptsLeft > 0;
-        }
-
-        private static float SealNeedle01() => Mathf.PingPong(Time.unscaledTime * 0.6f, 1f);
 
         private void Update()
         {
-            if (_activeTab != StationTab.Bottling || _sealNeedle == null) return;
-            float t = SealNeedle01();
-            _sealNeedle.rectTransform.anchorMin = new Vector2(t, 0.5f);
-            _sealNeedle.rectTransform.anchorMax = new Vector2(t, 0.5f);
+            StationPanel active = _stations[(int)_activeTab];
+            if (active != null) active.Tick();
         }
     }
 }

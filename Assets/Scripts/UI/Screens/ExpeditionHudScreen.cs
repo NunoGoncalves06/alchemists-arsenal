@@ -30,13 +30,15 @@ namespace AlchemistsArsenal.UI
         protected override void Build()
         {
             // no full-screen box — the arena camera renders behind the overlay
-            var top = UIFactory.Panel(transform, UITheme.Ink800, "Banner");
+            var top = UIFactory.Panel(transform, UITheme.Alpha(UITheme.Surface, 0.92f), "Banner");
             top.rectTransform.anchorMin = new Vector2(0.32f, 0.88f); top.rectTransform.anchorMax = new Vector2(0.68f, 0.99f);
             top.rectTransform.offsetMin = top.rectTransform.offsetMax = Vector2.zero;
-            _banner = UIFactory.Label(top.transform, "", 18, UITheme.Candle, TextAlignmentOptions.Center, true);
+            _banner = UIFactory.Label(top.transform, "", UITheme.SizeHeading, UITheme.Candle,
+                TextAlignmentOptions.Center, true);
+            _banner.characterSpacing = 4f;
             UIFactory.Stretch(_banner.rectTransform, 6f);
 
-            var bossBg = UIFactory.Bar(transform, UITheme.Ink700, UITheme.Danger, out _bossFill);
+            var bossBg = UIFactory.Bar(transform, UITheme.Ground, UITheme.Danger, out _bossFill);
             bossBg.rectTransform.anchorMin = new Vector2(0.3f, 0.83f); bossBg.rectTransform.anchorMax = new Vector2(0.7f, 0.86f);
             bossBg.rectTransform.offsetMin = bossBg.rectTransform.offsetMax = Vector2.zero;
             bossBg.gameObject.SetActive(false);
@@ -48,7 +50,7 @@ namespace AlchemistsArsenal.UI
             _pips.offsetMin = _pips.offsetMax = Vector2.zero;
             foreach (var name in new[] { "NEUTRAL", "ENRAGED", "WARD", "RECOVER" })
             {
-                var pip = UIFactory.Panel(_pips, UITheme.Ink700, name);
+                var pip = UIFactory.Panel(_pips, UITheme.SurfaceHi, name);
                 var le = pip.gameObject.AddComponent<LayoutElement>(); le.flexibleWidth = 1; le.minHeight = 10;
             }
             _pips.gameObject.SetActive(false);
@@ -72,7 +74,7 @@ namespace AlchemistsArsenal.UI
             nwrt.offsetMin = nwrt.offsetMax = Vector2.zero;
             _nextWave.gameObject.SetActive(false);
 
-            _ticker = UIFactory.Label(transform, "", 15, UITheme.Parchment, TextAlignmentOptions.Center);
+            _ticker = UIFactory.MonoLabel(transform, "", UITheme.SizeSmall, UITheme.TextMid, TextAlignmentOptions.Center);
             var trt = _ticker.rectTransform;
             trt.anchorMin = new Vector2(0.25f, 0.18f); trt.anchorMax = new Vector2(0.75f, 0.22f);
             trt.offsetMin = trt.offsetMax = Vector2.zero;
@@ -83,7 +85,7 @@ namespace AlchemistsArsenal.UI
 
             _slabPanel = UIFactory.Root(transform, "Slab");
             var scrim = UIFactory.Box(_slabPanel, new Color(0f, 0f, 0f, 0.6f), _slabPanel);
-            _slab = UIFactory.Label(_slabPanel, "", 60, UITheme.Candle, TextAlignmentOptions.Center, true);
+            _slab = UIFactory.Title(_slabPanel, "", UITheme.SizeDisplay + 14, UITheme.Candle, TextAlignmentOptions.Center);
             UIFactory.Stretch(_slab.rectTransform);
             _continueBtn = UIFactory.Button(_slabPanel, "CONTINUE", () => GameLoopManager.Instance.BeginEvening());
             var cbrt = _continueBtn.image.rectTransform;

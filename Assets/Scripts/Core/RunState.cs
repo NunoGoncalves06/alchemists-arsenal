@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AlchemistsArsenal.Data;
 
 namespace AlchemistsArsenal.Core
 {
@@ -36,6 +37,14 @@ namespace AlchemistsArsenal.Core
         public List<string> ownedUpgrades = new List<string>();
         public List<string> ownedAdventurers = new List<string> { "Rookie" };
         public List<string> unlockedDiary = new List<string>();
+
+        /// <summary>
+        /// The job taken at today's Counter — who ordered it, the grade they'll
+        /// accept and what it pays. Persisted (rather than living on the Morning
+        /// screen) so a save taken mid-morning still knows what it owes at Evening.
+        /// Cleared when the day resolves.
+        /// </summary>
+        public ContractRecord contract = ContractRecord.None;
 
         public bool tutorialCompleted = false;
         public bool openingCinematicSeen = false;

@@ -95,20 +95,20 @@ namespace AlchemistsArsenal.UI
         private IEnumerator Run()
         {
             _step = Step.Welcome;
-            Show("Day one. Time is paused while we get you set up.\nWe run the shop in the morning, then send Rookie out to fight in the afternoon.\n\n<size=75%>(click to continue)</size>",
+            Show("Day one. Time is paused while we get you set up.\nYou run the shop in the morning — a customer orders, you brew it — and Rookie carries whatever you made into the afternoon.\n\n<size=75%>(click to continue)</size>",
                 "1 / 3", new Vector2(0.5f, 0.5f));
             yield return WaitForClickOr(8f);
 
             _step = Step.Counter;
-            Show("COUNTER tab (left). Read the incoming waves, then press ACCEPT ORDER to pick what to brew.",
-                "2 / 3", new Vector2(0.06f, 0.55f));
+            Show("There's someone at the COUNTER. Read today's road on the right, then TAKE one of the three jobs at the bottom — they pay differently and they want different grades.",
+                "2 / 3", new Vector2(0.30f, 0.33f));
             while (CraftingManager.Instance == null || CraftingManager.Instance.CurrentOrder == null)
                 yield return null;
 
             StationsUnlocked = true;
             _step = Step.Cauldron;
-            Show("CAULDRON tab. Hold the mouse over the pot and stir in circles — keep the gauge in the GREEN and the BREW bar fills. When it's READY, send it.",
-                "3 / 3", new Vector2(0.4f, 0.45f));
+            Show("All four stations are open now. At the CAULDRON, hold the spoon over the pot and stir in circles the way the recipe says — keep the heat inside the moving band and the BREW bar fills.",
+                "3 / 3", new Vector2(0.045f, 0.70f));
             while (true)
             {
                 var pot = Crafting.PhysicsCauldronManager.Instance;
@@ -119,8 +119,8 @@ namespace AlchemistsArsenal.UI
             }
 
             _step = Step.Done;
-            Show("That's the loop. Finish the brew if you like, then SEND TO EXPEDITION.\nTime runs at normal speed from tomorrow.\n\n<size=75%>(click to continue)</size>",
-                "done", new Vector2(0.86f, 0.14f));
+            Show("PREP adds ingredients before the brew, BOTTLING pours, seals and labels it after — both move the quality score on the right. When you're happy, SEND TO EXPEDITION.\nTime runs at normal speed from tomorrow.\n\n<size=75%>(click to continue)</size>",
+                "done", new Vector2(0.85f, 0.10f));
             AudioManager.Play(Sfx.Chime);
             yield return WaitForClickOr(8f);
 
@@ -167,19 +167,26 @@ namespace AlchemistsArsenal.UI
             ai.raycastTarget = false;
             _arrow.sizeDelta = new Vector2(36, 20);
 
-            // Kept within x <= 0.70: the Morning screen's Order Dock starts at 0.72,
-            // and the bubble previously reached to 0.86 — overlapping the dock's
-            // Ticket panel and garbling its text behind the bubble (playtest
-            // screenshot review).
+            // Kept within x <= 0.70 (the Morning screen's Order Dock starts at 0.70)
+            // and pushed hard against the top bar: every control the player needs —
+            // the station rail on the left, the job cards at the bottom of the
+            // Counter, the gauges under the pot — sits well below this strip, so the
+            // bubble can only ever cover a card heading, never something to click.
             var bubble = UIFactory.Panel(go.transform, UITheme.Parchment, "Coach");
             _coach = bubble.rectTransform;
-            _coach.anchorMin = new Vector2(0.10f, 0.79f);
-            _coach.anchorMax = new Vector2(0.70f, 0.915f);
+            _coach.anchorMin = new Vector2(0.10f, 0.835f);
+            _coach.anchorMax = new Vector2(0.68f, 0.932f);
             _coach.offsetMin = _coach.offsetMax = Vector2.zero;
             bubble.raycastTarget = false;
 
-            _bubble = UIFactory.Label(bubble.transform, "", 17, UITheme.Ink900, TextAlignmentOptions.Left);
-            UIFactory.Stretch(_bubble.rectTransform, 16f);
+            var edge = UIFactory.Panel(bubble.transform, UITheme.Wood, "Edge");
+            edge.rectTransform.anchorMin = new Vector2(0f, 0f);
+            edge.rectTransform.anchorMax = new Vector2(1f, 0f);
+            edge.rectTransform.sizeDelta = new Vector2(0f, 3f);
+            edge.raycastTarget = false;
+
+            _bubble = UIFactory.Label(bubble.transform, "", 16, UITheme.Ink900, TextAlignmentOptions.Left);
+            UIFactory.Stretch(_bubble.rectTransform, 14f);
             _dots = UIFactory.Label(bubble.transform, "", 12, UITheme.WoodDark, TextAlignmentOptions.BottomRight);
             UIFactory.Stretch(_dots.rectTransform, 8f);
         }

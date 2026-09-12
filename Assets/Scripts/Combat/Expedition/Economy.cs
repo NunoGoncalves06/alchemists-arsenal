@@ -1,5 +1,6 @@
 using UnityEngine;
 using AlchemistsArsenal.Combat;
+using AlchemistsArsenal.Data;
 
 namespace AlchemistsArsenal.Core
 {
@@ -21,6 +22,29 @@ namespace AlchemistsArsenal.Core
             if (tip) paid += PerfectTip;
             if (replay) paid = Mathf.RoundToInt(paid * 0.5f); // cleared-biome replay pays half (anti-farm, never zero)
             return (paid, tip);
+        }
+
+        /// <summary>
+        /// What the customer actually hands over for the job they commissioned: the
+        /// contract's own fee run through the grade multiplier, plus its completion
+        /// bonus — or half of everything if the flask came back below the grade they
+        /// asked for. A refused contract is the cost of taking the big commission
+        /// with a sloppy brew, which is the point of having a choice at the Counter.
+        /// </summary>
+        public static (int paid, bool tip, bool met) ContractPayout(PotionGrade grade,
+            ContractRecord contract, bool replay)
+        {
+            bool hasContract = contract != null && contract.accepted;
+            int fee = hasContract ? Mathf.Max(1, contract.fee) : BaseFee;
+
+            (int paid, bool tip) = Payout(grade, fee, replay: false);
+
+            bool met = !hasContract || contract.Meets(grade);
+            if (met) paid += hasContract ? contract.bonus : 0;
+            else paid = Mathf.RoundToInt(paid * 0.5f);
+
+            if (replay) paid = Mathf.RoundToInt(paid * 0.5f);
+            return (paid, tip, met);
         }
     }
 }

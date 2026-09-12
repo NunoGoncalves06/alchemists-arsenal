@@ -27,6 +27,14 @@ namespace AlchemistsArsenal.Combat
         public bool perfectTip;
         public PotionGrade craftedGrade = PotionGrade.Poor;
 
+        // --- the Counter contract this day was worked against (filled at Evening) ---
+        public string contractBuyer = "";
+        public string contractTitle = "";
+        public int contractFee;
+        public int contractBonus;
+        public bool contractMet = true;
+        public PotionGrade contractRequired = PotionGrade.Poor;
+
         public readonly Dictionary<string, int> herbDrops = new Dictionary<string, int>();
         public readonly List<BombLine> bombs = new List<BombLine>();
 
