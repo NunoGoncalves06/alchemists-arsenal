@@ -97,7 +97,18 @@ namespace AlchemistsArsenal.UI.Stations
 
         private Image _cwHalf, _ccwHalf;
 
-        public override void OnEnter() => Refresh();
+        public override void OnEnter()
+        {
+            var pot = PhysicsCauldronManager.Instance;
+            if (pot != null) pot.Attended = true;   // the spoon is in your hand now
+            Refresh();
+        }
+
+        public override void OnExit()
+        {
+            var pot = PhysicsCauldronManager.Instance;
+            if (pot != null) pot.Attended = false;
+        }
 
         public override void Refresh()
         {

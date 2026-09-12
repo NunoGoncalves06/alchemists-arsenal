@@ -158,6 +158,7 @@ namespace AlchemistsArsenal.Core
                     GameLoopManager.Instance.BeginHandoff();
                     foreach (var step in WaitForPhase(GamePhase.Handoff, 5f)) { if (_errorCount > 0) yield break; yield return step; }
                     if (_errorCount > 0) yield break;
+                    foreach (var step in Settle($"day{day}_handoff")) yield return step;
 
                     GameLoopManager.Instance.BeginAfternoon();
                     foreach (var step in WaitForPhase(GamePhase.Afternoon, 5f)) { if (_errorCount > 0) yield break; yield return step; }
