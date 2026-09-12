@@ -77,8 +77,24 @@ namespace AlchemistsArsenal.Core
 
             // ------------------------------------------------------------ script
 
+            /// <summary>
+            /// Fixed seed so a run is comparable to the one before it.
+            ///
+            /// Without this the harness was a coin toss: monster spawn positions come
+            /// from UnityEngine.Random, which Unity seeds from the clock, so the same
+            /// build won both expeditions on one run and lost both on the next. Any
+            /// combat tuning judged from a single run was reading noise — two changes
+            /// were reverted this way before the variance was measured (5 runs of one
+            /// unchanged build: 3 won both days, 2 lost both). Change this seed to
+            /// sample a different fight; keep it fixed while comparing two builds.
+            /// </summary>
+            private const int RandomSeed = 20260912;
+
             private IEnumerator Drive()
             {
+                UnityEngine.Random.InitState(RandomSeed);
+                Log($"Random seed {RandomSeed} — runs are comparable to each other.");
+
                 foreach (var step in WaitUntil(() => GameLoopManager.Instance != null && SaveSystem.Instance != null, 10f,
                         "boot managers (GameLoopManager/SaveSystem)"))
                     yield return step;

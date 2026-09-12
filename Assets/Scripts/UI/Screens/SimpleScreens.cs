@@ -254,8 +254,8 @@ namespace AlchemistsArsenal.UI
 
     public class HandoffScreen : GameScreen
     {
-        private TextMeshProUGUI _flaskName, _grade, _contract, _quality;
-        private UnityEngine.UI.Image _flaskArt;
+        private TextMeshProUGUI _flaskName, _grade, _contract, _quality, _who, _sub;
+        private UnityEngine.UI.Image _flaskArt, _fighterArt;
 
         protected override void Build()
         {
@@ -264,21 +264,21 @@ namespace AlchemistsArsenal.UI
             var title = UIFactory.Title(transform, "Today's party", UITheme.SizeTitle, UITheme.Candle,
                 TextAlignmentOptions.Center);
             UIFactory.Place(title.rectTransform, 0f, 0.78f, 1f, 0.88f);
-            var sub = UIFactory.Heading(transform, "what Rookie carries out of the shop", UITheme.TextLow,
-                UITheme.SizeSmall, TextAlignmentOptions.Center);
-            UIFactory.Place(sub.rectTransform, 0f, 0.74f, 1f, 0.78f);
+            _sub = UIFactory.Heading(transform, "", UITheme.TextLow, UITheme.SizeSmall,
+                TextAlignmentOptions.Center);
+            UIFactory.Place(_sub.rectTransform, 0f, 0.74f, 1f, 0.78f);
 
             // A plain bordered surface, not a Card: everything in here is anchored by
             // hand, so a layout stack would only fight it.
             var card = UIKit.Surface(transform, out Transform box, UITheme.Surface, UITheme.Line, "PartyCard");
             UIFactory.Place(card.rectTransform, 0.30f, 0.34f, 0.70f, 0.72f);
 
-            var portrait = UIKit.Portrait(box, Art.PixelSprites.Rookie(), 120f);
-            var frame = (RectTransform)portrait.transform.parent.parent;   // art > mat > frame
+            _fighterArt = UIKit.Portrait(box, Art.PixelSprites.Rookie(), 120f);
+            var frame = (RectTransform)_fighterArt.transform.parent.parent;   // art > mat > frame
             UIFactory.Place(frame, 0.06f, 0.30f, 0.32f, 0.92f);
 
-            var who = UIFactory.Title(box, "Rookie", UITheme.SizeHeading + 2, UITheme.TextHi);
-            UIFactory.Place(who.rectTransform, 0.36f, 0.74f, 0.96f, 0.92f);
+            _who = UIFactory.Title(box, "", UITheme.SizeHeading + 2, UITheme.TextHi);
+            UIFactory.Place(_who.rectTransform, 0.36f, 0.74f, 0.96f, 0.92f);
 
             _flaskArt = UIFactory.Icon(box, Art.PixelSprites.Flask(ElementType.Nature), 56f);
             UIFactory.Place(_flaskArt.rectTransform, 0.36f, 0.40f, 0.48f, 0.70f);
@@ -306,13 +306,20 @@ namespace AlchemistsArsenal.UI
             var job = SaveSystem.Instance != null && SaveSystem.Instance.State != null
                 ? SaveSystem.Instance.State.contract : null;
 
+            // Whoever ordered the potion is the one who walks the road with it.
+            CustomerDefinition fighter = job != null && job.accepted
+                ? CustomerCatalog.ById(job.buyerId) : CustomerCatalog.Rookie;
+            _who.text = fighter.DisplayName;
+            _fighterArt.sprite = Art.PixelSprites.Fighter(fighter.PortraitId);
+            _sub.text = $"what {fighter.DisplayName} carries out of the shop";
+
             if (order == null)
             {
                 _flaskArt.sprite = Art.PixelSprites.Flask(ElementType.Poison);
                 _flaskName.text = "Raw Sludge";
                 _grade.text = "<color=#d64550>NOTHING FINISHED</color>";
                 _quality.text = "";
-                _contract.text = "You never took a job today. Rookie goes out with the dregs.";
+                _contract.text = $"You never took a job today. {fighter.DisplayName} goes out with the dregs.";
                 return;
             }
 

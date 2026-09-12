@@ -41,6 +41,59 @@ namespace AlchemistsArsenal.Combat
 
         public IReadOnlyList<CombatDecisionEngine.ScoredCandidate> LastBreakdown => _breakdown;
 
+        /// <summary>
+        /// Flasks still on the belt, across every bomb in the loadout. The HUD shows
+        /// this because running dry mid-wave is invisible otherwise — the adventurer
+        /// simply stops throwing and it reads as the AI having broken.
+        /// </summary>
+        public int FlasksLeft
+        {
+            get
+            {
+                int total = 0;
+                foreach (var kv in _ammo) total += Mathf.Max(0, kv.Value);
+                return total;
+            }
+        }
+
+        /// <summary>
+        /// Seconds until the next throw is possible: the shortest cooldown among the
+        /// bombs that still have ammo. 0 when something is ready right now.
+        /// </summary>
+        public float CooldownRemaining
+        {
+            get
+            {
+                if (loadout == null) return 0f;
+                float now = Time.time;
+                float best = float.MaxValue;
+                foreach (AdventurerLoadout.BombSlot slot in loadout.Slots)
+                {
+                    BombData bomb = slot.bomb;
+                    if (bomb == null) continue;
+                    if (_ammo.TryGetValue(bomb, out int left) && left <= 0) continue;
+                    float readyAt = _readyAt.TryGetValue(bomb, out float t) ? t : 0f;
+                    best = Mathf.Min(best, Mathf.Max(0f, readyAt - now));
+                    if (best <= 0f) return 0f;
+                }
+                return best == float.MaxValue ? 0f : best;
+            }
+        }
+
+        /// <summary>0..1 of the way through the current cooldown (1 = ready).</summary>
+        public float CooldownFraction
+        {
+            get
+            {
+                float remaining = CooldownRemaining;
+                if (remaining <= 0f) return 1f;
+                float longest = 0.01f;
+                foreach (AdventurerLoadout.BombSlot slot in loadout.Slots)
+                    if (slot.bomb != null) longest = Mathf.Max(longest, slot.bomb.CooldownSeconds);
+                return Mathf.Clamp01(1f - remaining / longest);
+            }
+        }
+
         private ICombatant _self;
         private float _nextDecisionTime;
 

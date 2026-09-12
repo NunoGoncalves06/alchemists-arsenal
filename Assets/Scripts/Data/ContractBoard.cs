@@ -123,7 +123,7 @@ namespace AlchemistsArsenal.Data
                 title = "Personal request",
                 note = personal == best
                     ? "Happens to match the road as well."
-                    : $"They want {personal}, whatever's out there. Rookie carries what you brew.",
+                    : $"They want {personal}, whatever's out there — and they carry it themselves.",
                 element = personal,
                 requiredGrade = Req(PotionGrade.Okay),
                 fee = Fee(58, 5), bonus = 22,

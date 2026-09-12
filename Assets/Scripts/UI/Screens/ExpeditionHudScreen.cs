@@ -44,16 +44,31 @@ namespace AlchemistsArsenal.UI
             bossBg.gameObject.SetActive(false);
             _bossBar = bossBg;
 
+            // The boss phase strip. It used to be four bare stripes with no captions:
+            // you could see one light up and had no way to know what it meant or
+            // whether anything was actually happening (playtest: "weird stripes that
+            // don't have description"). Each segment is named now, and the line under
+            // it says what the live phase is doing to your damage.
             var pipsStack = UIFactory.HStack(transform, 4f);
             _pips = (RectTransform)pipsStack.transform;
-            _pips.anchorMin = new Vector2(0.3f, 0.80f); _pips.anchorMax = new Vector2(0.7f, 0.82f);
+            _pips.anchorMin = new Vector2(0.3f, 0.785f); _pips.anchorMax = new Vector2(0.7f, 0.825f);
             _pips.offsetMin = _pips.offsetMax = Vector2.zero;
             foreach (var name in new[] { "NEUTRAL", "ENRAGED", "WARD", "RECOVER" })
             {
                 var pip = UIFactory.Panel(_pips, UITheme.SurfaceHi, name);
-                var le = pip.gameObject.AddComponent<LayoutElement>(); le.flexibleWidth = 1; le.minHeight = 10;
+                UIFactory.Flex(pip.gameObject, 1f, 1f, minHeight: 22f);
+                var label = UIFactory.Label(pip.transform, name, UITheme.SizeTiny, UITheme.TextLow,
+                    TextAlignmentOptions.Center, true);
+                label.characterSpacing = 2f;
+                UIFactory.Stretch(label.rectTransform, 2f);
+                _pipLabels.Add(label);
             }
             _pips.gameObject.SetActive(false);
+
+            _bossPhaseText = UIFactory.Label(transform, "", UITheme.SizeSmall, UITheme.TextMid,
+                TextAlignmentOptions.Center);
+            UIFactory.Place(_bossPhaseText.rectTransform, 0.22f, 0.735f, 0.78f, 0.782f);
+            _bossPhaseText.gameObject.SetActive(false);
 
             // controls
             var ctrl = UIFactory.HStack(transform, 6f);
@@ -69,15 +84,18 @@ namespace AlchemistsArsenal.UI
             {
                 if (_world != null && _world.Expedition != null) _world.Expedition.SkipCurrentWave();
             }, primary: false);
-            var nwrt = _nextWave.image.rectTransform;
-            nwrt.anchorMin = new Vector2(0.44f, 0.24f); nwrt.anchorMax = new Vector2(0.56f, 0.29f);
-            nwrt.offsetMin = nwrt.offsetMax = Vector2.zero;
+            // Out of the arena's middle: the fighter circles now and spent real time
+            // standing behind this button and behind the ticker below it.
+            UIFactory.Place(_nextWave.image.rectTransform, 0.855f, 0.175f, 0.985f, 0.235f);
             _nextWave.gameObject.SetActive(false);
 
-            _ticker = UIFactory.MonoLabel(transform, "", UITheme.SizeSmall, UITheme.TextMid, TextAlignmentOptions.Center);
-            var trt = _ticker.rectTransform;
-            trt.anchorMin = new Vector2(0.25f, 0.18f); trt.anchorMax = new Vector2(0.75f, 0.22f);
-            trt.offsetMin = trt.offsetMax = Vector2.zero;
+            // The AI ticker gets its own slab so it reads as HUD rather than as text
+            // floating in the middle of the fight.
+            var tickerBg = UIFactory.Panel(transform, UITheme.Alpha(UITheme.Ground, 0.78f), "TickerBg");
+            UIFactory.Place(tickerBg.rectTransform, 0.28f, 0.165f, 0.72f, 0.215f);
+            _ticker = UIFactory.MonoLabel(tickerBg.transform, "", UITheme.SizeSmall, UITheme.TextMid,
+                TextAlignmentOptions.Center);
+            UIFactory.Stretch(_ticker.rectTransform, 4f);
 
             _dock = UIFactory.Root(transform, "PartyDock");
             _dock.anchorMin = new Vector2(0f, 0f); _dock.anchorMax = new Vector2(1f, 0.16f);
@@ -96,6 +114,8 @@ namespace AlchemistsArsenal.UI
 
         private Image _bossBar;
         private Button _nextWave;
+        private TextMeshProUGUI _bossPhaseText;
+        private readonly List<TextMeshProUGUI> _pipLabels = new List<TextMeshProUGUI>();
 
         private Button MiniBtn(Transform p, string t, System.Action a)
         {
@@ -136,23 +156,52 @@ namespace AlchemistsArsenal.UI
             var row = UIFactory.HStack(_dock, 12f, new RectOffset(20, 20, 12, 12));
             UIFactory.Stretch((RectTransform)row.transform);
 
+            bool first = true;
             foreach (var body in _world.Party)
             {
                 if (body == null) continue;
-                var card = UIFactory.Panel(row.transform, UITheme.Ink900, "Card");
-                var le = card.gameObject.AddComponent<LayoutElement>(); le.minWidth = 220; le.minHeight = 84;
-                var v = UIFactory.VStack(card.transform, 4f, new RectOffset(8, 8, 6, 6));
-                UIFactory.Stretch((RectTransform)v.transform);
-                UIFactory.Label(v.transform, "ROOKIE", 14, UITheme.Candle, TextAlignmentOptions.Left, true)
-                    .gameObject.AddComponent<LayoutElement>().minHeight = 18;
-                var hp = UIFactory.Bar(v.transform, UITheme.Ink700, UITheme.Ok, out var hpFill);
-                hp.gameObject.AddComponent<LayoutElement>().minHeight = 12;
+
+                string who = first ? _world.FighterName : "Rookie";
+                string whoId = first ? _world.FighterId : "rookie";
+                first = false;
+
+                Image card = UIKit.Surface(row.transform, out Transform inner,
+                    UITheme.Alpha(UITheme.Surface, 0.92f), UITheme.Line, "Card");
+                UIFactory.Flex(card.gameObject, 0f, 1f, minWidth: 330f, minHeight: 108f);
+
+                var portrait = UIKit.Portrait(inner, Art.PixelSprites.Buyer(whoId), 78f);
+                var frame = (RectTransform)portrait.transform.parent.parent;
+                UIFactory.Place(frame, 0.02f, 0.08f, 0.26f, 0.92f);
+
+                var name = UIFactory.Label(inner, who.ToUpperInvariant(), UITheme.SizeSmall, UITheme.Candle,
+                    TextAlignmentOptions.Left, true);
+                name.characterSpacing = 3f;
+                UIFactory.Place(name.rectTransform, 0.29f, 0.68f, 0.98f, 0.95f);
+
+                var hp = UIFactory.Bar(inner, UITheme.Ground, UITheme.Ok, out var hpFill);
+                UIFactory.Place(hp.rectTransform, 0.29f, 0.50f, 0.98f, 0.65f);
+
+                // Flasks left and the throw cooldown. Without these the fighter simply
+                // stops throwing when the belt runs dry or while a bomb is recharging,
+                // and there is nothing on screen that says why.
+                var flasks = UIFactory.MonoLabel(inner, "", UITheme.SizeSmall, UITheme.TextHi,
+                    TextAlignmentOptions.Left);
+                UIFactory.Place(flasks.rectTransform, 0.29f, 0.26f, 0.62f, 0.46f);
+
+                var flaskIcon = UIFactory.Icon(inner, Art.PixelSprites.Flask(ElementType.Nature), 22f);
+                UIFactory.Place(flaskIcon.rectTransform, 0.255f, 0.28f, 0.30f, 0.44f);
+
+                var cd = UIFactory.Bar(inner, UITheme.Ground, UITheme.Candle, out var cdFill);
+                UIFactory.Place(cd.rectTransform, 0.29f, 0.08f, 0.80f, 0.22f);
+                var cdText = UIFactory.MonoLabel(inner, "", UITheme.SizeTiny, UITheme.TextMid,
+                    TextAlignmentOptions.Left);
+                UIFactory.Place(cdText.rectTransform, 0.82f, 0.06f, 0.99f, 0.24f);
 
                 var ai = body.GetComponent<UtilityAI_CombatController>();
                 if (ai != null) { _ai.Add(ai); ai.OnBombThrowRequested += OnThrow; }
 
                 var tracker = card.gameObject.AddComponent<PortraitTracker>();
-                tracker.Init(body, hpFill, card);
+                tracker.Init(body, hpFill, card, ai, flasks, cdFill, cdText, flaskIcon);
             }
         }
 
@@ -168,6 +217,8 @@ namespace AlchemistsArsenal.UI
             bool boss = exp.Phase == ExpeditionPhase.BossFight && exp.BossInstance != null;
             if (_bossBar.gameObject.activeSelf != boss) _bossBar.gameObject.SetActive(boss);
             if (_pips.gameObject.activeSelf != boss) _pips.gameObject.SetActive(boss);
+            if (_bossPhaseText != null && _bossPhaseText.gameObject.activeSelf != boss)
+                _bossPhaseText.gameObject.SetActive(boss);
 
             bool canSkip = exp.Phase == ExpeditionPhase.Waves;
             if (_nextWave != null && _nextWave.gameObject.activeSelf != canSkip)
@@ -181,7 +232,12 @@ namespace AlchemistsArsenal.UI
                 float f = bb != null && bb.MaxHP > 0 ? (float)bb.CurrentHP / bb.MaxHP : 0f;
                 if (!Mathf.Approximately(f, _lastBossFill)) { _bossFill.fillAmount = f; _lastBossFill = f; }
                 int pip = bp != null ? (int)bp.CurrentPhase : 0;
-                if (pip != _lastPip) { SetPips(pip); _lastPip = pip; }
+                if (pip != _lastPip)
+                {
+                    SetPips(pip);
+                    if (_bossPhaseText != null) _bossPhaseText.text = DescribePhase(bp);
+                    _lastPip = pip;
+                }
                 banner = "THE BOSS";
             }
             else
@@ -202,14 +258,35 @@ namespace AlchemistsArsenal.UI
             for (int i = 0; i < _pips.childCount; i++)
             {
                 var img = _pips.GetChild(i).GetComponent<Image>();
-                if (img != null) img.color = i == active ? UITheme.Arcane : UITheme.Ink700;
+                if (img != null) img.color = i == active ? UITheme.Witch : UITheme.SurfaceHi;
+                if (i < _pipLabels.Count && _pipLabels[i] != null)
+                    _pipLabels[i].color = i == active ? UITheme.TextHi : UITheme.TextLow;
+            }
+        }
+
+        /// <summary>What the boss's current phase actually does to you, in one line.</summary>
+        private static string DescribePhase(BossPhaseManager bp)
+        {
+            if (bp == null) return "";
+            switch (bp.CurrentPhase)
+            {
+                case BossPhase.Enraged:
+                    return "ENRAGED — hurt, and hitting faster for it. Keep your distance.";
+                case BossPhase.ElementalWard:
+                    return $"ELEMENTAL WARD — shrugging off <b>{bp.WardElement}</b> " +
+                           $"(x{bp.WardMultiplier:0.00} damage). Throw something else.";
+                case BossPhase.Recovering:
+                    return "RECOVERING — the ward just dropped. This is the window.";
+                default:
+                    return "NEUTRAL — measured attacks, nothing resisted.";
             }
         }
 
         private void OnThrow(BombThrowRequest r)
         {
-            if (r.Bomb != null)
-                _ticker.text = $"Rookie throws <b>{r.Bomb.DisplayName}</b> — {r.Bomb.Element}";
+            if (r.Bomb == null) return;
+            string who = _world != null ? _world.FighterName : "Rookie";
+            _ticker.text = $"{who} throws <b>{r.Bomb.DisplayName}</b> — {r.Bomb.Element}";
         }
 
         private void OnDetonated(DetonationInfo d)
@@ -260,15 +337,61 @@ namespace AlchemistsArsenal.UI
         /// <summary>Per-card HP + death visuals.</summary>
         private class PortraitTracker : MonoBehaviour
         {
-            private CombatantBody _body; private Image _hp; private Image _card;
-            private float _last = -1f; private bool _dead;
-            public void Init(CombatantBody b, Image hp, Image card) { _body = b; _hp = hp; _card = card; }
+            private CombatantBody _body;
+            private Image _hp, _card, _cdFill, _flaskIcon;
+            private UtilityAI_CombatController _ai;
+            private TextMeshProUGUI _flasks, _cdText;
+            private float _last = -1f;
+            private int _lastFlasks = -1;
+            private bool _dead;
+
+            public void Init(CombatantBody b, Image hp, Image card, UtilityAI_CombatController ai,
+                TextMeshProUGUI flasks, Image cdFill, TextMeshProUGUI cdText, Image flaskIcon)
+            {
+                _body = b; _hp = hp; _card = card; _ai = ai;
+                _flasks = flasks; _cdFill = cdFill; _cdText = cdText; _flaskIcon = flaskIcon;
+            }
+
             private void Update()
             {
                 if (_body == null) return;
+
                 float f = _body.MaxHP > 0 ? Mathf.Clamp01((float)_body.CurrentHP / _body.MaxHP) : 0f;
-                if (!Mathf.Approximately(f, _last)) { _hp.fillAmount = f; _last = f; }
-                if (!_dead && !_body.IsAlive && _card != null) { _card.color = new Color(0.2f, 0.15f, 0.18f); _dead = true; }
+                if (!Mathf.Approximately(f, _last))
+                {
+                    _hp.fillAmount = f;
+                    _hp.color = f > 0.5f ? UITheme.Ok : f > 0.25f ? UITheme.Candle : UITheme.Danger;
+                    _last = f;
+                }
+                if (!_dead && !_body.IsAlive && _card != null)
+                {
+                    _card.color = new Color(0.2f, 0.15f, 0.18f);
+                    _dead = true;
+                }
+
+                if (_ai == null) return;
+
+                int left = _ai.FlasksLeft;
+                if (left != _lastFlasks)
+                {
+                    _lastFlasks = left;
+                    if (_flasks != null)
+                    {
+                        _flasks.text = left > 0 ? $"x{left} flasks" : "OUT OF FLASKS";
+                        _flasks.color = left > 3 ? UITheme.TextHi : left > 0 ? UITheme.Candle : UITheme.Danger;
+                    }
+                    if (_flaskIcon != null)
+                        _flaskIcon.color = left > 0 ? Color.white : UITheme.Alpha(Color.white, 0.3f);
+                }
+
+                float remaining = _ai.CooldownRemaining;
+                if (_cdFill != null)
+                {
+                    _cdFill.fillAmount = _ai.CooldownFraction;
+                    _cdFill.color = remaining <= 0f ? UITheme.Ok : UITheme.Candle;
+                }
+                if (_cdText != null)
+                    _cdText.text = left <= 0 ? "--" : remaining <= 0f ? "READY" : $"{remaining:0.0}s";
             }
         }
     }
