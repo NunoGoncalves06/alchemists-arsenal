@@ -44,6 +44,56 @@ afternoon damage, payout, and elemental effectiveness.
 3. **Everything is drawn.** All art is self-made pixel art. The story is never a text wall — it assembles visually in the diary.
 4. **Readable systems.** The AI, the elemental matrix, and the quality bands are surfaced in the UI, not hidden. A curious player can open the reasoning inspector and see *why* the adventurer threw water.
 
+### 1.1 Idea: hiring & raising heroes `[idea]`
+
+> **Status: concept only.** Not implemented and not scheduled in `ROADMAP.md`.
+> It describes where the game wants to go; the details are expected to change.
+
+**Core idea.** Adventurers aren't interchangeable carriers for your potions.
+They're people you *choose* and *grow*. **Your potions + their skills = the fight.**
+
+**Hiring**
+- Candidates answer a **notice board** at the shop. The pool changes over time,
+  so not everyone is available every day.
+- Each candidate brings:
+  - a **personality**, which shapes how they behave in a fight and how they react
+    to your potions;
+  - a **fighting style**, for example charging in, keeping their distance, or
+    throwing fast;
+  - a **price**: a hiring fee, a wage, or a share of the loot.
+- Example archetypes:
+  - **Brave:** charges in and loves strong, simple brews.
+  - **Careful:** keeps their distance and makes every flask count.
+  - **Greedy:** cheap to hire, but wants a cut of the loot.
+- The tension: your budget vs. who suits tomorrow's road vs. which potions you
+  can actually brew well for them.
+
+**Raising (development)**
+- **Experience:** every expedition teaches them something, and heroes grow from
+  *rookie* to *veteran*.
+- **Traits:** at milestones the player picks perks that change how a hero fights,
+  for example throwing further, getting more out of one element, or carrying an
+  extra flask.
+- **Loyalty:** arming a hero well (good quality, the right element) builds
+  loyalty. Repeatedly sending them out with poor potions wears it down. A hero
+  with low loyalty may ask for more pay, refuse a road, or walk away.
+
+**How it ties into the loop**
+- **Morning:** *who* you're brewing for matters, because a hero's style favours
+  certain potions.
+- **Afternoon:** the fight reads as potion quality × hero skill.
+- **Evening:** hire, train, pick traits, and choose tomorrow's party (the Roster
+  tab, §7.9.3).
+- **Story:** heroes could carry personal threads into the diary (open).
+
+**Open questions**
+1. Cost model: a one-off fee, a daily wage, a loot share, or a different one per
+   archetype?
+2. How many heroes can you keep on the roster, and how many go out at once?
+3. Can a hero be lost for good, or only injured and forced to rest?
+4. Do traits come from a fixed path per archetype, or a random pick of three?
+5. Does loyalty change combat behaviour directly, or only pay and availability?
+
 ---
 
 ## 2. Canonical rules (authoritative — code matches this, not the GDD)
@@ -622,6 +672,8 @@ Persistent chrome: the cottage at night (warm light), a top tab strip
 - **Binding:** `RosterManager` (`Owned`, `Hire(id)`, `SetParty(...)`,
   `TodaysClient`), `AdventurerData`.
 - **States:** owned / hireable / can't-afford / in-party.
+- **Future idea:** personalities, experience, traits and loyalty. See §1.1
+  (concept only, not implemented).
 
 #### 7.9.4 Visual Diary (Story rubric anchor)
 - **Purpose:** the entire narrative, delivered visually — never a text wall.
