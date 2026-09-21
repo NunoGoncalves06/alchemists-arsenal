@@ -703,7 +703,9 @@ Persistent chrome: the cottage at night (warm light), a top tab strip
 - **Purpose:** show the 5-biome journey and let you replay.
 - **Layout:** a drawn map with a winding path, 5 nodes (Whispering Woods →
   Coven's Peak). Current node pulses; cleared nodes show your best **grade**
-  (star rating from waves cleared / party survival / boss); locked nodes are
+  (star rating, `ExpeditionReport.Stars`: road brought home — every wave, and
+  the guardian where one stands / every hero back / flask delivered at Great or
+  better); locked nodes are
   fog. The final node is a looming spire.
 - **Components:** `BiomeNode`, `PathTrail`, `GradeStars`, `SLEEP/ADVANCE` CTA.
 - **Binding:** `ProgressionManager` (`CurrentBiomeIndex`, `BestGrade[]`,

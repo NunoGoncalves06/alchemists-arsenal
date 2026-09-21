@@ -126,13 +126,21 @@ namespace AlchemistsArsenal.UI
                 UIFactory.Flex(why.gameObject, 1f, 0f, minHeight: 34f);
             }
 
-            var stars = UIFactory.HStack(c, 4f);
-            UIFactory.FixedHeight(stars.gameObject, 30f);
-            for (int i = 0; i < 3; i++)
+            // One line per star, lit or dim, next to the rule it stands for. A bare
+            // row of three icons never said which one was missed, so a two-star
+            // run gave the player nothing to chase.
+            for (int i = 0; i < ExpeditionReport.StarRules.Length; i++)
             {
-                var s = UIFactory.Icon(stars.transform, Art.PixelSprites.Star(), 26f,
-                    i < r.Stars ? Color.white : UITheme.Alpha(Color.white, 0.18f));
-                UIFactory.Flex(s.gameObject, 0f, 0f, minWidth: 26f, minHeight: 26f);
+                bool earned = r.StarEarned(i);
+                var line = UIFactory.HStack(c, 8f);
+                line.childAlignment = TextAnchor.MiddleLeft;
+                UIFactory.FixedHeight(line.gameObject, 28f);
+                var s = UIFactory.Icon(line.transform, Art.PixelSprites.Star(), 24f,
+                    earned ? Color.white : UITheme.Alpha(Color.white, 0.18f));
+                UIFactory.Flex(s.gameObject, 0f, 0f, minWidth: 24f, minHeight: 24f);
+                var rule = UIFactory.Label(line.transform, ExpeditionReport.StarRules[i], UITheme.SizeBody,
+                    earned ? UITheme.TextHi : UITheme.TextLow, TextAlignmentOptions.Left);
+                UIFactory.Flex(rule.gameObject, 1f, 1f);
             }
 
             UIKit.KeyValue(c, "Waves cleared", $"{r.wavesCleared} / {r.totalWaves}");

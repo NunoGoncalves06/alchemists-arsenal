@@ -55,18 +55,56 @@ namespace AlchemistsArsenal.Combat
 
         public int TotalGold => goldFromLoot + goldPaidByGrade;
 
-        /// <summary>0..3 stars: cleared + boss + no losses.</summary>
-        public int Stars
+        // ------------------------------------------------------------------ stars
+        //
+        // The three stars have to be three DIFFERENT things. ExpeditionManager only
+        // calls Win() once every wave was killed off (a timed-out wave is not a
+        // clear) and the guardian fell wherever one stood (a boss timeout or an
+        // empty belt mid-boss is a Lose). So "cleared every wave" and "felled the
+        // guardian" are both already inside star one. The old third star was
+        // `bossDefeated || wavesCleared >= totalWaves`, which every win satisfied,
+        // so no win could ever score just 1 star.
+        //
+        // The third star is the flask: the grade that actually detonated on the
+        // road (the same craftedGrade the fee is paid on). It is the one axis a win
+        // does not imply, it is reachable on every road on every day (bossless
+        // biomes 1-3 and the boss-free day 1 included), and it is the morning's
+        // work showing up in the afternoon's grade.
+
+        /// <summary>The worst flask grade that still earns the third star.</summary>
+        public const PotionGrade ThirdStarGrade = PotionGrade.Great;
+
+        /// <summary>What each star is for, in order. The Evening report and the
+        /// road map both read these, so the rules are written down once.</summary>
+        public static readonly string[] StarRules =
         {
-            get
-            {
-                if (!won) return 0;
-                int s = 1;
-                if (partyDown == 0) s++;
-                if (bossDefeated || wavesCleared >= totalWaves) s++;
-                return Math.Clamp(s, 0, 3);
-            }
-        }
+            "Bring the road home",
+            "Bring every hero back",
+            $"Deliver a {ThirdStarGrade} flask or better",
+        };
+
+        /// <summary>Star 1: every wave cleared, and the guardian felled where one stood.</summary>
+        public bool StarRoadHome => won;
+
+        /// <summary>Star 2: nobody in the party went down.</summary>
+        public bool StarEveryHeroBack => won && partyDown == 0;
+
+        /// <summary>Star 3: the flask fought at <see cref="ThirdStarGrade"/> or better.
+        /// <see cref="PotionGrade"/> counts DOWN (Perfect = 0), so "or better" is <c>&lt;=</c>.</summary>
+        public bool StarFineFlask => won && craftedGrade <= ThirdStarGrade;
+
+        /// <summary>Star <paramref name="index"/> (0..2), in <see cref="StarRules"/> order.</summary>
+        public bool StarEarned(int index) => index switch
+        {
+            0 => StarRoadHome,
+            1 => StarEveryHeroBack,
+            2 => StarFineFlask,
+            _ => false,
+        };
+
+        /// <summary>0..3. A loss is 0; any win is at least 1, which is what opens the
+        /// next road (<see cref="Core.RunState.IsBiomeUnlocked"/>).</summary>
+        public int Stars => (StarRoadHome ? 1 : 0) + (StarEveryHeroBack ? 1 : 0) + (StarFineFlask ? 1 : 0);
 
         public BombLine LineFor(string name, ElementType element, PotionGrade grade)
         {
