@@ -23,6 +23,14 @@ namespace AlchemistsArsenal.Combat
         /// <summary>Morning potion quality (0..1). The launcher applies the damage/blast band.</summary>
         public readonly float PotionQuality01;
 
+        /// <summary>
+        /// Everything about the <i>thrower</i> that scales this flask's damage:
+        /// their perk attunement (does the flask match their element?) and their
+        /// level. Snapshotted here at decision time, following PotionQuality01's
+        /// precedent, so the detonation never has to reach back for a component.
+        /// </summary>
+        public readonly float ThrowerDamageMultiplier;
+
         public BombThrowRequest(
             ICombatant thrower,
             ICombatant target,
@@ -30,7 +38,8 @@ namespace AlchemistsArsenal.Combat
             Vector2 origin,
             Vector2 targetPosition,
             float utilityScore,
-            float potionQuality01)
+            float potionQuality01,
+            float throwerDamageMultiplier = 1f)
         {
             Thrower = thrower;
             Target = target;
@@ -39,6 +48,7 @@ namespace AlchemistsArsenal.Combat
             TargetPosition = targetPosition;
             UtilityScore = utilityScore;
             PotionQuality01 = potionQuality01;
+            ThrowerDamageMultiplier = throwerDamageMultiplier <= 0f ? 1f : throwerDamageMultiplier;
         }
     }
 }

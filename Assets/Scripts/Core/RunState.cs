@@ -35,7 +35,20 @@ namespace AlchemistsArsenal.Core
 
         public List<string> ownedHerbs = new List<string>();
         public List<string> ownedUpgrades = new List<string>();
+        /// <summary>
+        /// Legacy. Superseded by <see cref="roster"/>, which
+        /// <see cref="SaveSystem.Migrate"/> seeds from this list exactly once.
+        /// Kept because Migrate's re-seed of it is covered by a shipped test;
+        /// nothing in the game reads it. Do not re-tangle the two.
+        /// </summary>
         public List<string> ownedAdventurers = new List<string> { "Rookie" };
+
+        /// <summary>
+        /// The hired adventurers. Authoritative from the first Migrate onward.
+        /// A List of a nested [Serializable] class round-trips through
+        /// JsonUtility (the same shape as <see cref="contract"/>).
+        /// </summary>
+        public List<HeroRecord> roster = new List<HeroRecord>();
         public List<string> unlockedDiary = new List<string>();
 
         /// <summary>
@@ -63,6 +76,49 @@ namespace AlchemistsArsenal.Core
         public bool IsReplayDay => replayBiomeIndex >= 0;
 
         public bool HasUpgrade(string id) => ownedUpgrades.Contains(id);
+
+        public HeroRecord FindHero(string id)
+        {
+            if (roster == null || string.IsNullOrEmpty(id)) return null;
+            foreach (HeroRecord h in roster) if (h != null && h.id == id) return h;
+            return null;
+        }
+
+        /// <summary>
+        /// How many heroes may go out on one expedition. Capped at 3 on purpose:
+        /// monster HP is flat per biome and difficulty never scales by day, so a
+        /// fourth body would end most fights in wave one. Buying capacity is
+        /// gated on clearing a biome, not just on gold — see
+        /// <see cref="UpgradeCatalog.IsAvailable"/>.
+        /// </summary>
+        public int DeployCap =>
+            1 + (HasUpgrade(UpgradeCatalog.SecondPack) ? 1 : 0)
+              + (HasUpgrade(UpgradeCatalog.ThirdPack) ? 1 : 0);
+
+        /// <summary>The heroes actually going out, in roster order. Never empty.</summary>
+        public List<HeroRecord> DeployedParty()
+        {
+            var party = new List<HeroRecord>();
+            if (roster == null) return party;
+
+            int cap = DeployCap;
+            foreach (HeroRecord h in roster)
+            {
+                if (party.Count >= cap) break;
+                if (h != null && h.deployed && h.IsFit(day)) party.Add(h);
+            }
+
+            // ExpeditionManager treats an empty adventurer list as "nobody has
+            // died yet", so an expedition with no heroes never resolves. Always
+            // send someone.
+            if (party.Count == 0)
+            {
+                foreach (HeroRecord h in roster)
+                    if (h != null && h.IsFit(day)) { party.Add(h); break; }
+                if (party.Count == 0 && roster.Count > 0) party.Add(roster[0]);
+            }
+            return party;
+        }
         public bool HasDiary(string id) => unlockedDiary.Contains(id);
 
         public void AddGold(int amount)

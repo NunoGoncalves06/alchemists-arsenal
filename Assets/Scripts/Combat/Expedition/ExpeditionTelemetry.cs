@@ -99,7 +99,12 @@ namespace AlchemistsArsenal.Combat
 
             Report.won = won;
             Report.durationSeconds = Time.time - _startTime;
-            Report.wavesCleared = won ? Report.totalWaves : Mathf.Clamp(Report.wavesCleared, 0, Report.totalWaves);
+            // Take the manager's real count rather than assuming a win means a
+            // full clear - a wave that timed out was never cleared.
+            Report.wavesCleared = _expedition != null
+                ? Mathf.Clamp(_expedition.WavesCleared, 0, Report.totalWaves)
+                : Mathf.Clamp(Report.wavesCleared, 0, Report.totalWaves);
+            Report.outcomeReason = _expedition != null ? _expedition.OutcomeReason : "";
 
             var boss = _expedition != null ? _expedition.BossInstance : null;
             var bossBody = boss != null ? boss.GetComponent<CombatantBody>() : null;

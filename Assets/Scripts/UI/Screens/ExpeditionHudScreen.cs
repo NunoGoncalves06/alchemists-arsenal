@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using AlchemistsArsenal.Core;
+using AlchemistsArsenal.Data;
 using AlchemistsArsenal.Combat;
 
 namespace AlchemistsArsenal.UI
@@ -156,18 +157,20 @@ namespace AlchemistsArsenal.UI
             var row = UIFactory.HStack(_dock, 12f, new RectOffset(20, 20, 12, 12));
             UIFactory.Stretch((RectTransform)row.transform);
 
-            bool first = true;
-            foreach (var body in _world.Party)
+            for (int i = 0; i < _world.Party.Count; i++)
             {
+                var body = _world.Party[i];
                 if (body == null) continue;
 
-                string who = first ? _world.FighterName : "Rookie";
-                string whoId = first ? _world.FighterId : "rookie";
-                first = false;
+                // Identity comes from the roster; the contract buyer is only the
+                // fallback for the bootstrap path, which has no roster.
+                HeroRecord record = i < _world.PartyRecords.Count ? _world.PartyRecords[i] : null;
+                string who = record != null ? record.displayName : (i == 0 ? _world.FighterName : "Rookie");
+                string whoId = record != null ? record.portraitId : (i == 0 ? _world.FighterId : "rookie");
 
                 Image card = UIKit.Surface(row.transform, out Transform inner,
                     UITheme.Alpha(UITheme.Surface, 0.92f), UITheme.Line, "Card");
-                UIFactory.Flex(card.gameObject, 0f, 1f, minWidth: 330f, minHeight: 108f);
+                UIFactory.Flex(card.gameObject, 1f, 1f, minWidth: 300f, minHeight: 108f);
 
                 var portrait = UIKit.Portrait(inner, Art.PixelSprites.Buyer(whoId), 78f);
                 var frame = (RectTransform)portrait.transform.parent.parent;

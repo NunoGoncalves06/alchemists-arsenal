@@ -58,6 +58,7 @@ namespace AlchemistsArsenal.Combat
         private float _spawnTime;
         private bool _detonateQueued;
         private bool _detonated;
+        private float _throwerMultiplier = 1f;
 
         public bool HasDetonated => _detonated;
 
@@ -78,6 +79,7 @@ namespace AlchemistsArsenal.Combat
             _thrower = request.Thrower;
             _targetPos = request.TargetPosition;
             _quality01 = request.PotionQuality01;
+            _throwerMultiplier = request.ThrowerDamageMultiplier;
             detonationMask = CombatLayers.Effective(mask);
             _spawnTime = Time.time;
 
@@ -207,7 +209,8 @@ namespace AlchemistsArsenal.Combat
                 if (elementMultiplier > 1.01f) hadAdvantage = true;
 
                 int finalDamage = Mathf.Max(0,
-                    Mathf.RoundToInt(_bomb.BaseDamage * damageMultiplier * elementMultiplier));
+                    Mathf.RoundToInt(_bomb.BaseDamage * damageMultiplier * elementMultiplier
+                                     * _throwerMultiplier));
 
                 damageable.ApplyDamage(new DamageInfo(finalDamage, _bomb.Element, epicenter, _thrower));
                 hitCount++;

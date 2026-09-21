@@ -216,12 +216,50 @@ namespace AlchemistsArsenal.UI.Stations
             _offerButtons.Add(button);
         }
 
+        /// <summary>
+        /// Take the first job on the board, exactly as clicking it would. The
+        /// single entry point for anything that needs to accept without a click
+        /// (the headless playtest driver, and MorningScreen.AcceptOrder).
+        /// </summary>
+        public bool AcceptFirstOffer()
+        {
+            // Normally NewDay has already stocked the board. Re-stock if a caller
+            // reaches here first, so this can never silently no-op.
+            if (_offers == null || _offers.Count == 0)
+            {
+                RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+                _offers = ContractBoard.Offers(s != null ? s.day : 1, s != null ? s.TargetBiomeIndex : 0);
+            }
+            if (_offers.Count == 0) return false;
+
+            Accept(_offers[0]);   // Accept clones before handing it to the loop
+            return HasOrder;
+        }
+
+        /// <summary>Head start for taking the job that counters today's road.</summary>
+        private const int CounterReadBonus = 5;
+
         private void Accept(ContractRecord offer)
         {
             if (HasOrder || GameLoopManager.Instance == null) return;
 
             GameLoopManager.Instance.AcceptContract(offer.Clone());
             AudioManager.Play(Sfx.Confirm);
+
+            // Reward reading the road: a job whose element counters today's
+            // dominant threat starts the flask above the floor. Deliberately
+            // small - it is a head start, not a shortcut past the three
+            // stations that actually make the potion.
+            var order = Order;
+            if (order != null)
+            {
+                BiomeData road = BiomeLibrary.Get(SaveSystem.Instance != null
+                    ? SaveSystem.Instance.State.TargetBiomeIndex : 0);
+                ElementType dominant = ContractBoard.Dominant(ContractBoard.ThreatCounts(road));
+                if (offer.element == ContractBoard.Counter(dominant))
+                    order.ApplyBonus(CounterReadBonus, "Counter",
+                        $"Took the {offer.element} job against a {dominant} road");
+            }
 
             // The pot is cold again and today's recipe direction is set here, not
             // wherever the cauldron happened to be left from yesterday.

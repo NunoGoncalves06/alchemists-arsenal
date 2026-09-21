@@ -52,7 +52,8 @@ namespace AlchemistsArsenal.Combat
             out BombThrowRequest request,
             out ScoredCandidate best,
             List<ScoredCandidate> breakdown = null,
-            Func<ICombatant, WardSnapshot> wardResolver = null)
+            Func<ICombatant, WardSnapshot> wardResolver = null,
+            Func<BombData, float> throwerDamageFor = null)
         {
             request = default;
             best = default;
@@ -117,10 +118,17 @@ namespace AlchemistsArsenal.Combat
 
             if (bestScore >= scoreThreshold && best.Bomb != null && best.Target != null)
             {
+                // Whatever the thrower themselves adds to this particular
+                // flask - their perk attunement and their level. Resolved by the
+                // caller against the bomb actually chosen; null means a plain
+                // thrower with no bonuses, which is what the bootstrap demo and
+                // the simulation tests want.
+                float throwerMultiplier = throwerDamageFor != null ? throwerDamageFor(best.Bomb) : 1f;
+
                 request = new BombThrowRequest(
                     self, best.Target, best.Bomb,
                     self.Position, best.Target.Position,
-                    best.Score, potionQuality01);
+                    best.Score, potionQuality01, throwerMultiplier);
                 found = true;
             }
 

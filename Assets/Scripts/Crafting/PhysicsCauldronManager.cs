@@ -43,11 +43,16 @@ namespace AlchemistsArsenal.Crafting
 
         [Header("Brew")]
         [Tooltip("Seconds of correct stirring in the band to finish the brew. Quality locks after.")]
-        [SerializeField] private float brewSeconds = 12f;
+        [SerializeField] private float brewSeconds = 11f;
 
         [Header("Quality")]
-        [SerializeField] private int baseDeductionPoints = 5;
+        [Tooltip("Paid per interval while the heat is in the band and the stir is going the right way.")]
+        [SerializeField] private int brewBonusPoints = 2;
+        [Tooltip("Charged per interval while the heat is out of band or the stir is backwards.")]
+        [SerializeField] private int brewPenaltyPoints = 6;
         [SerializeField] private float deductionInterval = 1f;
+        [Tooltip("Breathing room after the heat crosses a band edge, so a player who is already correcting is not charged mid-correction.")]
+        [SerializeField] private float bandChangeGraceSeconds = 0.5f;
 
         private float currentHeat = 0.2f;       // starts at room temperature, below the band by design
         private float bandCenter = 0.55f;
@@ -60,6 +65,7 @@ namespace AlchemistsArsenal.Crafting
         private Vector2 lastMousePosition;
 
         private float nextDeductionTime;
+        private bool wasInGreen = true;
         private bool mouseOverPot;
         private bool everStirred;
 
@@ -203,6 +209,7 @@ namespace AlchemistsArsenal.Crafting
             bandPhase = 0f;
             bandCenter = 0.55f;
             everStirred = false;
+            wasInGreen = true;
             smoothedSpinDegPerSec = 0f;
             hasLastAngle = false;
             OnHeatChanged?.Invoke(currentHeat);
@@ -322,6 +329,11 @@ namespace AlchemistsArsenal.Crafting
             if (!everStirred) return;     // a cold pot nobody has touched isn't a mistake
 
             bool inGreen = currentHeat >= MinOptimalHeat && currentHeat <= MaxOptimalHeat;
+            if (inGreen != wasInGreen)
+            {
+                wasInGreen = inGreen;
+                nextDeductionTime = Mathf.Max(nextDeductionTime, Time.time + bandChangeGraceSeconds);
+            }
 
             if (inGreen && StirringCorrectly)
             {
@@ -329,7 +341,7 @@ namespace AlchemistsArsenal.Crafting
 
                 if (Time.time >= nextDeductionTime)
                 {
-                    activeOrder.ApplyBonus(baseDeductionPoints, "Cauldron",
+                    activeOrder.ApplyBonus(brewBonusPoints, "Cauldron",
                         $"Held the band at {currentHeat:P0}", Time.time);
                     nextDeductionTime = Time.time + deductionInterval;
                 }
@@ -338,7 +350,7 @@ namespace AlchemistsArsenal.Crafting
 
             if (Time.time < nextDeductionTime) return;
 
-            int penalty = baseDeductionPoints;
+            int penalty = brewPenaltyPoints;
             string reason;
             if (StirringBackwards)
             {

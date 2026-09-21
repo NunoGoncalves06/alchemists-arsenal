@@ -321,19 +321,19 @@ namespace AlchemistsArsenal.UI.Stations
 
             if (onCue)
             {
-                int gain = Mathf.RoundToInt((4 + 2 * ing.Potency) * wilt);
+                int gain = Mathf.RoundToInt((2 + ing.Potency) * wilt);
                 order.ApplyBonus(gain, "Prep", $"{ing.Name} in on cue (+{gain})");
                 SetReaction($"{ing.Name} goes in cleanly.", UITheme.Ok);
             }
             else if (inRecipe)
             {
-                int gain = Mathf.RoundToInt((2 + ing.Potency) * wilt);
+                int gain = Mathf.Max(1, Mathf.RoundToInt((1f + ing.Potency * 0.35f) * wilt));
                 order.ApplyBonus(gain, "Prep", $"{ing.Name} — right leaf, out of order (+{gain})");
                 SetReaction($"{ing.Name} belongs here, just not yet.", UITheme.Candle);
             }
             else
             {
-                int loss = 4 + ing.Potency;
+                int loss = 6 + 2 * ing.Potency;
                 string reaction = RecipeBook.Reaction(mix.Recipe.Result, ing.Element);
                 order.ApplyDeduction(loss, "Prep", $"{ing.Name} — {reaction}");
                 SetReaction($"{ing.Name}: {reaction}", UITheme.Danger);
@@ -377,13 +377,13 @@ namespace AlchemistsArsenal.UI.Stations
 
             if (hit)
             {
-                int gain = Mathf.RoundToInt(Mathf.Lerp(9f, 5f, dist / Mathf.Max(0.001f, _grindHalfWidth)));
+                int gain = Mathf.RoundToInt(Mathf.Lerp(4f, 2f, dist / Mathf.Max(0.001f, _grindHalfWidth)));
                 order.ApplyBonus(gain, "Prep", $"Clean strike (+{gain})");
                 AudioManager.Play(Sfx.Seal);
             }
             else
             {
-                order.ApplyDeduction(5, "Prep", "Pestle skidded — bruised the mix");
+                order.ApplyDeduction(6, "Prep", "Pestle skidded — bruised the mix");
                 AudioManager.Play(Sfx.Deny);
             }
 

@@ -119,10 +119,10 @@ namespace AlchemistsArsenal.Data
         /// <summary>Quality swing for a finished mix.</summary>
         public static int QualityDelta(MixOutcome outcome) => outcome switch
         {
-            MixOutcome.Perfect => 18,
-            MixOutcome.Close => 8,
+            MixOutcome.Perfect => 12,
+            MixOutcome.Close => 5,
             MixOutcome.Weak => 0,
-            _ => -10,
+            _ => -14,
         };
 
         /// <summary>

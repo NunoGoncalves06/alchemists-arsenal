@@ -2,6 +2,7 @@ using System.IO;
 using UnityEngine;
 using AlchemistsArsenal.Core;
 using AlchemistsArsenal.Combat;
+using AlchemistsArsenal.Data;
 using AlchemistsArsenal.Systems;
 
 namespace AlchemistsArsenal.DebugTools
@@ -21,10 +22,15 @@ namespace AlchemistsArsenal.DebugTools
         {
             Debug.Log("<color=cyan><b>=== GAME LOOP / META SIMULATION ===</b></color>");
             TestQualityModel();
+            TestQualityCeiling();
             TestLoadoutFloor();
             TestEconomy();
             TestSaveRoundTrip();
             TestMigrationClamps();
+            TestRosterRoundTrip();
+            TestRosterMigration();
+            TestPerkSymmetry();
+            TestCostCurve();
             Debug.Log($"<color=cyan><b>=== DONE — {_pass} pass, {_fail} fail ===</b></color>");
         }
 
@@ -46,6 +52,47 @@ namespace AlchemistsArsenal.DebugTools
             Check(o.qualityScore == 45 && o.GetGrade() == PotionGrade.Poor, "overheating drops back to Poor");
             o.ApplyBonus(200, "x", "clamp");
             Check(o.qualityScore == 100 && events == 3, "quality clamps at 100 and every change fired an event");
+        }
+
+        /// <summary>
+        /// A structural guard on the morning's points budget. Before the Phase-0
+        /// rebalance a flawless morning was worth 198 against a cap of 100, and
+        /// the cauldron alone paid +60 - enough to reach Great without touching
+        /// the other three stations, which made station depth worthless. The
+        /// budget is now deliberately just over 100 so every station is load
+        /// bearing and a botched step actually costs a grade.
+        ///
+        /// These numbers are transcribed, not computed - the scoring lives in
+        /// MonoBehaviour/UI classes that need a scene. If you retune a station,
+        /// update the matching constant here and this test tells you whether the
+        /// morning still adds up.
+        /// </summary>
+        private void TestQualityCeiling()
+        {
+            const int start        = ActiveOrder.StartingQuality;                    // 25
+            const int counterRead  = 5;                                              // CounterStation.CounterReadBonus
+            const int prepLeaves   = 3 * 5;                                          // PrepStation.Pick, on cue at potency 3
+            const int prepGrinds   = 3 * 4;                                          // PrepStation.Grind, dead centre
+            int       prepMix      = Data.RecipeBook.QualityDelta(Data.MixOutcome.Perfect);
+            const int cauldron     = 2 * 11;                                         // brewBonusPoints x brewSeconds
+            const int bottling     = 9 + 9 + 4;                                      // pour + seal + correct label
+
+            int best = start + counterRead + prepLeaves + prepGrinds + prepMix + cauldron + bottling;
+            Check(best >= 95 && best <= 120,
+                $"a flawless morning is worth {best} points - just over the 100 cap, not double it");
+
+            // The single most important consequence: the pot can no longer carry
+            // a morning by itself.
+            int cauldronOnly = start + cauldron;
+            Check(CombatQuality.GradeFor(cauldronOnly) == PotionGrade.Poor,
+                $"the cauldron alone reaches only {cauldronOnly} ({CombatQuality.GradeFor(cauldronOnly)}) - the other stations are mandatory");
+
+            // And a clean morning with one fumbled step should still cost a
+            // grade. Measured from the clamped 100 a player can actually hold -
+            // the slack above the cap is headroom, not spendable points.
+            int fumbled = Mathf.Min(best, 100) - 16;   // e.g. an overfilled flask
+            Check(CombatQuality.GradeFor(fumbled) > PotionGrade.Perfect,
+                $"one botched step drops a flawless morning to {CombatQuality.GradeFor(fumbled)}");
         }
 
         private void TestLoadoutFloor()
@@ -106,6 +153,165 @@ namespace AlchemistsArsenal.DebugTools
             Check(fixedUp.bestGrades.Length == BiomeLibrary.Count && fixedUp.bestGrades[0] == 3,
                 "migrate: bestGrades resized + values clamped 0..3");
             Check(fixedUp.ownedAdventurers.Contains("Rookie"), "migrate: empty roster re-seeds Rookie");
+        }
+
+        /// <summary>
+        /// The one test that proves the roster's whole data model works.
+        /// <c>List&lt;HeroRecord&gt;</c> round-tripping through JsonUtility is the
+        /// load-bearing assumption behind hiring, levelling and injury; JsonUtility
+        /// silently drops anything it cannot handle rather than throwing, so this
+        /// has to be asserted rather than assumed.
+        /// </summary>
+        private void TestRosterRoundTrip()
+        {
+            var s = RunState.NewGame(0);
+            s.lastSavedUnixSeconds = 1;
+            s.day = 6;
+            s.bestGrades[0] = 2;
+            s.roster = new System.Collections.Generic.List<HeroRecord>
+            {
+                HeroCatalog.NewHire("Ser Halden", 0, ElementType.Fire, "bulwark", "knight"),
+                HeroCatalog.NewHire("Mira Thorn", 1, ElementType.Water, "marksman", "herbalist"),
+                HeroCatalog.NewHire("Otho Vance", 2, ElementType.Arcane, "skirmisher", "merchant"),
+            };
+            s.roster[1].level = 4;
+            s.roster[2].restUntilDay = 7;
+
+            var back = SaveSystem.Migrate(JsonUtility.FromJson<RunState>(JsonUtility.ToJson(s)));
+
+            Check(back.roster.Count == 3, "roster: all three heroes survive the JSON round-trip");
+            Check(back.roster[0].affinity == ElementType.Fire
+                  && back.roster[1].affinity == ElementType.Water
+                  && back.roster[2].affinity == ElementType.Arcane,
+                "roster: affinities survive intact");
+            Check(back.roster[1].level == 4 && back.roster[0].level == 1,
+                "roster: per-hero levels survive intact");
+            Check(back.roster[1].archetypeId == "marksman" && back.roster[0].archetypeId == "bulwark",
+                "roster: archetypes survive intact");
+            Check(back.roster[2].restUntilDay == 7 && !back.roster[2].IsFit(6) && back.roster[2].IsFit(7),
+                "roster: an injured hero is unfit on day 6 and fit again on day 7");
+        }
+
+        private void TestRosterMigration()
+        {
+            // A save written before the roster existed: empty list, legacy names.
+            var legacy = new RunState { day = 3, bestGrades = new int[5] };
+            legacy.roster.Clear();
+            var seeded = SaveSystem.Migrate(legacy);
+            Check(seeded.roster.Count == 1 && seeded.roster[0].displayName == "Rookie",
+                "migrate: an empty roster is seeded from the legacy adventurer list");
+            Check(seeded.roster[0].deployed, "migrate: the seeded hero is actually deployed");
+
+            // Garbage values a hand-edited save could contain.
+            var garbage = new RunState { day = 5, bestGrades = new int[5] };
+            garbage.roster = new System.Collections.Generic.List<HeroRecord>
+            {
+                new HeroRecord { id = "", level = 99, affinity = (ElementType)57,
+                                 archetypeId = "sorcerer", restUntilDay = 9999, deployed = true },
+            };
+            var fixedUp = SaveSystem.Migrate(garbage);
+            HeroRecord h = fixedUp.roster[0];
+            Check(h.level == HeroCatalog.MaxLevel, "migrate: level clamped to MaxLevel");
+            Check((int)h.affinity >= 0 && (int)h.affinity <= 4, "migrate: affinity clamped into range");
+            Check(h.archetypeId == HeroPerks.DefaultArchetype, "migrate: unknown archetype falls back");
+            Check(h.restUntilDay <= fixedUp.day + 1,
+                "migrate: restUntilDay clamped so a save can never bench someone forever");
+            Check(!string.IsNullOrEmpty(h.id), "migrate: a blank hero id is backfilled");
+
+            // Deployment must be trimmed to the cap, and must never end up empty:
+            // ExpeditionManager reads an empty adventurer list as "nobody down
+            // yet", so a party of nobody would leave the expedition running.
+            var overfull = new RunState { day = 4, bestGrades = new int[5] };
+            overfull.roster = new System.Collections.Generic.List<HeroRecord>
+            {
+                HeroCatalog.NewHire("A", 0), HeroCatalog.NewHire("B", 1), HeroCatalog.NewHire("C", 2),
+            };
+            foreach (var hero in overfull.roster) hero.deployed = true;
+            var trimmed = SaveSystem.Migrate(overfull);
+            int deployed = 0;
+            foreach (var hero in trimmed.roster) if (hero.deployed) deployed++;
+            Check(deployed == trimmed.DeployCap,
+                $"migrate: deployment trimmed to the cap ({deployed} of {trimmed.roster.Count} going out)");
+
+            var allResting = new RunState { day = 4, bestGrades = new int[5] };
+            allResting.roster = new System.Collections.Generic.List<HeroRecord>
+            {
+                HeroCatalog.NewHire("A", 0), HeroCatalog.NewHire("B", 1),
+            };
+            foreach (var hero in allResting.roster) { hero.deployed = false; hero.restUntilDay = 99; }
+            var rescued = SaveSystem.Migrate(allResting);
+            Check(rescued.DeployedParty().Count >= 1,
+                "migrate: a fully-resting roster still sends someone (no expedition soft-lock)");
+        }
+
+        /// <summary>
+        /// Guards the core promise of the perk design: two heroes of the same level
+        /// are equally powerful, and differ only in <i>when</i> they are good. If a
+        /// future "small buff" gives one element or one archetype more raw power
+        /// than another, this fails.
+        /// </summary>
+        private void TestPerkSymmetry()
+        {
+            bool sameAttunement = true;
+            for (int e = 0; e < 5; e++)
+            {
+                var el = (ElementType)e;
+                // Matching flask: always the same bonus, whatever the element.
+                if (!Mathf.Approximately(HeroPerks.AttunementFor(el, el), HeroPerks.AttunementMultiplier))
+                    sameAttunement = false;
+                // Non-matching flask: always exactly nothing.
+                var other = (ElementType)((e + 1) % 5);
+                if (!Mathf.Approximately(HeroPerks.AttunementFor(el, other), 1f))
+                    sameAttunement = false;
+            }
+            Check(sameAttunement, "perks: every element's attunement is worth exactly the same");
+
+            // Archetypes are positioning only — no HP, damage or ammo may vary.
+            bool sidegrade = HeroPerks.Archetypes.Length >= 3;
+            foreach (var a in HeroPerks.Archetypes)
+                if (a.IdealRange <= 0f || a.MaxRange < a.IdealRange) sidegrade = false;
+            Check(sidegrade, "perks: archetypes are spacing sidegrades with sane ranges");
+
+            // Levels must stay small enough that a perk still matters. The whole
+            // level-1..5 damage climb should not exceed one attunement bonus.
+            float fullClimb = HeroCatalog.DamageScale(HeroCatalog.MaxLevel) / HeroCatalog.DamageScale(1);
+            Check(fullClimb <= HeroPerks.AttunementMultiplier + 0.05f,
+                $"perks: the whole level climb (x{fullClimb:F2}) is worth about one perk " +
+                $"(x{HeroPerks.AttunementMultiplier:F2}) - identity survives levelling");
+        }
+
+        private void TestCostCurve()
+        {
+            bool risingLevels = true;
+            for (int lv = 1; lv < HeroCatalog.MaxLevel - 1; lv++)
+                if (HeroCatalog.LevelUpCost(lv + 1) <= HeroCatalog.LevelUpCost(lv)) risingLevels = false;
+            Check(risingLevels,
+                $"costs: each level is dearer than the last ({HeroCatalog.LevelUpCost(1)} / " +
+                $"{HeroCatalog.LevelUpCost(2)} / {HeroCatalog.LevelUpCost(3)} / {HeroCatalog.LevelUpCost(4)} g)");
+
+            bool risingHires = true;
+            for (int n = 1; n < HeroCatalog.MaxRoster - 1; n++)
+                if (HeroCatalog.HireCost(n + 1) <= HeroCatalog.HireCost(n)) risingHires = false;
+            Check(risingHires,
+                $"costs: each hire is dearer than the last ({HeroCatalog.HireCost(1)} / " +
+                $"{HeroCatalog.HireCost(2)} / {HeroCatalog.HireCost(3)} / {HeroCatalog.HireCost(4)} g)");
+
+            // A day-1 player can buy nothing: no win banked, so no hiring, and the
+            // party-capacity nodes are gated on roads rather than on price.
+            var day1 = RunState.NewGame(0);
+            Check(!HeroCatalog.CanHire(day1), "costs: hiring is locked until a road is brought home");
+            Check(!UpgradeCatalog.IsAvailable(UpgradeCatalog.SecondPack, day1)
+                  && !UpgradeCatalog.IsAvailable(UpgradeCatalog.ThirdPack, day1),
+                "costs: party capacity is gated on clearing biomes, not on gold");
+
+            var veteran = RunState.NewGame(0);
+            veteran.bestGrades[1] = 1; veteran.bestGrades[3] = 1;
+            Check(UpgradeCatalog.IsAvailable(UpgradeCatalog.SecondPack, veteran)
+                  && UpgradeCatalog.IsAvailable(UpgradeCatalog.ThirdPack, veteran),
+                "costs: capacity unlocks once the gating roads are cleared");
+            veteran.ownedUpgrades.Add(UpgradeCatalog.SecondPack);
+            veteran.ownedUpgrades.Add(UpgradeCatalog.ThirdPack);
+            Check(veteran.DeployCap == 3, "costs: both capacity nodes bring the party to 3");
         }
     }
 }

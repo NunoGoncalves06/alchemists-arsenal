@@ -38,6 +38,12 @@ namespace AlchemistsArsenal.Combat.Considerations
         }
 
         /// <summary>
+        /// Change only the weight, keeping the authored response curve. Used to
+        /// re-tune a per-hero copy of the default axes for an archetype.
+        /// </summary>
+        public void SetWeight(float newWeight) => weight = Mathf.Clamp(newWeight, 0f, 3f);
+
+        /// <summary>
         /// Raw, un-curved input for this axis. Implementations must return a value
         /// in [0, 1] (it is clamped anyway).
         /// </summary>
