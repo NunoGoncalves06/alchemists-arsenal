@@ -24,6 +24,9 @@ namespace AlchemistsArsenal.UI
 
         private ExpeditionWorld _world;
         private readonly List<UtilityAI_CombatController> _ai = new List<UtilityAI_CombatController>();
+        /// <summary>Each party body's display name, resolved once with its dock card so
+        /// the ticker and the dock can never disagree about who threw.</summary>
+        private readonly Dictionary<ICombatant, string> _throwerNames = new Dictionary<ICombatant, string>();
         private TimeControl.Handle _pauseHandle;
         private TimeControl.Handle _speedHandle;
         private bool _paused, _fast;
@@ -134,11 +137,19 @@ namespace AlchemistsArsenal.UI
             SetFast(SettingsService.DefaultExpeditionSpeed == 2);
 
             _ai.Clear();
+            _throwerNames.Clear();
             BuildPartyDock();
 
             BombProjectile2D.OnDetonatedGlobal += OnDetonated;
             if (_world != null && _world.Expedition != null)
                 _world.Expedition.OnFinished += OnFinished;
+
+            // The screen object is reused day to day, and Update does not run on the
+            // frame it is shown — so the first afternoon frame showed yesterday's
+            // banner ("Cinder Peaks — WAVE 3/3" on a Whispering Woods replay) and
+            // yesterday's last ticker line. Paint today's state now.
+            _ticker.text = "";
+            Refresh();
         }
 
         protected override void OnHide()
@@ -167,6 +178,7 @@ namespace AlchemistsArsenal.UI
                 HeroRecord record = i < _world.PartyRecords.Count ? _world.PartyRecords[i] : null;
                 string who = record != null ? record.displayName : (i == 0 ? _world.FighterName : "Rookie");
                 string whoId = record != null ? record.portraitId : (i == 0 ? _world.FighterId : "rookie");
+                _throwerNames[body] = who;
 
                 Image card = UIKit.Surface(row.transform, out Transform inner,
                     UITheme.Alpha(UITheme.Surface, 0.92f), UITheme.Line, "Card");
@@ -212,7 +224,9 @@ namespace AlchemistsArsenal.UI
         private float _lastBossFill = -1f;
         private int _lastPip = -1;
 
-        private void Update()
+        private void Update() => Refresh();
+
+        private void Refresh()
         {
             if (_world == null || _world.Expedition == null) return;
             var exp = _world.Expedition;
@@ -288,7 +302,10 @@ namespace AlchemistsArsenal.UI
         private void OnThrow(BombThrowRequest r)
         {
             if (r.Bomb == null) return;
-            string who = _world != null ? _world.FighterName : "Rookie";
+            // Name the hero who actually threw. This used to be the contract's
+            // buyer (ExpeditionWorld.FighterName) for every throw, so a customer
+            // who never left the shop was credited with the whole party's work.
+            if (r.Thrower == null || !_throwerNames.TryGetValue(r.Thrower, out string who)) who = "The party";
             _ticker.text = $"{who} throws <b>{r.Bomb.DisplayName}</b> — {r.Bomb.Element}";
         }
 
@@ -353,9 +370,12 @@ namespace AlchemistsArsenal.UI
             {
                 _body = b; _hp = hp; _card = card; _ai = ai;
                 _flasks = flasks; _cdFill = cdFill; _cdText = cdText; _flaskIcon = flaskIcon;
+                Refresh(); // a new card has no Update before its first frame is drawn
             }
 
-            private void Update()
+            private void Update() => Refresh();
+
+            private void Refresh()
             {
                 if (_body == null) return;
 

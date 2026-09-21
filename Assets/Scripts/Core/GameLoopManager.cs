@@ -190,7 +190,12 @@ namespace AlchemistsArsenal.Core
 
             BiomeData biome = BiomeLibrary.Get(TargetBiomeIndex);
 
-            DestroyWorld(ref _shopRoot); // shop unloads for the fight
+            // The shop unloads for the fight. Destroy() only lands at the end of the
+            // frame and both worlds sit around the origin, so the shop's cauldron was
+            // drawing into the arena's first frame (and its camera was a second
+            // MainCamera). Deactivating takes effect immediately.
+            if (_shopRoot != null) _shopRoot.SetActive(false);
+            DestroyWorld(ref _shopRoot);
             _expeditionRoot = new GameObject("~ExpeditionWorld");
             _expeditionWorld = _expeditionRoot.AddComponent<ExpeditionWorld>();
             _expeditionWorld.OnFinished += HandleExpeditionFinished;
