@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Text;
 using UnityEditor;
 using UnityEngine;
+using TMPro;
 using AlchemistsArsenal.Combat;
 using AlchemistsArsenal.Data;
 using AlchemistsArsenal.Systems;
@@ -229,6 +230,10 @@ namespace AlchemistsArsenal.Core
                     GameLoopManager.Instance.BeginAfternoon();
                     foreach (var step in WaitForPhase(GamePhase.Afternoon, 5f)) { if (_errorCount > 0) yield break; yield return step; }
                     if (_errorCount > 0) yield break;
+                    // WaitForPhase has not yielded (the phase is set synchronously), so
+                    // this is still the frame BeginAfternoon ran on — the one t00s shows.
+                    CheckFirstAfternoonFrame();
+                    if (_errorCount > 0) yield break;
 
                     // A screenshot roughly every second for the whole fight, not just
                     // one frame at the start — a player reported the adventurer's
@@ -442,8 +447,35 @@ namespace AlchemistsArsenal.Core
                     yield break;
                 }
 
+                // Every "X throws ..." ticker line must name someone who is actually
+                // in the arena. It used to name the contract's buyer for every throw.
+                var partyNames = new HashSet<string>();
+                foreach (HeroRecord h in world.PartyRecords)
+                    if (h != null) partyNames.Add(h.displayName);
+                TMP_Text ticker = PrivateText(HudScreen(), "_ticker");
+                string lastTicker = null;
+                int throwLines = 0;
+
                 while (world.Expedition.Phase != ExpeditionPhase.Won && world.Expedition.Phase != ExpeditionPhase.Lost)
                 {
+                    string line = ticker != null ? ticker.text : null;
+                    if (!string.IsNullOrEmpty(line) && line != lastTicker)
+                    {
+                        lastTicker = line;
+                        int at = line.IndexOf(" throws ", StringComparison.Ordinal);
+                        if (at > 0)
+                        {
+                            throwLines++;
+                            string who = line.Substring(0, at);
+                            if (partyNames.Count > 0 && !partyNames.Contains(who))
+                            {
+                                Fail($"Ticker credits '{who}' with a throw, but the party is " +
+                                     $"{string.Join(", ", partyNames)}: \"{line}\"");
+                                yield break;
+                            }
+                        }
+                    }
+
                     float now = Time.unscaledTime;
                     if (now - start > timeoutSeconds)
                     {
@@ -479,7 +511,42 @@ namespace AlchemistsArsenal.Core
                     : "";
                 Log($"Expedition resolved: {world.Expedition.Phase} " +
                     $"({Time.unscaledTime - start:F1}s{detail})");
+                Log($"Ticker: {throwLines} throw line(s) seen, all credited to the party " +
+                    $"({string.Join(", ", partyNames)}).");
             }
+
+            /// <summary>
+            /// The frame BeginAfternoon ran on, before anything has had an Update.
+            /// Guards two stale-first-frame bugs: the shop still drawing (its Destroy
+            /// is deferred to end of frame, so its cauldron rendered inside the
+            /// arena) and the HUD banner still carrying yesterday's biome.
+            /// </summary>
+            private void CheckFirstAfternoonFrame()
+            {
+                ExpeditionWorld world = GameLoopManager.Instance.CurrentExpedition;
+                foreach (ShopWorld shop in FindObjectsByType<ShopWorld>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                    foreach (Renderer r in shop.GetComponentsInChildren<Renderer>())
+                        if (r.enabled)
+                        {
+                            Fail($"Shop renderer '{r.name}' is still drawing on the first afternoon frame - it shows in the arena.");
+                            break;
+                        }
+                Camera main = Camera.main;
+                if (world != null && main != world.ArenaCamera)
+                    Fail($"Camera.main on the first afternoon frame is '{(main != null ? main.name : "none")}', " +
+                         "not the arena camera.");
+
+                TMP_Text banner = PrivateText(HudScreen(), "_banner");
+                if (banner == null) return;
+                string biome = BiomeLibrary.Name(GameLoopManager.Instance.TargetBiomeIndex);
+                if (!banner.text.StartsWith(biome, StringComparison.Ordinal))
+                    Fail($"First afternoon frame's banner reads \"{banner.text}\", expected today's biome '{biome}'.");
+                else
+                    Log($"First afternoon frame: banner \"{banner.text}\", no shop drawing, arena camera is main.");
+            }
+
+            private static object HudScreen() =>
+                UIManager.Instance != null ? UIManager.Instance.ScreenOf(ScreenId.ExpeditionHud) : null;
 
             private IEnumerable WaitUntil(Func<bool> predicate, float timeoutSeconds, string what)
             {
@@ -612,6 +679,15 @@ namespace AlchemistsArsenal.Core
                 if (mi == null) { Fail($"CallPrivate: '{method}' not found on {target.GetType().Name} (renamed?)."); return; }
                 try { mi.Invoke(target, args); }
                 catch (Exception e) { Fail($"CallPrivate '{method}' threw: {e.InnerException ?? e}"); }
+            }
+
+            private TMP_Text PrivateText(object target, string field)
+            {
+                if (target == null) { Fail($"PrivateText: target is null for '{field}'."); return null; }
+                FieldInfo fi = target.GetType().GetField(field, BindingFlags.NonPublic | BindingFlags.Instance);
+                var text = fi != null ? fi.GetValue(target) as TMP_Text : null;
+                if (text == null) Fail($"PrivateText: '{field}' not found on {target.GetType().Name} (renamed?).");
+                return text;
             }
 
             /// <summary>
