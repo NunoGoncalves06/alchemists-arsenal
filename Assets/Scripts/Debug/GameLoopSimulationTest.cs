@@ -25,6 +25,7 @@ namespace AlchemistsArsenal.DebugTools
             TestQualityCeiling();
             TestLoadoutFloor();
             TestEconomy();
+            TestStarRules();
             TestSaveRoundTrip();
             TestMigrationClamps();
             TestRosterRoundTrip();
@@ -118,6 +119,55 @@ namespace AlchemistsArsenal.DebugTools
             Check(great.paid == 50 && !great.tip, "Great pays full base (50 g)");
             Check(perfect.paid == 50 + Economy.PerfectTip && perfect.tip, "Perfect pays base + tip");
             Check(replay.paid == 25, "replay halves the fee");
+        }
+
+        /// <summary>
+        /// Every star count has to be reachable. Win() now requires every wave
+        /// cleared, so the old third star (<c>bossDefeated || wavesCleared &gt;=
+        /// totalWaves</c>) came free with any win and a 1-star result could not
+        /// happen. Each star must hang on something a win does not already imply.
+        /// </summary>
+        private void TestStarRules()
+        {
+            // A full clear by a two-hero party: all waves down, guardian felled.
+            ExpeditionReport Run(bool won, int partyDown, PotionGrade grade) => new ExpeditionReport
+            {
+                won = won, wavesCleared = 3, totalWaves = 3, bossDefeated = won,
+                partyTotal = 2, partyDown = partyDown, craftedGrade = grade,
+            };
+
+            var lost           = Run(false, 0, PotionGrade.Perfect);
+            var oneStar        = Run(true,  1, PotionGrade.Okay);
+            var downButGreat   = Run(true,  1, PotionGrade.Great);   // 2: road + flask
+            var allBackButOkay = Run(true,  0, PotionGrade.Okay);    // 2: road + every hero back
+            var three          = Run(true,  0, PotionGrade.Great);
+            var perfect        = Run(true,  0, PotionGrade.Perfect);
+
+            Check(lost.Stars == 0, "stars: a lost road is 0 stars, however good the flask");
+            Check(oneStar.Stars == 1,
+                $"stars: a full clear with the guardian felled, a hero down and an Okay flask is 1 star (got {oneStar.Stars}); " +
+                "clearing every wave no longer pays the third star by itself");
+            Check(downButGreat.Stars == 2 && downButGreat.StarFineFlask && !downButGreat.StarEveryHeroBack
+                  && allBackButOkay.Stars == 2 && allBackButOkay.StarEveryHeroBack && !allBackButOkay.StarFineFlask,
+                $"stars: either extra star alone makes 2 (hero down + Great = {downButGreat.Stars}, all back + Okay = {allBackButOkay.Stars})");
+            Check(three.Stars == 3 && perfect.Stars == 3,
+                $"stars: everyone home with a {ExpeditionReport.ThirdStarGrade} or Perfect flask is 3 " +
+                $"(got {three.Stars} / {perfect.Stars}); PotionGrade counts down, so 'or better' must not flip");
+
+            int agree = 0;
+            foreach (var rep in new[] { lost, oneStar, downButGreat, allBackButOkay, three, perfect })
+            {
+                int lit = 0;
+                for (int i = 0; i < ExpeditionReport.StarRules.Length; i++) if (rep.StarEarned(i)) lit++;
+                if (lit == rep.Stars) agree++;
+            }
+            Check(agree == 6, "stars: the per-star lines the Evening report shows always add up to Stars");
+
+            // One star is still enough to open the next road.
+            var s = RunState.NewGame(0);
+            s.RecordGrade(0, oneStar.Stars);
+            Check(s.IsBiomeUnlocked(1) && !s.IsBiomeUnlocked(2),
+                "stars: a 1-star win opens the next road, and only the next one");
         }
 
         private void TestSaveRoundTrip()

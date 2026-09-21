@@ -365,11 +365,13 @@ namespace AlchemistsArsenal.UI
 
             for (int i = 0; i < BiomeLibrary.Count; i++) BuildRoadRow(list, s, i);
 
+            // Sized for three lines of SizeSmall under the card heading.
             var hintCard = UIKit.Card(_dynamic, "How the road works", out Transform hint, spacing: 6f);
-            UIFactory.Place(hintCard.rectTransform, 0.05f, 0.04f, 0.62f, 0.17f);
+            UIFactory.Place(hintCard.rectTransform, 0.05f, 0.03f, 0.62f, 0.18f);
             UIFactory.Label(hint,
                 "Clearing a biome already moved you forward — sleeping just passes the night.\n" +
-                "Replaying a cleared road pays half the fee (loot still counts), so you can never get stuck.",
+                "Replaying a cleared road pays half the fee (loot still counts), so you can never get stuck.\n" +
+                $"Stars: {string.Join("  ·  ", ExpeditionReport.StarRules)}. One star opens the next road.",
                 UITheme.SizeSmall, UITheme.TextMid);
 
             var next = UIKit.Card(_dynamic, "Tomorrow", out Transform nextBox, spacing: 6f);
