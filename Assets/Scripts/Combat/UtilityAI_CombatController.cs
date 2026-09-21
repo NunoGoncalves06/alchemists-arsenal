@@ -33,6 +33,12 @@ namespace AlchemistsArsenal.Combat
         // slightly-suboptimal throw does (playtest: "combat is all fucked").
         [Range(0f, 1f)] [SerializeField] private float scoreThreshold = 0.08f;
 
+        [Header("Hero")]
+        [Tooltip("Element this hero is attuned to. Flasks matching it hit harder.")]
+        [SerializeField] private ElementType affinity = ElementType.Nature;
+        [Tooltip("Damage scale from the hero's level. 1 at level 1.")]
+        [Min(0.1f)] [SerializeField] private float levelDamageScale = 1f;
+
         [Header("Debug")]
         [SerializeField] private bool logDecisions;
 
@@ -144,7 +150,8 @@ namespace AlchemistsArsenal.Combat
                 out BombThrowRequest request,
                 out CombatDecisionEngine.ScoredCandidate best,
                 _breakdown,
-                ResolveWard);
+                ResolveWard,
+                _throwerDamageFor ??= ThrowerDamageFor);
 
             if (!decided) return;
 
@@ -189,8 +196,11 @@ namespace AlchemistsArsenal.Combat
             }
         }
 
-        private static float GetPotionQuality01()
+        private float GetPotionQuality01()
         {
+            if (_hasQualitySnapshot) return _potionQuality01;
+
+            // No snapshot: the bootstrap/demo path, which has no morning at all.
             ActiveOrder order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
             return order != null ? Mathf.Clamp01(order.qualityScore / 100f) : 1f;
         }
@@ -215,5 +225,39 @@ namespace AlchemistsArsenal.Combat
             considerations = axes;
             RebuildAmmo();
         }
+
+        /// <summary>
+        /// Who is throwing. Separate from <see cref="Configure"/> so the
+        /// bootstrap/demo paths that have no roster keep working at the defaults.
+        /// </summary>
+        public void ConfigureHero(ElementType heroAffinity, float heroLevelDamageScale)
+        {
+            affinity = heroAffinity;
+            levelDamageScale = Mathf.Max(0.1f, heroLevelDamageScale);
+        }
+
+        private float _potionQuality01 = 1f;
+        private bool _hasQualitySnapshot;
+
+        /// <summary>
+        /// Freeze the quality of the flask <i>this</i> hero is carrying. Called
+        /// once when the arena is built; without it the controller falls back to
+        /// reading the globally-current order.
+        /// </summary>
+        public void ConfigurePotionQuality(float quality01)
+        {
+            _potionQuality01 = Mathf.Clamp01(quality01);
+            _hasQualitySnapshot = true;
+        }
+
+        private Func<BombData, float> _throwerDamageFor;
+
+        /// <summary>
+        /// What this hero adds to a given flask: their level scale always, plus
+        /// their perk attunement only when the flask matches their element.
+        /// </summary>
+        private float ThrowerDamageFor(BombData bomb) =>
+            bomb == null ? levelDamageScale
+                         : levelDamageScale * Data.HeroPerks.AttunementFor(affinity, bomb.Element);
     }
 }

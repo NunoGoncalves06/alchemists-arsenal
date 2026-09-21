@@ -14,13 +14,18 @@ namespace AlchemistsArsenal.DebugTools
     /// </summary>
     public class ExpeditionSimulationTest : MonoBehaviour
     {
-        private void Start() => StartCoroutine(Run());
+        /// <summary>Set when every scenario has resolved, so a harness can wait on it.</summary>
+        public static bool Finished { get; private set; }
+
+        private void Start() { Finished = false; StartCoroutine(Run()); }
 
         private IEnumerator Run()
         {
             Debug.Log("<color=cyan><b>=== EXPEDITION SLICE SIMULATION ===</b></color>");
             yield return Scenario_Win();
             yield return Scenario_Lose();
+            yield return Scenario_OutOfFlasks();
+            Finished = true;
             Debug.Log("<color=cyan><b>=== SIMULATION COMPLETE ===</b></color>");
         }
 
@@ -78,6 +83,55 @@ namespace AlchemistsArsenal.DebugTools
             CleanupExpedition(mgr, biome);
         }
 
+        /// <summary>
+        /// Regression test for the reported bug: the player ran out of flasks, the
+        /// adventurer stood there taking contact damage, each wave hit its safety
+        /// cap, the monsters were despawned, and the run reported a VICTORY with a
+        /// full wave clear.
+        ///
+        /// Two separate faults: the timeout despawned the survivors and fell
+        /// through to Win(), and nothing ever noticed the party could no longer
+        /// damage anything. This asserts both are fixed - an unarmed party must
+        /// LOSE, promptly, and must not be credited with clearing anything.
+        /// </summary>
+        private IEnumerator Scenario_OutOfFlasks()
+        {
+            MonsterRegistry.Clear();
+            AdventurerRegistry.Clear();
+
+            ElementalMatrix matrix = BuildMatrix();
+            // Tough enough to survive the whole wave, but with a single flask -
+            // far too little to kill anything here.
+            SpawnAdventurer(new Vector2(-8f, 0f), 4000, matrix, ammo: 1);
+
+            MonsterData tank = MonsterData.Create("Tank", ElementType.Nature, 5000, 0.6f);
+            var biome = ScriptableObject.CreateInstance<BiomeData>();
+            biome.Configure("Test Impasse", ElementType.Nature, Color.gray, 20f,
+                new[] { BiomeData.MakeWave(tank, 2, 0.3f, 0.3f) }, null);
+
+            ExpeditionManager mgr = BuildExpedition(biome, matrix);
+
+            bool finished = false, won = true;
+            mgr.OnFinished += w => { finished = true; won = w; };
+
+            float t = 0f;
+            while (!finished && t < 40f) { t += Time.deltaTime; yield return null; }
+
+            Report($"Out-of-flasks scenario finished ({t:F1}s)", finished);
+            Report("Out-of-flasks outcome = Lost (NOT a phantom victory)",
+                finished && !won && mgr.Phase == ExpeditionPhase.Lost);
+            Report($"Out-of-flasks credits 0 waves cleared (got {mgr.WavesCleared})",
+                mgr.WavesCleared == 0);
+            Report($"Out-of-flasks says why ('{mgr.OutcomeReason}')",
+                !string.IsNullOrEmpty(mgr.OutcomeReason));
+
+            // It must give up rather than let the player be chewed on for the full
+            // safety cap of every wave in the biome.
+            Report($"Out-of-flasks ends promptly, not after the wave timeout ({t:F1}s)", t < 15f);
+
+            CleanupExpedition(mgr, biome);
+        }
+
         // ------------------------------------------------------------- helpers
 
         private static ElementalMatrix BuildMatrix()
@@ -88,7 +142,7 @@ namespace AlchemistsArsenal.DebugTools
             return m;
         }
 
-        private static void SpawnAdventurer(Vector2 pos, int hp, ElementalMatrix matrix)
+        private static void SpawnAdventurer(Vector2 pos, int hp, ElementalMatrix matrix, int ammo = 99)
         {
             var go = new GameObject("TestAdventurer");
             go.SetActive(false);
@@ -111,7 +165,7 @@ namespace AlchemistsArsenal.DebugTools
             var distance = ScriptableObject.CreateInstance<DistanceConsideration>();
             distance.Configure(new AnimationCurve(new Keyframe(0, 0), new Keyframe(0.5f, 1), new Keyframe(1, 0.2f)), 1f);
             var loadout = AdventurerLoadout.Create(
-                AdventurerLoadout.Slot(BombData.Create("Fire", ElementType.Fire, 40, 2.6f, 13f, 6f, 2f, 13f, 0.8f), 99));
+                AdventurerLoadout.Slot(BombData.Create("Fire", ElementType.Fire, 40, 2.6f, 13f, 6f, 2f, 13f, 0.8f), ammo));
             ai.Configure(body, loadout, matrix, new List<UtilityConsideration> { elemental, distance });
 
             go.AddComponent<BallisticBombLauncher>().Configure(ai, matrix);

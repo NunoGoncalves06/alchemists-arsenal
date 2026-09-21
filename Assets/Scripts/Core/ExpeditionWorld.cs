@@ -39,7 +39,13 @@ namespace AlchemistsArsenal.Core
         private readonly List<CombatantBody> _party = new List<CombatantBody>();
         private BiomeData _biome;
 
-        public void Build(BiomeData biome, AdventurerLoadout loadout, int adventurerCount, bool enableBoss = true)
+        /// <summary>Who went out today, in party order. Parallel to <see cref="Party"/>.</summary>
+        public IReadOnlyList<HeroRecord> PartyRecords => _partyRecords;
+
+        private readonly List<HeroRecord> _partyRecords = new List<HeroRecord>();
+
+        public void Build(BiomeData biome, IReadOnlyList<AdventurerLoadout> loadouts,
+            IReadOnlyList<HeroRecord> party, bool enableBoss = true)
         {
             _biome = biome;
             transform.position = Vector3.zero;
@@ -72,10 +78,15 @@ namespace AlchemistsArsenal.Core
 
             ResolveFighter();
 
-            var considerations = DefaultExpeditionData.AdventurerConsiderations();
-            adventurerCount = Mathf.Clamp(adventurerCount, 1, 4);
+            int adventurerCount = Mathf.Clamp(party != null ? party.Count : 1, 1, 4);
             for (int i = 0; i < adventurerCount; i++)
-                BuildAdventurer(i, adventurerCount, loadout, matrix, considerations);
+            {
+                HeroRecord hero = party != null && i < party.Count ? party[i] : null;
+                AdventurerLoadout lo = loadouts != null && loadouts.Count > 0
+                    ? loadouts[Mathf.Min(i, loadouts.Count - 1)]
+                    : null;
+                BuildAdventurer(i, adventurerCount, lo, hero, matrix);
+            }
 
             var spawner = new GameObject("MonsterSpawner").AddComponent<MonsterSpawner>();
             spawner.transform.SetParent(transform, false);
@@ -134,15 +145,39 @@ namespace AlchemistsArsenal.Core
                 if (p != null) Destroy(p.gameObject);
         }
 
+        /// <summary>
+        /// Re-weight the IAUS axes for an archetype. Only the three axes the
+        /// archetypes differ on are touched; ward avoidance is left alone because
+        /// dodging a warded element is never a stylistic choice.
+        /// </summary>
+        private static void ApplyArchetypeWeights(List<UtilityConsideration> axes, HeroArchetype archetype)
+        {
+            if (axes == null) return;
+            foreach (UtilityConsideration axis in axes)
+            {
+                if (axis == null) continue;
+                switch (axis)
+                {
+                    case ElementalVulnerabilityConsideration: axis.SetWeight(archetype.ElementalWeight); break;
+                    case DistanceConsideration: axis.SetWeight(archetype.DistanceWeight); break;
+                    case SelfHealthConsideration: axis.SetWeight(archetype.SelfHealthWeight); break;
+                }
+            }
+        }
+
         private void BuildAdventurer(int index, int count, AdventurerLoadout loadout,
-            ElementalMatrix matrix, List<UtilityConsideration> considerations)
+            HeroRecord hero, ElementalMatrix matrix)
         {
             float y = (index - (count - 1) * 0.5f) * 2.2f;
-            // Index 0 is the customer who ordered the potion; any extra party members
-            // are Rookie standing in.
-            bool isBuyer = index == 0;
-            string fighterId = isBuyer ? FighterId : "rookie";
-            var go = new GameObject($"Adventurer_{(isBuyer ? FighterName : "Rookie")}");
+
+            // Identity comes from the roster now. The contract's buyer stays a
+            // Counter-side narrative element (who ordered the flask), and is only
+            // the fallback for the bootstrap/demo path that has no roster.
+            string fighterName = hero != null ? hero.displayName : (index == 0 ? FighterName : "Rookie");
+            string fighterId = hero != null ? hero.portraitId : (index == 0 ? FighterId : "rookie");
+            _partyRecords.Add(hero);
+
+            var go = new GameObject($"Adventurer_{fighterName}");
             go.transform.SetParent(transform, false);
             go.SetActive(false);
             // Was 2 units from the left edge — with the arena walls (ExpeditionWorld
@@ -164,18 +199,41 @@ namespace AlchemistsArsenal.Core
             // (playtest: near-instant losses). Thick Boots still stacks on top.
             int maxHp = 150 + (s != null && s.HasUpgrade(UpgradeCatalog.ThickBoots) ? 30 : 0);
 
+            int level = hero != null ? hero.level : 1;
+            ElementType affinity = hero != null ? hero.affinity : ElementType.Nature;
+            HeroArchetype archetype = HeroPerks.Archetype(hero != null ? hero.archetypeId : null);
+            maxHp = Mathf.RoundToInt(maxHp * HeroCatalog.HpScale(level));
+
             var body = go.AddComponent<CombatantBody>();
-            body.Initialise(Team.Adventurer, ElementType.Nature, maxHp);
+            // The element was hardcoded Nature for everyone, which also made every
+            // hero maximally vulnerable to Fire and Poison. It is the hero's own
+            // affinity now.
+            body.Initialise(Team.Adventurer, affinity, maxHp);
             _party.Add(body);
+
+            // The defensive half of the perk. Must go on before the GameObject is
+            // activated: CombatantBody.Awake caches the provider exactly once.
+            go.AddComponent<HeroWard>().Configure(affinity);
+
+            if (hero != null) go.AddComponent<HeroTag>().heroId = hero.id;
 
             var move = go.AddComponent<AdventurerMovementController>();
             // Deliberately tighter than the arena walls (half-height 7): the band the
             // fighter circles inside keeps clear of the HUD slabs at the top and
             // bottom of the screen, so they never end up standing behind a button.
             move.ConfigureArena(new Vector2(_biome.ArenaWidth * 0.5f + 1f, 5.2f));
+            move.Configure(archetype);
+
+            // Fresh axes per hero. These used to be built once and the same
+            // ScriptableObject instances handed to every party member, so any
+            // per-hero weight would have been written into all of them.
+            var considerations = DefaultExpeditionData.AdventurerConsiderations();
+            ApplyArchetypeWeights(considerations, archetype);
 
             var ai = go.AddComponent<UtilityAI_CombatController>();
             ai.Configure(body, loadout, matrix, considerations);
+            ai.ConfigureHero(affinity, HeroCatalog.DamageScale(level));
+            if (loadout != null) ai.ConfigurePotionQuality(loadout.PotionQuality01);
             go.AddComponent<BallisticBombLauncher>().Configure(ai, matrix);
 
             // A player-marker ring under the adventurer's feet — no monster has one —

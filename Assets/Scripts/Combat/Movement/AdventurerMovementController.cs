@@ -62,6 +62,26 @@ namespace AlchemistsArsenal.Combat
         /// </summary>
         public void ConfigureArena(Vector2 halfExtents) => _arenaHalf = halfExtents;
 
+        /// <summary>
+        /// Apply a hero archetype's spacing. This is the whole mechanical
+        /// difference between a Skirmisher, a Marksman and a Bulwark — where they
+        /// stand and when they break off — with no HP or damage difference at all,
+        /// so archetype is a sidegrade rather than a power tier.
+        ///
+        /// Note the serialized <c>loadout</c> field is deliberately left unset by
+        /// the callers that use this, so <c>ResolveRangesFromLoadout</c> stays
+        /// inert and the archetype is the sole authority on spacing.
+        /// </summary>
+        public void Configure(Data.HeroArchetype archetype)
+        {
+            idealRange = archetype.IdealRange;
+            minSafeRange = archetype.MinSafeRange;
+            maxRange = Mathf.Max(archetype.MaxRange, archetype.IdealRange);
+            throwTolerance = Mathf.Max(0.1f, archetype.ThrowTolerance);
+            orbitWeight = Mathf.Clamp(archetype.OrbitWeight, 0f, 1.5f);
+            retreatHealthFraction = Mathf.Clamp01(archetype.RetreatHealthFraction);
+        }
+
         private Rigidbody2D _rb;
         private CombatantBody _body;
 

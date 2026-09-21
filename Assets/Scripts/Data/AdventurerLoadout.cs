@@ -22,7 +22,20 @@ namespace AlchemistsArsenal.Data
 
         [SerializeField] private BombSlot[] slots = new BombSlot[0];
 
+        [Tooltip("How well the morning went for THIS flask (0..1). Scales damage and gates the elemental bonus.")]
+        [Range(0f, 1f)] [SerializeField] private float potionQuality01 = 1f;
+
         public IReadOnlyList<BombSlot> Slots => slots;
+
+        /// <summary>
+        /// The 0..1 quality of the brew in these flasks. Per-loadout rather than
+        /// read globally off CraftingManager, so heroes carrying different brews
+        /// each fight at their own quality.
+        /// </summary>
+        public float PotionQuality01 => potionQuality01;
+
+        public void SetPotionQuality(float quality01) =>
+            potionQuality01 = Mathf.Clamp01(quality01);
 
         /// <summary>Build a loadout in code (bootstrap / tests / generators).</summary>
         public void SetSlots(params BombSlot[] newSlots) => slots = newSlots ?? new BombSlot[0];

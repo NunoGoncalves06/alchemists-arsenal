@@ -19,15 +19,41 @@ namespace AlchemistsArsenal.Combat
         [SerializeField] private MonsterSpawner spawner;
         [SerializeField] private float warmupSeconds = 1f;
         [SerializeField] private float gapBetweenWaves = 0.6f;
+        // Was 20s. That was set back when a timed-out wave was silently counted
+        // as a CLEAR, so a cap that was far too short never looked wrong - it just
+        // handed out free wins. It is genuinely too short: biome 0's third wave is
+        // 138 HP of Water monsters, and the Counter correctly steers you to a Fire
+        // flask for the biome's dominant Nature threat, which Water halves. That
+        // is 13 flasks at a 1.4s cooldown = 17.6s of flawless uptime against a 20s
+        // clock - unreachable once you add travel time or a single miss.
+        //
+        // Now that an empty belt is detected directly (PartyOutOfFlasks), this is
+        // a pure anti-hang backstop rather than a balance knob, so it can be
+        // generous.
         [Tooltip("Safety cap — a wave that hasn't cleared by this is force-ended so the run can't hang.")]
-        [Min(5f)] [SerializeField] private float maxWaveSeconds = 20f;
+        [Min(5f)] [SerializeField] private float maxWaveSeconds = 45f;
         [Tooltip("Safety cap on the boss fight so the run always resolves.")]
-        [Min(10f)] [SerializeField] private float maxBossSeconds = 45f;
+        [Min(10f)] [SerializeField] private float maxBossSeconds = 60f;
+        [Tooltip("Grace after the last flask is thrown, so a bomb still in the air can finish the job.")]
+        [Min(0f)] [SerializeField] private float outOfFlasksGraceSeconds = 2.5f;
         [SerializeField] private bool bossEnabled = true;
         [SerializeField] private bool logProgress = true;
 
         public ExpeditionPhase Phase { get; private set; } = ExpeditionPhase.Warmup;
         public int WaveNumber { get; private set; }
+
+        /// <summary>
+        /// Waves the party actually killed their way through. A wave that hit the
+        /// safety cap is NOT counted: the old code despawned the survivors and
+        /// broke out of the hold loop, which fell through to Win() and reported a
+        /// full clear. A player who ran out of flasks therefore stood still taking
+        /// contact damage for maxWaveSeconds per wave and was then told they had
+        /// won, with the monsters vanishing in front of them.
+        /// </summary>
+        public int WavesCleared { get; private set; }
+
+        /// <summary>Why the expedition ended, for the Evening report.</summary>
+        public string OutcomeReason { get; private set; } = "";
         public int TotalWaves => biome != null ? biome.Waves.Count : 0;
         public GameObject BossInstance { get; private set; }
 
@@ -91,13 +117,32 @@ namespace AlchemistsArsenal.Combat
                 // Hold until the field is clear before the next wave. The wave
                 // auto-advances the instant the last monster dies; a safety cap and
                 // the HUD "NEXT WAVE" button both force it early so it can't drag.
-                float held = 0f;
+                float held = 0f, dry = 0f;
+                bool cleared = true;
                 while (LiveMonsters() > 0)
                 {
-                    if (AllAdventurersDead()) { Lose(); yield break; }
+                    if (AllAdventurersDead()) { Lose("The party was wiped out."); yield break; }
+
+                    // Out of flasks with monsters still standing is not a stall to
+                    // wait out - it is unwinnable, and waiting it out is exactly
+                    // the "stand there and take damage" the player sees. Pull them
+                    // off the road immediately.
+                    if (PartyOutOfFlasks())
+                    {
+                        dry += Time.deltaTime;
+                        if (dry >= outOfFlasksGraceSeconds)
+                        {
+                            DespawnLiveMonsters();
+                            Lose("Out of flasks - the party retreated.");
+                            yield break;
+                        }
+                    }
+                    else dry = 0f;
+
                     held += Time.deltaTime;
                     if (_skipWaveRequested || held >= maxWaveSeconds)
                     {
+                        cleared = false;
                         if (logProgress) Debug.Log($"[Expedition] Wave {WaveNumber} ended early ({LiveMonsters()} left).");
                         DespawnLiveMonsters();
                         break;
@@ -105,6 +150,7 @@ namespace AlchemistsArsenal.Combat
                     yield return null;
                 }
                 _skipWaveRequested = false;
+                if (cleared) WavesCleared++;
                 yield return WaitOrLose(gapBetweenWaves);
                 if (Phase == ExpeditionPhase.Lost) yield break;
             }
@@ -117,21 +163,38 @@ namespace AlchemistsArsenal.Combat
                 Track(BossInstance);
 
                 CombatantBody bossBody = BossInstance != null ? BossInstance.GetComponent<CombatantBody>() : null;
-                float bossHeld = 0f;
+                float bossHeld = 0f, bossDry = 0f;
                 while (bossBody != null && bossBody.IsAlive)
                 {
-                    if (AllAdventurersDead()) { Lose(); yield break; }
+                    if (AllAdventurersDead()) { Lose("The party was wiped out."); yield break; }
+                    if (PartyOutOfFlasks())
+                    {
+                        bossDry += Time.deltaTime;
+                        if (bossDry >= outOfFlasksGraceSeconds)
+                        {
+                            Lose("Out of flasks before the boss fell.");
+                            yield break;
+                        }
+                    }
+                    else bossDry = 0f;
+
                     bossHeld += Time.deltaTime;
                     if (bossHeld >= maxBossSeconds)
                     {
-                        if (logProgress) Debug.LogWarning("[Expedition] Boss fight timed out — resolving as a clear.");
-                        break;
+                        // Was "resolving as a clear", which handed out a win for
+                        // failing to kill the boss. It is a safety cap, not a
+                        // victory condition.
+                        if (logProgress) Debug.LogWarning("[Expedition] Boss fight timed out.");
+                        Lose("The boss drove the party off.");
+                        yield break;
                     }
                     yield return null;
                 }
             }
 
-            Win();
+            // Only a genuine clear wins. Anything short of it is a failed road.
+            if (WavesCleared >= TotalWaves) Win();
+            else Lose($"Only {WavesCleared} of {TotalWaves} waves were cleared.");
         }
 
         private IEnumerator WaitOrLose(float seconds)
@@ -139,7 +202,7 @@ namespace AlchemistsArsenal.Combat
             float t = 0f;
             while (t < seconds)
             {
-                if (AllAdventurersDead()) { Lose(); yield break; }
+                if (AllAdventurersDead()) { Lose("The party was wiped out."); yield break; }
                 t += Time.deltaTime;
                 yield return null;
             }
@@ -149,15 +212,17 @@ namespace AlchemistsArsenal.Combat
         {
             if (Phase == ExpeditionPhase.Won || Phase == ExpeditionPhase.Lost) return;
             SetPhase(ExpeditionPhase.Won);
+            OutcomeReason = "The road is clear.";
             if (logProgress) Debug.Log("<color=green><b>[Expedition] VICTORY</b></color>");
             OnFinished?.Invoke(true);
         }
 
-        private void Lose()
+        private void Lose(string reason)
         {
             if (Phase == ExpeditionPhase.Won || Phase == ExpeditionPhase.Lost) return;
             SetPhase(ExpeditionPhase.Lost);
-            if (logProgress) Debug.Log("<color=red><b>[Expedition] DEFEAT — all adventurers down</b></color>");
+            OutcomeReason = reason;
+            if (logProgress) Debug.Log($"<color=red><b>[Expedition] DEFEAT — {reason}</b></color>");
             OnFinished?.Invoke(false);
         }
 
@@ -188,6 +253,34 @@ namespace AlchemistsArsenal.Combat
             for (int i = list.Count - 1; i >= 0; i--)
                 if (list[i] is Component c && c != null)
                     Destroy(c.gameObject);
+        }
+
+        /// <summary>
+        /// True when every living adventurer has thrown their last flask. They
+        /// cannot damage anything after this, so the fight is over whatever the
+        /// clock says.
+        /// </summary>
+        private static bool PartyOutOfFlasks()
+        {
+            var list = AdventurerRegistry.ActiveAdventurers;
+            if (list.Count == 0) return false;
+
+            bool sawLiveAdventurer = false;
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (list[i] == null || !list[i].IsAlive) continue;
+                sawLiveAdventurer = true;
+
+                if (list[i] is Component c && c != null)
+                {
+                    var ai = c.GetComponent<UtilityAI_CombatController>();
+                    // No controller means we cannot tell - assume they can fight,
+                    // so this never ends a fight it does not understand.
+                    if (ai == null || ai.FlasksLeft > 0) return false;
+                }
+                else return false;
+            }
+            return sawLiveAdventurer;
         }
 
         private static bool AllAdventurersDead()

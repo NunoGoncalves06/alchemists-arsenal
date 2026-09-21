@@ -266,14 +266,12 @@ namespace AlchemistsArsenal.UI
         private void AcceptOrder()
         {
             SwitchTab(StationTab.Counter);
-            RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
-            var offers = ContractBoard.Offers(s != null ? s.day : 1, s != null ? s.TargetBiomeIndex : 0);
-            if (offers.Count == 0 || GameLoopManager.Instance == null) return;
+            if (GameLoopManager.Instance == null) return;
 
-            GameLoopManager.Instance.AcceptContract(offers[0].Clone());
-            AudioManager.Play(Sfx.Confirm);
-            var pot = PhysicsCauldronManager.Instance;
-            if (pot != null) pot.BeginBrew(s != null ? s.day : 1);
+            // Delegate rather than duplicate: the Counter owns accepting a job,
+            // including the scoring it applies for reading the road.
+            if (_stations[(int)StationTab.Counter] is not CounterStation counter) return;
+            if (!counter.AcceptFirstOffer()) return;
 
             HookOrder();
             foreach (var station in _stations) station.Refresh();

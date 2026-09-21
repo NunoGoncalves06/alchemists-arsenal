@@ -81,7 +81,7 @@ namespace AlchemistsArsenal.Core
 
         public void NewGame(int slot)
         {
-            State = RunState.NewGame(slot);
+            State = Migrate(RunState.NewGame(slot));
             _dirty = true;
             Save();
             OnStateLoaded?.Invoke(State);
@@ -178,8 +178,71 @@ namespace AlchemistsArsenal.Core
             s.ownedAdventurers ??= new System.Collections.Generic.List<string>();
             if (s.ownedAdventurers.Count == 0) s.ownedAdventurers.Add("Rookie");
 
+            MigrateRoster(s);
+
             s.saveVersion = RunState.CurrentVersion;
             return s;
+        }
+
+        /// <summary>
+        /// Seed the roster from the legacy string list on first load, then keep
+        /// every record inside the ranges the rest of the game assumes. Split out
+        /// of <see cref="Migrate"/> only for readability; it is part of the same
+        /// contract and is covered by the same headless test.
+        ///
+        /// No <c>CurrentVersion</c> bump is needed for any of this: JsonUtility
+        /// runs field initialisers before populating, so a save written before the
+        /// roster existed arrives here with an empty list and gets seeded.
+        /// </summary>
+        private static void MigrateRoster(RunState s)
+        {
+            s.roster ??= new System.Collections.Generic.List<Data.HeroRecord>();
+
+            if (s.roster.Count == 0)
+                foreach (string name in s.ownedAdventurers)
+                    s.roster.Add(Data.HeroCatalog.NewHire(name, s.roster.Count));
+            if (s.roster.Count == 0)
+                s.roster.Add(Data.HeroCatalog.NewHire("Rookie", 0));
+
+            for (int i = s.roster.Count - 1; i >= 0; i--)
+            {
+                Data.HeroRecord h = s.roster[i];
+                if (h == null) { s.roster.RemoveAt(i); continue; }
+
+                if (string.IsNullOrWhiteSpace(h.id)) h.id = "h" + i;
+                if (string.IsNullOrWhiteSpace(h.displayName)) h.displayName = "Rookie";
+                if (string.IsNullOrWhiteSpace(h.portraitId)) h.portraitId = "rookie";
+
+                h.level = Math.Clamp(h.level, 1, Data.HeroCatalog.MaxLevel);
+                h.affinity = (Combat.ElementType)Math.Clamp((int)h.affinity, 0, 4);
+                if (!Data.HeroPerks.ArchetypeExists(h.archetypeId))
+                    h.archetypeId = Data.HeroPerks.DefaultArchetype;
+
+                // A hand-edited save must never be able to bench someone forever.
+                h.restUntilDay = Math.Clamp(h.restUntilDay, 0, s.day + 1);
+            }
+
+            if (s.roster.Count > Data.HeroCatalog.MaxRoster)
+                s.roster.RemoveRange(Data.HeroCatalog.MaxRoster,
+                    s.roster.Count - Data.HeroCatalog.MaxRoster);
+
+            // Trim deployment to the cap, dropping anyone unfit, then guarantee at
+            // least one hero is going out: ExpeditionManager reads an empty
+            // adventurer list as "nobody down yet", so a party of nobody would
+            // leave the expedition running forever.
+            int cap = s.DeployCap, used = 0;
+            foreach (Data.HeroRecord h in s.roster)
+            {
+                if (h.deployed && (used >= cap || !h.IsFit(s.day))) h.deployed = false;
+                if (h.deployed) used++;
+            }
+            if (used == 0)
+            {
+                Data.HeroRecord pick = null;
+                foreach (Data.HeroRecord h in s.roster)
+                    if (h.IsFit(s.day)) { pick = h; break; }
+                (pick ?? s.roster[0]).deployed = true;   // whole roster resting: they limp out
+            }
         }
     }
 }

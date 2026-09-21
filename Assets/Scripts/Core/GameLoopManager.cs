@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using AlchemistsArsenal.Combat;
 using AlchemistsArsenal.Data;
@@ -46,7 +47,15 @@ namespace AlchemistsArsenal.Core
             ? SaveSystem.Instance.State.TargetBiomeIndex : 0;
 
         public ExpeditionReport LatestReport { get; private set; }
-        public AdventurerLoadout PendingLoadout { get; private set; }
+        /// <summary>One loadout per hero going out, built at BeginAfternoon.</summary>
+        public IReadOnlyList<AdventurerLoadout> PendingLoadouts { get; private set; }
+
+        /// <summary>The heroes going out today, resolved at BeginAfternoon.</summary>
+        public IReadOnlyList<HeroRecord> PendingParty { get; private set; }
+
+        /// <summary>The lead hero's loadout. Kept for the Handoff screen and tests.</summary>
+        public AdventurerLoadout PendingLoadout =>
+            PendingLoadouts != null && PendingLoadouts.Count > 0 ? PendingLoadouts[0] : null;
         public ExpeditionWorld CurrentExpedition => _expeditionWorld;
 
         public event Action<GamePhase> OnPhaseChanged;
@@ -172,7 +181,12 @@ namespace AlchemistsArsenal.Core
             if (_expeditionRoot != null) return; // re-entrancy guard (reviewer P6)
 
             ActiveOrder order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
-            PendingLoadout = LoadoutBuilder.Build(order); // once, here — finished or not
+            // Once, here — finished or not. Each hero gets their own loadout
+            // instance even when they share a brew, because the AI keeps a private
+            // ammo pool per controller.
+            RunState party = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+            PendingParty = party != null ? party.DeployedParty() : null;
+            PendingLoadouts = LoadoutBuilder.BuildAll(new[] { order }, PendingParty);
 
             BiomeData biome = BiomeLibrary.Get(TargetBiomeIndex);
 
@@ -184,7 +198,7 @@ namespace AlchemistsArsenal.Core
             // Day 1 is the teaching run — no boss, just the waves.
             bool enableBoss = SaveSystem.Instance == null || SaveSystem.Instance.State == null
                 || SaveSystem.Instance.State.day > 1;
-            _expeditionWorld.Build(biome, PendingLoadout, adventurerCount: 1, enableBoss: enableBoss);
+            _expeditionWorld.Build(biome, PendingLoadouts, PendingParty, enableBoss: enableBoss);
 
             SetPhase(GamePhase.Afternoon);
         }

@@ -75,6 +75,49 @@ namespace AlchemistsArsenal.DebugTools
                     Mathf.Abs(fireScore - waterScore) < 0.02f);
             }
 
+
+            // Scenario 4 - the badly-matched target. A x0.5 matchup used to score a
+            // raw 0 on the elemental axis, which ApplyAxis turns into
+            // `1 - weight * (1 - 0)` = 0 at any weight >= 1 (the default is 1.2).
+            // The whole action scored 0, fell under the threshold, and the
+            // adventurer simply stopped throwing - which in game looked exactly
+            // like having run out of flasks while standing in a monster's face.
+            // A weak flask must always beat no flask.
+            {
+                var self = new FakeCombatant(Team.Adventurer, ElementType.Nature, 100, 100, new Vector2(0, 0));
+                // Water resists Fire (x0.5), and it is the ONLY target available.
+                var waterMob = new FakeCombatant(Team.Monster, ElementType.Water, 80, 80, new Vector2(6, 0));
+                var monsters = new List<ICombatant> { waterMob };
+                var onlyFire = new List<BombData> { fire };
+
+                bool ok = CombatDecisionEngine.TrySelectThrow(self, monsters, onlyFire, matrix, axes,
+                    potionQuality01: 0.95f, ScoreThreshold,
+                    out BombThrowRequest req, out CombatDecisionEngine.ScoredCandidate best,
+                    DumpBreakdown("S4 unfavourable matchup"));
+
+                Report("S4: still throws at a x0.5 target rather than standing idle", ok);
+                Report("S4: the throw uses the flask it actually has", ok && req.Bomb == fire);
+                Report($"S4: a bad matchup still scores above threshold ({best.Score:F3} >= {ScoreThreshold})",
+                    best.Score >= ScoreThreshold);
+            }
+
+            // Scenario 5 - preference is preserved: given the choice, a x2 target
+            // must still outrank a x0.5 one by a wide margin. The floor must not
+            // have flattened the axis into irrelevance.
+            {
+                var self = new FakeCombatant(Team.Adventurer, ElementType.Nature, 100, 100, new Vector2(0, 0));
+                var natureMob = new FakeCombatant(Team.Monster, ElementType.Nature, 80, 80, new Vector2(6, 0));
+                var waterMob = new FakeCombatant(Team.Monster, ElementType.Water, 80, 80, new Vector2(6, 1f));
+                var monsters = new List<ICombatant> { waterMob, natureMob };
+
+                bool ok = CombatDecisionEngine.TrySelectThrow(self, monsters, new List<BombData> { fire },
+                    matrix, axes, potionQuality01: 0.95f, ScoreThreshold,
+                    out BombThrowRequest req, out _, DumpBreakdown("S5 target preference"));
+
+                Report("S5: with both on the field, Fire still picks the Nature target (x2)",
+                    ok && req.Target == (ICombatant)natureMob);
+            }
+
             // Scenario 3 — target sitting on top of the hero (inside min-safe range): distance axis vetoes.
             {
                 var self = new FakeCombatant(Team.Adventurer, ElementType.Nature, 100, 100, new Vector2(0, 0));

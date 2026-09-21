@@ -9,6 +9,7 @@ using System.Text;
 using UnityEditor;
 using UnityEngine;
 using AlchemistsArsenal.Combat;
+using AlchemistsArsenal.Data;
 using AlchemistsArsenal.Systems;
 using AlchemistsArsenal.UI;
 using Debug = UnityEngine.Debug;
@@ -45,7 +46,11 @@ namespace AlchemistsArsenal.Core
         public const string ArmedKey = "AA_HeadlessPlaytestArmed";
         private const string ReportPath = "headless-playtest-report.txt";
         private const string ScreensDir = "headless-screens";
-        private const int DaysToRun = 2; // day 1: tutorial / no boss. day 2: boss enabled.
+        // day 1: tutorial / no boss, solo. day 2: boss enabled, solo.
+        // day 3: REPLAYS biome 0 with a full three-hero party, so it is directly
+        // comparable with day 1 on the same road - the regression test for
+        // "does a bigger party trivialise the early game".
+        private const int DaysToRun = 3;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoStart()
@@ -72,7 +77,7 @@ namespace AlchemistsArsenal.Core
                 _wall = Stopwatch.StartNew();
                 Application.logMessageReceived += OnUnityLog;
                 Log("=== HEADLESS PLAYTEST START (runtime driver, post-reload) ===");
-                StartCoroutine(Drive());
+                StartCoroutine(DriveThenFinish());
             }
 
             // ------------------------------------------------------------ script
@@ -90,6 +95,33 @@ namespace AlchemistsArsenal.Core
             /// </summary>
             private const int RandomSeed = 20260912;
 
+            /// <summary>
+            /// Runs the script to completion or to its first failure, and reports
+            /// either way. Drive() itself bails out with `yield break` all over the
+            /// place; without this wrapper those exits never write the report and
+            /// never quit the Editor.
+            /// </summary>
+            private IEnumerator DriveThenFinish()
+            {
+                IEnumerator drive = Drive();
+                while (true)
+                {
+                    object current;
+                    try
+                    {
+                        if (!drive.MoveNext()) break;
+                        current = drive.Current;
+                    }
+                    catch (Exception e)
+                    {
+                        Fail($"Driver threw: {e}");
+                        break;
+                    }
+                    yield return current;
+                }
+                Finish();
+            }
+
             private IEnumerator Drive()
             {
                 UnityEngine.Random.InitState(RandomSeed);
@@ -103,6 +135,17 @@ namespace AlchemistsArsenal.Core
                 foreach (var step in WaitForPhase(GamePhase.MainMenu, 10f)) { if (_errorCount > 0) yield break; yield return step; }
                 if (_errorCount > 0) yield break;
                 foreach (var step in Settle("boot_main_menu")) yield return step;
+
+                // Run the pure meta-layer checks (save round-trip, migration
+                // clamping, perk symmetry, cost curves, the quality budget) inside
+                // this same batchmode session. They are a MonoBehaviour because
+                // they need JsonUtility and persistentDataPath, and without this
+                // nothing ever executed them - a suite that only runs when someone
+                // remembers to drop it in a scene is a suite that does not run.
+                // Any Check() failure logs an error, which OnUnityLog turns into a
+                // failure of this run.
+                foreach (var step in RunSimulationChecks()) yield return step;
+                if (_errorCount > 0) yield break;
 
                 // Speed the whole run up — TimeControl is the sole owner of Time.timeScale
                 // (DESIGN.md), so we ask through it rather than writing Time.timeScale.
@@ -169,7 +212,8 @@ namespace AlchemistsArsenal.Core
                     // brew bar are all visibly live in the screenshot, then finish the
                     // brew directly (this driver isn't a mouse).
                     foreach (var step in SettleFrames(20)) yield return step;
-                    order.AdjustQuality(65, "HeadlessPlaytest", "simulated good brew");
+                    order.AdjustQuality(SimulatedBrewPoints, "HeadlessPlaytest", "simulated good brew");
+                    order.AdjustQuality(SimulatedBenchPoints, "HeadlessPlaytest", "simulated bench work");
 
                     if (day == DaysToRun)
                     {
@@ -197,6 +241,36 @@ namespace AlchemistsArsenal.Core
                     if (_errorCount > 0) yield break;
                     foreach (var step in Settle($"day{day}_afternoon_result")) yield return step;
 
+                    var world = GameLoopManager.Instance.CurrentExpedition;
+                    if (world != null)
+                    {
+                        int expected = SaveSystem.Instance != null
+                            ? SaveSystem.Instance.State.DeployedParty().Count : 1;
+                        if (world.Party.Count != expected)
+                            Fail($"Party size {world.Party.Count}, expected {expected} from the deploy cap.");
+                        if (world.PartyRecords.Count == 0 || world.PartyRecords[0] == null)
+                            Fail("Arena built an anonymous adventurer - the roster was not used.");
+                        else
+                        {
+                            var names = new System.Text.StringBuilder();
+                            int totalHp = 0, totalAmmo = 0;
+                            for (int i = 0; i < world.PartyRecords.Count; i++)
+                            {
+                                HeroRecord r = world.PartyRecords[i];
+                                if (r == null) continue;
+                                if (names.Length > 0) names.Append(", ");
+                                names.Append($"{r.displayName} Lv{r.level} {r.affinity}/{r.archetypeId}");
+                                if (i < world.Party.Count && world.Party[i] != null) totalHp += world.Party[i].MaxHP;
+                            }
+                            if (GameLoopManager.Instance.PendingLoadouts != null)
+                                foreach (var lo in GameLoopManager.Instance.PendingLoadouts)
+                                    foreach (var slot in lo.Slots) totalAmmo += slot.count;
+
+                            Log($"PARTY x{world.Party.Count} on biome {SaveSystem.Instance.State.TargetBiomeIndex}: " +
+                                $"{names} | {totalHp} HP total, {totalAmmo} flasks total.");
+                        }
+                    }
+
                     GameLoopManager.Instance.BeginEvening();
                     foreach (var step in WaitForPhase(GamePhase.Evening, 10f)) { if (_errorCount > 0) yield break; yield return step; }
                     if (_errorCount > 0) yield break;
@@ -206,16 +280,78 @@ namespace AlchemistsArsenal.Core
                     CallPrivate(eveningScreen, "ShowUpgrades");
                     foreach (var step in Settle($"day{day}_evening_upgrades")) yield return step;
 
+                    // Two real days of income is 150-250 g, which renders every
+                    // roster button as "can't afford" and tells us nothing. Top up
+                    // AFTER the report screenshot so the ledger above stays honest,
+                    // then exercise the actual transactions.
+                    RunState st = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+                    if (st != null) st.gold = 800;
+
+                    CallPrivate(eveningScreen, "ShowRoster");
+                    foreach (var step in Settle($"day{day}_evening_roster")) yield return step;
+
+                    if (st != null && day == 2)
+                    {
+                        int before = st.roster.Count;
+                        if (before < 1)
+                            Fail("Roster is empty at Evening - a run must always own at least one hero.");
+                        CallPrivate(eveningScreen, "HireCandidate",
+                            Data.HeroCatalog.HireCost(st.roster.Count));
+                        if (st.roster.Count != before + 1)
+                            Fail($"Hire did not add a hero (roster {before} -> {st.roster.Count}).");
+
+                        string leadId = st.roster[0].id;
+                        int lvlBefore = st.roster[0].level;
+                        CallPrivate(eveningScreen, "LevelHero", leadId,
+                            Data.HeroCatalog.LevelUpCost(lvlBefore));
+                        if (st.roster[0].level != lvlBefore + 1)
+                            Fail($"Level up did not take (level {lvlBefore} -> {st.roster[0].level}).");
+
+                        Log($"Roster: {st.roster.Count} heroes, lead is {st.roster[0].displayName} " +
+                            $"Lv{st.roster[0].level} ({st.roster[0].affinity}), {st.gold} g left.");
+                        foreach (var step in Settle($"day{day}_evening_roster_bought")) yield return step;
+
+                        // Build a full party for day 3, which replays biome 0 so
+                        // it is directly comparable with day 1's solo run on the
+                        // same road. This is the regression test for "does a
+                        // three-hero party trivialise the early game".
+                        st.bestGrades[1] = Math.Max(st.bestGrades[1], 1);
+                        st.bestGrades[3] = Math.Max(st.bestGrades[3], 1);
+                        st.gold = 2000;
+                        CallPrivate(eveningScreen, "BuyUpgrade", UpgradeCatalog.SecondPack,
+                            CostOf(UpgradeCatalog.SecondPack));
+                        CallPrivate(eveningScreen, "BuyUpgrade", UpgradeCatalog.ThirdPack,
+                            CostOf(UpgradeCatalog.ThirdPack));
+                        if (st.DeployCap != 3)
+                            Fail($"Deploy cap is {st.DeployCap} after buying both packs, expected 3.");
+
+                        while (st.roster.Count < 3)
+                        {
+                            int n = st.roster.Count;
+                            CallPrivate(eveningScreen, "HireCandidate", Data.HeroCatalog.HireCost(n));
+                            if (st.roster.Count == n) { Fail("Could not hire up to a full party."); break; }
+                        }
+                        foreach (HeroRecord h in st.roster) h.deployed = true;
+
+                        CallPrivate(eveningScreen, "ShowRoster");
+                        foreach (var step in Settle($"day{day}_evening_roster_full")) yield return step;
+                    }
+
                     GameLoopManager.Instance.BeginBiomeMap();
                     foreach (var step in WaitForPhase(GamePhase.BiomeMap, 5f)) { if (_errorCount > 0) yield break; yield return step; }
                     if (_errorCount > 0) yield break;
                     foreach (var step in Settle($"day{day}_biome_map")) yield return step;
 
-                    if (day < DaysToRun) GameLoopManager.Instance.Sleep(-1);
+                    if (day < DaysToRun) GameLoopManager.Instance.Sleep(day == 2 ? 0 : -1);
                 }
 
+
+                // The expedition slice scenarios run a REAL arena and tear down by
+                // destroying every CombatantBody in the scene, so they run only
+                // after the day loop is done - never alongside a live party.
+                foreach (var step in RunExpeditionScenarios()) yield return step;
+
                 if (_errorCount == 0) Log("=== FULL LOOP COMPLETED — all days resolved cleanly ===");
-                Finish();
             }
 
             /// <summary>
@@ -226,6 +362,20 @@ namespace AlchemistsArsenal.Core
             /// (quality swing, cauldron band width) are the same ones the bench
             /// applies.
             /// </summary>
+            /// <summary>
+            /// What a flawless cauldron is worth: brewBonusPoints (2) per
+            /// deductionInterval (1s) across brewSeconds (11). Mirror this if
+            /// PhysicsCauldronManager's quality constants change.
+            /// </summary>
+            private const int SimulatedBrewPoints = 22;
+
+            /// <summary>
+            /// The per-leaf and per-grind bonuses CompletePrep deliberately does
+            /// not simulate (3 leaves on cue at a mid potency, 3 clean strikes),
+            /// so the driver's flask is comparable to a played one.
+            /// </summary>
+            private const int SimulatedBenchPoints = 24;
+
             private void CompletePrep(ActiveOrder order)
             {
                 var mix = CraftingManager.Instance != null ? CraftingManager.Instance.Mixture : null;
@@ -308,7 +458,27 @@ namespace AlchemistsArsenal.Core
                     }
                     yield return null;
                 }
-                Log($"Expedition resolved: {world.Expedition.Phase} ({Time.unscaledTime - start:F1}s)");
+                // The bug this guards: a wave that hit its safety cap used to be
+                // despawned and fall through to Win(), reporting a full clear.
+                if (world.Expedition.Phase == ExpeditionPhase.Won
+                    && world.Expedition.WavesCleared < world.Expedition.TotalWaves)
+                    Fail($"Reported a WIN with only {world.Expedition.WavesCleared}/" +
+                         $"{world.Expedition.TotalWaves} waves cleared.");
+
+                var rep = world.Telemetry != null ? world.Telemetry.Report : null;
+                int flasksLeft = 0;
+                foreach (var b in world.Party)
+                    if (b != null)
+                    {
+                        var c = b.GetComponent<UtilityAI_CombatController>();
+                        if (c != null) flasksLeft += c.FlasksLeft;
+                    }
+                string detail = rep != null
+                    ? $", waves {rep.wavesCleared}/{rep.totalWaves}, " +
+                      $"down {rep.partyDown}/{rep.partyTotal}, {flasksLeft} flasks left"
+                    : "";
+                Log($"Expedition resolved: {world.Expedition.Phase} " +
+                    $"({Time.unscaledTime - start:F1}s{detail})");
             }
 
             private IEnumerable WaitUntil(Func<bool> predicate, float timeoutSeconds, string what)
@@ -444,6 +614,50 @@ namespace AlchemistsArsenal.Core
                 catch (Exception e) { Fail($"CallPrivate '{method}' threw: {e.InnerException ?? e}"); }
             }
 
+            /// <summary>
+            /// Spawn GameLoopSimulationTest, let its Start() run, then tear it down.
+            /// </summary>
+            /// <summary>
+            /// Win / lose / out-of-flasks scenarios against a real ExpeditionManager.
+            /// Budgeted past the sum of their own internal timeouts so a slow
+            /// scenario is never cut off half-finished.
+            /// </summary>
+            private IEnumerable RunExpeditionScenarios()
+            {
+                var arena = new GameObject("~ExpeditionChecks");
+                arena.AddComponent<DebugTools.ExpeditionSimulationTest>();
+
+                float budget = 0f;
+                while (budget < 150f && !DebugTools.ExpeditionSimulationTest.Finished)
+                {
+                    budget += Time.deltaTime;
+                    yield return null;
+                }
+                if (!DebugTools.ExpeditionSimulationTest.Finished)
+                    Fail($"Expedition slice scenarios did not finish within {budget:F0}s.");
+
+                Destroy(arena);
+                MonsterRegistry.Clear();
+                AdventurerRegistry.Clear();
+                Log("Expedition slice scenarios complete.");
+            }
+
+            private IEnumerable RunSimulationChecks()
+            {
+                var go = new GameObject("~SimulationChecks");
+                go.AddComponent<DebugTools.GameLoopSimulationTest>();
+                // Pure scoring checks - fake combatants, no arena, so they are safe
+                // to run here rather than with the expedition scenarios.
+                go.AddComponent<DebugTools.UtilityAiSimulationTest>();
+                yield return null;   // Start() runs on the next frame
+                yield return null;
+                Destroy(go);
+
+                Log(_errorCount == 0
+                    ? "Meta-layer simulation checks passed."
+                    : $"Meta-layer simulation checks reported {_errorCount} failure(s).");
+            }
+
             // ---------------------------------------------------------- plumbing
 
             private void OnUnityLog(string condition, string stackTrace, LogType type)
@@ -459,6 +673,12 @@ namespace AlchemistsArsenal.Core
                 _log.AppendLine(line);
             }
 
+            private static int CostOf(string upgradeId)
+            {
+                foreach (var u in UpgradeCatalog.All) if (u.Id == upgradeId) return u.Cost;
+                return 0;
+            }
+
             private void Fail(string msg)
             {
                 _errorCount++;
@@ -467,8 +687,13 @@ namespace AlchemistsArsenal.Core
                 _log.AppendLine(line);
             }
 
+            private bool _finished;
+
             private void Finish()
             {
+                if (_finished) return;   // the wrapper always calls this; be idempotent
+                _finished = true;
+
                 _fastForward.Dispose();
                 Application.logMessageReceived -= OnUnityLog;
 

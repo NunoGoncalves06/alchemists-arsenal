@@ -59,6 +59,9 @@ namespace AlchemistsArsenal.Combat
                         // stopped being one (playtest: consistently 2-for-2 on wave 1,
                         // then dead a few seconds into wave 2). 3x, spread further apart.
                         BiomeData.MakeWave(MonsterData.Create("Thornling", ElementType.Nature, 34, 2.6f, 2, 5, ""), 3, 0.8f, 1.4f),
+                        // The off-element wave: the biome reads as Nature, so the
+                        // Counter steers you to a Fire flask, which Water halves. That is
+                        // the intended lesson — one flask cannot cover a whole road.
                         BiomeData.MakeWave(MonsterData.Create("Mossback", ElementType.Water, 46, 1.9f, 4, 8, "Frostmoss", 0.3f), 3, 0.6f, 1.4f),
                     }, DefaultExpeditionData.BuildBoss("Elder Woodwose", ElementType.Nature, 300));
                     break;

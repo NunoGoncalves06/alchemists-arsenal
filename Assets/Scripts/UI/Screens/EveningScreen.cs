@@ -20,7 +20,9 @@ namespace AlchemistsArsenal.UI
     {
         private RectTransform _body;
         private TextMeshProUGUI _gold, _title;
-        private Button _reportTab, _upgradesTab;
+        private enum EveTab { Report, Upgrades, Roster }
+
+        private readonly Button[] _tabButtons = new Button[3];
 
         protected override void Build()
         {
@@ -43,9 +45,10 @@ namespace AlchemistsArsenal.UI
                 TextAlignmentOptions.Left);
             UIFactory.Place(_gold.rectTransform, 0.91f, 0f, 0.99f, 1f);
 
-            _reportTab = Tab(0.36f, 0.50f, "REPORT", ShowReport);
-            _upgradesTab = Tab(0.51f, 0.65f, "UPGRADES", ShowUpgrades);
-            Tab(0.66f, 0.78f, "DIARY", () =>
+            _tabButtons[(int)EveTab.Report] = Tab(0.34f, 0.46f, "REPORT", ShowReport);
+            _tabButtons[(int)EveTab.Upgrades] = Tab(0.47f, 0.59f, "UPGRADES", ShowUpgrades);
+            _tabButtons[(int)EveTab.Roster] = Tab(0.60f, 0.72f, "PARTY", ShowRoster);
+            Tab(0.73f, 0.85f, "DIARY", () =>
             {
                 DiaryScreen.OpenEntryId = null;
                 DiaryScreen.FromOpeningCinematic = false;
@@ -90,7 +93,7 @@ namespace AlchemistsArsenal.UI
         private void ShowReport()
         {
             Clear();
-            SelectTab(report: true);
+            SelectTab(EveTab.Report);
 
             var r = GameLoopManager.Instance != null ? GameLoopManager.Instance.LatestReport : null;
             if (r == null)
@@ -113,6 +116,15 @@ namespace AlchemistsArsenal.UI
             var headline = UIFactory.Title(c, r.won ? "Victory" : "Defeat", UITheme.SizeTitle + 6,
                 r.won ? UITheme.Ok : UITheme.Danger);
             UIFactory.FixedHeight(headline.gameObject, 46f);
+
+            // Say WHY. A defeat with no explanation is what let "ran out of
+            // flasks" look like a bug rather than a result.
+            if (!string.IsNullOrEmpty(r.outcomeReason))
+            {
+                var why = UIFactory.Label(c, r.outcomeReason, UITheme.SizeSmall,
+                    r.won ? UITheme.TextLow : UITheme.Danger, TextAlignmentOptions.TopLeft);
+                UIFactory.Flex(why.gameObject, 1f, 0f, minHeight: 34f);
+            }
 
             var stars = UIFactory.HStack(c, 4f);
             UIFactory.FixedHeight(stars.gameObject, 30f);
@@ -247,7 +259,7 @@ namespace AlchemistsArsenal.UI
         private void ShowUpgrades()
         {
             Clear();
-            SelectTab(report: false);
+            SelectTab(EveTab.Upgrades);
             RunState s = SaveSystem.Instance.State;
 
             var card = UIKit.Card(_body, $"Upgrades — permanent, {s.gold} g on hand", out Transform c, spacing: 10f);
@@ -267,25 +279,213 @@ namespace AlchemistsArsenal.UI
                 UIFactory.Flex(desc.gameObject, 1f, 1f);
 
                 bool owned = s.HasUpgrade(up.Id);
+                bool available = UpgradeCatalog.IsAvailable(up.Id, s);
                 bool canAfford = s.gold >= up.Cost;
                 string id = up.Id; int cost = up.Cost;
-                var buy = UIFactory.Button(inner, owned ? "OWNED" : $"BUY — {cost} g",
-                    owned ? (System.Action)null : () => BuyUpgrade(id, cost), primary: !owned);
+
+                string caption = owned ? "OWNED"
+                    : !available ? "LOCKED"
+                    : $"BUY — {cost} g";
+                var buy = UIFactory.Button(inner, caption,
+                    owned || !available ? (System.Action)null : () => BuyUpgrade(id, cost),
+                    primary: !owned && available);
                 UIFactory.Place(buy.image.rectTransform, 0.74f, 0.18f, 0.97f, 0.82f);
-                buy.interactable = !owned && canAfford;
+                buy.interactable = !owned && available && canAfford;
+
+                if (!owned && !available)
+                    desc.text = UpgradeCatalog.UnlockHint(up.Id);
             }
         }
 
         private void BuyUpgrade(string id, int cost)
         {
             RunState s = SaveSystem.Instance.State;
-            if (s.HasUpgrade(id) || s.gold < cost) return;
+            if (s.HasUpgrade(id) || s.gold < cost || !UpgradeCatalog.IsAvailable(id, s)) return;
             s.AddGold(-cost);
             s.ownedUpgrades.Add(id);
             SaveSystem.Instance.MarkDirty();
             AudioManager.Play(Sfx.Coin);
             _gold.text = $"{s.gold} g";
             ShowUpgrades();
+        }
+
+        // ----------------------------------------------------------------- party
+
+        /// <summary>
+        /// Hire, level and pick tomorrow's party. Lives here rather than behind a
+        /// new phase so it inherits the Evening's save timing (MarkDirty here is
+        /// written to disk by Sleep) and so it reads as one shop with two shelves.
+        ///
+        /// Capped at <see cref="HeroCatalog.MaxRoster"/> rows on purpose: the
+        /// project has no ScrollRect anywhere, and five rows plus the hire shelf
+        /// is what the body can show without one.
+        /// </summary>
+        private void ShowRoster()
+        {
+            Clear();
+            SelectTab(EveTab.Roster);
+            RunState s = SaveSystem.Instance.State;
+
+            int cap = s.DeployCap;
+            int outToday = CountDeployed(s);
+
+            var card = UIKit.Card(_body,
+                $"Party — {outToday} / {cap} going out · {s.gold} g on hand",
+                out Transform c, spacing: 8f);
+            UIFactory.Stretch(card.rectTransform);
+
+            foreach (HeroRecord hero in s.roster)
+                BuildHeroRow(c, s, hero, outToday, cap);
+
+            BuildHireRow(c, s);
+        }
+
+        private static int CountDeployed(RunState s)
+        {
+            int n = 0;
+            foreach (HeroRecord h in s.roster) if (h.deployed && h.IsFit(s.day)) n++;
+            return n;
+        }
+
+        private void BuildHeroRow(Transform parent, RunState s, HeroRecord hero, int outToday, int cap)
+        {
+            Image row = UIKit.Surface(parent, out Transform inner, UITheme.SurfaceHi, UITheme.LineSoft, "HeroRow");
+            UIFactory.FixedHeight(row.gameObject, 96f);
+
+            var portrait = UIKit.Portrait(inner, Art.PixelSprites.Fighter(hero.portraitId), 64f);
+            UIFactory.Place((RectTransform)portrait.transform.parent.parent, 0.008f, 0.08f, 0.082f, 0.92f);
+
+            var name = UIFactory.VStack(inner, 2f, new RectOffset(10, 8, 12, 12));
+            UIFactory.Place((RectTransform)name.transform, 0.09f, 0f, 0.46f, 1f);
+            var who = UIFactory.Label(name.transform, hero.displayName, UITheme.SizeBody, UITheme.TextHi,
+                TextAlignmentOptions.TopLeft, true);
+            UIFactory.FixedHeight(who.gameObject, 24f);
+            var sub = UIFactory.Label(name.transform, hero.Subtitle, UITheme.SizeSmall,
+                UITheme.Element(hero.affinity), TextAlignmentOptions.TopLeft);
+            UIFactory.Flex(sub.gameObject, 1f, 1f);
+
+            var perk = UIFactory.VStack(inner, 2f, new RectOffset(8, 8, 12, 12));
+            UIFactory.Place((RectTransform)perk.transform, 0.46f, 0f, 0.725f, 1f);
+            var atk = UIFactory.Label(perk.transform, HeroPerks.AttunementBlurb(hero.affinity),
+                UITheme.SizeSmall, UITheme.TextMid, TextAlignmentOptions.TopLeft);
+            UIFactory.Flex(atk.gameObject, 1f, 1f);
+            var def = UIFactory.Label(perk.transform, HeroPerks.WardBlurb(hero.affinity),
+                UITheme.SizeSmall, UITheme.TextLow, TextAlignmentOptions.TopLeft);
+            UIFactory.Flex(def.gameObject, 1f, 1f);
+
+            // Capture into locals before the lambdas: closing over the foreach
+            // variable is the classic bug in a row builder like this.
+            string heroId = hero.id;
+            bool maxed = !HeroCatalog.CanLevel(hero);
+            int levelCost = HeroCatalog.LevelUpCost(hero.level);
+
+            var lvl = UIFactory.Button(inner,
+                maxed ? "MAX LEVEL" : $"LEVEL UP — {levelCost} g",
+                maxed ? (System.Action)null : () => LevelHero(heroId, levelCost),
+                primary: !maxed);
+            UIFactory.Place(lvl.image.rectTransform, 0.735f, 0.52f, 0.99f, 0.94f);
+            lvl.interactable = !maxed && s.gold >= levelCost;
+
+            bool resting = !hero.IsFit(s.day);
+            bool wouldExceed = !hero.deployed && outToday >= cap;
+            string deployCaption = resting ? $"RESTING — back day {hero.restUntilDay}"
+                : hero.deployed ? "GOING OUT"
+                : "SEND OUT";
+            var dep = UIFactory.Button(inner, deployCaption,
+                resting ? (System.Action)null : () => ToggleDeploy(heroId),
+                primary: hero.deployed && !resting);
+            UIFactory.Place(dep.image.rectTransform, 0.735f, 0.06f, 0.99f, 0.48f);
+            dep.interactable = !resting && !wouldExceed;
+        }
+
+        private void BuildHireRow(Transform parent, RunState s)
+        {
+            Image row = UIKit.Surface(parent, out Transform inner, UITheme.Surface, UITheme.LineSoft, "HireRow");
+            UIFactory.FixedHeight(row.gameObject, 96f);
+
+            bool full = s.roster.Count >= HeroCatalog.MaxRoster;
+            bool unlocked = HeroCatalog.CanHire(s);
+            HeroRecord candidate = full ? null : HeroCatalog.CandidateFor(s.day, s.roster);
+            int cost = HeroCatalog.HireCost(s.roster.Count);
+
+            if (candidate != null)
+            {
+                var portrait = UIKit.Portrait(inner, Art.PixelSprites.Buyer(candidate.portraitId), 64f);
+                UIFactory.Place((RectTransform)portrait.transform.parent.parent, 0.008f, 0.08f, 0.082f, 0.92f);
+            }
+
+            var text = UIFactory.VStack(inner, 2f, new RectOffset(10, 8, 12, 12));
+            UIFactory.Place((RectTransform)text.transform, 0.09f, 0f, 0.725f, 1f);
+
+            string headline = full ? "The notice board is empty"
+                : !unlocked ? "Nobody will sign on yet"
+                : $"{candidate.displayName} is looking for work";
+            var head = UIFactory.Label(text.transform, headline, UITheme.SizeBody, UITheme.TextHi,
+                TextAlignmentOptions.TopLeft, true);
+            UIFactory.FixedHeight(head.gameObject, 24f);
+
+            string detail = full ? $"You are keeping {HeroCatalog.MaxRoster} already."
+                : !unlocked ? "Come back once you have brought a road home."
+                : $"{candidate.Subtitle} · {HeroPerks.AttunementBlurb(candidate.affinity)}";
+            var body = UIFactory.Label(text.transform, detail, UITheme.SizeSmall, UITheme.TextLow,
+                TextAlignmentOptions.TopLeft);
+            UIFactory.Flex(body.gameObject, 1f, 1f);
+
+            bool canBuy = !full && unlocked && s.gold >= cost;
+            var hire = UIFactory.Button(inner, full || !unlocked ? "—" : $"HIRE — {cost} g",
+                canBuy ? () => HireCandidate(cost) : (System.Action)null, primary: canBuy);
+            UIFactory.Place(hire.image.rectTransform, 0.735f, 0.28f, 0.99f, 0.72f);
+            hire.interactable = canBuy;
+        }
+
+        // --- transactions: guard, charge, mutate, MarkDirty, rebuild.
+        //     Same shape as BuyUpgrade, deliberately.
+
+        private void LevelHero(string heroId, int cost)
+        {
+            RunState s = SaveSystem.Instance.State;
+            HeroRecord hero = s.FindHero(heroId);
+            if (hero == null || !HeroCatalog.CanLevel(hero) || s.gold < cost) return;
+
+            s.AddGold(-cost);
+            hero.level++;
+            SaveSystem.Instance.MarkDirty();
+            AudioManager.Play(Sfx.Coin);
+            _gold.text = $"{s.gold} g";
+            ShowRoster();
+        }
+
+        private void HireCandidate(int cost)
+        {
+            RunState s = SaveSystem.Instance.State;
+            if (!HeroCatalog.CanHire(s) || s.gold < cost) return;
+
+            HeroRecord hired = HeroCatalog.CandidateFor(s.day, s.roster);
+            hired.deployed = false;             // who goes out is the player's call
+            s.AddGold(-cost);
+            s.roster.Add(hired);
+            SaveSystem.Instance.MarkDirty();
+            AudioManager.Play(Sfx.Coin);
+            _gold.text = $"{s.gold} g";
+            ShowRoster();
+        }
+
+        private void ToggleDeploy(string heroId)
+        {
+            RunState s = SaveSystem.Instance.State;
+            HeroRecord hero = s.FindHero(heroId);
+            if (hero == null || !hero.IsFit(s.day)) return;
+
+            if (hero.deployed) hero.deployed = false;
+            else
+            {
+                if (CountDeployed(s) >= s.DeployCap) return;
+                hero.deployed = true;
+            }
+
+            SaveSystem.Instance.MarkDirty();
+            AudioManager.Play(Sfx.Confirm);
+            ShowRoster();
         }
 
         // ----------------------------------------------------------------- shared
@@ -295,14 +495,18 @@ namespace AlchemistsArsenal.UI
             for (int i = _body.childCount - 1; i >= 0; i--) Destroy(_body.GetChild(i).gameObject);
         }
 
-        private void SelectTab(bool report)
+        private void SelectTab(EveTab active)
         {
-            if (_reportTab != null)
-                UIFactory.TintButton(_reportTab, report ? UITheme.Candle : UITheme.SurfaceHi,
-                    report ? UITheme.CandleHot : UITheme.SurfaceTop, report ? UITheme.TextOnGold : UITheme.TextHi);
-            if (_upgradesTab != null)
-                UIFactory.TintButton(_upgradesTab, !report ? UITheme.Candle : UITheme.SurfaceHi,
-                    !report ? UITheme.CandleHot : UITheme.SurfaceTop, !report ? UITheme.TextOnGold : UITheme.TextHi);
+            for (int i = 0; i < _tabButtons.Length; i++)
+            {
+                Button b = _tabButtons[i];
+                if (b == null) continue;
+                bool on = i == (int)active;
+                UIFactory.TintButton(b,
+                    on ? UITheme.Candle : UITheme.SurfaceHi,
+                    on ? UITheme.CandleHot : UITheme.SurfaceTop,
+                    on ? UITheme.TextOnGold : UITheme.TextHi);
+            }
         }
     }
 }

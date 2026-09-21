@@ -227,13 +227,13 @@ namespace AlchemistsArsenal.UI.Stations
             {
                 float centre = (PourTargetLow + PourTargetHigh) * 0.5f;
                 float off = Mathf.Abs(_fill - centre) / ((PourTargetHigh - PourTargetLow) * 0.5f);
-                int gain = Mathf.RoundToInt(Mathf.Lerp(14f, 7f, off));
+                int gain = Mathf.RoundToInt(Mathf.Lerp(9f, 4f, off));
                 order.ApplyBonus(gain, "Bottling", $"Poured to the line ({_fill:P0})");
                 AudioManager.Play(Sfx.Confirm);
             }
             else if (_fill < PourTargetLow)
             {
-                order.ApplyDeduction(7, "Bottling", $"Short measure ({_fill:P0}) — the flask is half air");
+                order.ApplyDeduction(10, "Bottling", $"Short measure ({_fill:P0}) — the flask is half air");
                 AudioManager.Play(Sfx.Deny);
             }
 
@@ -249,7 +249,7 @@ namespace AlchemistsArsenal.UI.Stations
             var order = Order;
             if (order != null)
             {
-                order.ApplyDeduction(12, "Bottling", "Overfilled — brew all over the bench");
+                order.ApplyDeduction(16, "Bottling", "Overfilled — brew all over the bench");
                 AudioManager.Play(Sfx.Deny);
             }
             _step = Step.Seal;
@@ -280,14 +280,14 @@ namespace AlchemistsArsenal.UI.Stations
 
             if (hit)
             {
-                int gain = Mathf.RoundToInt(Mathf.Lerp(14f, 6f, dist / Mathf.Max(0.001f, _sealHalfWidth)));
+                int gain = Mathf.RoundToInt(Mathf.Lerp(9f, 4f, dist / Mathf.Max(0.001f, _sealHalfWidth)));
                 order.ApplyBonus(gain, "Bottling", $"Sealed clean (+{gain})");
                 AudioManager.Play(Sfx.Seal);
                 _step = Step.Label;
             }
             else
             {
-                order.ApplyDeduction(8, "Bottling", "Wax set off-centre");
+                order.ApplyDeduction(11, "Bottling", "Wax set off-centre");
                 AudioManager.Play(Sfx.Deny);
                 _sealHalfWidth = Mathf.Max(0.05f, _sealHalfWidth - 0.02f);
                 ApplySealBand();
@@ -307,12 +307,12 @@ namespace AlchemistsArsenal.UI.Stations
 
             if (element == order.element)
             {
-                order.ApplyBonus(10, "Bottling", $"Labelled {element} — correct");
+                order.ApplyBonus(4, "Bottling", $"Labelled {element} — correct");
                 AudioManager.Play(Sfx.Chime);
             }
             else
             {
-                order.ApplyDeduction(10, "Bottling",
+                order.ApplyDeduction(14, "Bottling",
                     $"Labelled {element} on a {order.element} flask — Rookie will grab the wrong one");
                 AudioManager.Play(Sfx.Deny);
             }

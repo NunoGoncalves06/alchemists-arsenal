@@ -19,6 +19,9 @@ namespace AlchemistsArsenal.Combat
         public int totalWaves;
         public float durationSeconds;
 
+        /// <summary>One line on how the road ended, shown in the Evening report.</summary>
+        public string outcomeReason = "";
+
         public int partyTotal;
         public int partyDown;
 
