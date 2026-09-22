@@ -108,7 +108,7 @@ namespace AlchemistsArsenal.UI
             StationsUnlocked = true;
             _step = Step.Cauldron;
             Show("All four benches are open. Work them in order: at PREP, crush in the leaves the recipe asks for and grind them — nothing goes in the pot until you do. Then the CAULDRON will let you stir.",
-                "3 / 3", new Vector2(0.045f, 0.82f));
+                "3 / 3", new Vector2(0.08f, 0.797f), fromRight: true);   // the PREP item on the rail
             while (true)
             {
                 var pot = Crafting.PhysicsCauldronManager.Instance;
@@ -193,11 +193,20 @@ namespace AlchemistsArsenal.UI
 
         private RectTransform _coach, _arrow;
 
-        private void Show(string text, string dots, Vector2 pointAt)
+        private bool _fromRight;
+
+        /// <summary>
+        /// Point at <paramref name="pointAt"/>: from above by default, or from the right
+        /// for the station rail, whose items are stacked, so that "above PREP" was the
+        /// COUNTER's label (the arrow sat on "COUNTER" while the text said PREP).
+        /// </summary>
+        private void Show(string text, string dots, Vector2 pointAt, bool fromRight = false)
         {
             _bubble.text = text;
             _dots.text = dots;
             _arrow.anchorMin = _arrow.anchorMax = pointAt;
+            _fromRight = fromRight;
+            _arrow.localRotation = Quaternion.Euler(0f, 0f, fromRight ? -90f : 0f);
         }
 
         private void Update()
@@ -205,7 +214,7 @@ namespace AlchemistsArsenal.UI
             if (_group == null || _group.alpha < 0.5f || _arrow == null) return;
             // Sits above the target and bobs, tip pointing down at it — never on it.
             float bob = Mathf.Sin(Time.unscaledTime * 5f) * 6f;
-            _arrow.anchoredPosition = new Vector2(0f, 30f + bob);
+            _arrow.anchoredPosition = _fromRight ? new Vector2(24f + bob, 0f) : new Vector2(0f, 30f + bob);
         }
     }
 }

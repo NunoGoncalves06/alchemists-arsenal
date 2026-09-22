@@ -40,6 +40,9 @@ namespace AlchemistsArsenal.Combat
         /// <summary>How many heroes went out: a guardian's health is sized to them.</summary>
         public int PartySize { get; set; } = 3;
 
+        /// <summary>A monster or guardian has just come into the arena (the ground may want a word with it).</summary>
+        public event System.Action<GameObject> Spawned;
+
         public GameObject SpawnMonster(MonsterData data)
         {
             if (data == null) return null;
@@ -62,6 +65,7 @@ namespace AlchemistsArsenal.Combat
             Vfx.BodyVisuals.Attach(go, art.transform);
             go.SetActive(true);
             HealthBar2D.Attach(go.GetComponent<CombatantBody>(), width: 0.9f, lift: 0.62f);
+            Spawned?.Invoke(go);
             return go;
         }
 
@@ -99,6 +103,7 @@ namespace AlchemistsArsenal.Combat
 
             Vfx.BossVisual.Attach(go, boss);
             go.SetActive(true);
+            Spawned?.Invoke(go);
             return go;
         }
 

@@ -33,6 +33,7 @@ namespace AlchemistsArsenal.UI
             Instance = this;
             BuildCanvas();
             RegisterScreens();
+            UnlockToast.Create(Canvas.transform);   // above every screen
         }
 
         private void OnDestroy()

@@ -53,6 +53,9 @@ namespace AlchemistsArsenal.Combat
 
         public MoveState State { get; private set; } = MoveState.Approach;
 
+        /// <summary>Grip on the ground (1 = normal; ice is less): scales the steering force.</summary>
+        public float Traction { get; set; } = 1f;
+
         /// <summary>
         /// Tell the controller where the arena walls are so it can steer off them.
         /// Without this it only ever moved along the line to its target — straight in
@@ -108,7 +111,7 @@ namespace AlchemistsArsenal.Combat
 
             Vector2 desired = DesiredVelocity(target);
             // An acceleration, scaled by mass (see MonsterWalker).
-            Vector2 steer = Vector2.ClampMagnitude((desired - _rb.linearVelocity) * steerAccel, maxSteerForce);
+            Vector2 steer = Vector2.ClampMagnitude((desired - _rb.linearVelocity) * (steerAccel * Traction), maxSteerForce * Traction);
             _rb.AddForce(steer * _rb.mass, ForceMode2D.Force);
         }
 

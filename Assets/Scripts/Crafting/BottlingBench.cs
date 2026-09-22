@@ -254,8 +254,11 @@ namespace AlchemistsArsenal.Crafting
 
         // --------------------------------------------------------------- physics
 
+        private readonly ImpulseQueue _impulses = new ImpulseQueue();
+
         private void FixedUpdate()
         {
+            _impulses.Flush();
             float dt = Time.fixedDeltaTime;
             // Tip the ladle with a spring-damper torque toward the held / resting angle.
             if (_ladle != null)
@@ -393,7 +396,7 @@ namespace AlchemistsArsenal.Crafting
                 if (_cork != null)
                 {
                     // Glances off the lip: a knock down and it springs straight back up.
-                    _cork.AddForce(Vector2.down * 1.2f, ForceMode2D.Impulse);
+                    _impulses.Add(_cork, Vector2.down * 1.2f);   // on the next physics step
                     CameraRig.Shake(0.06f);
                 }
                 if (SealsLeft <= 0)

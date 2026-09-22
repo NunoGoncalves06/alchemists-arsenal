@@ -320,6 +320,8 @@ namespace AlchemistsArsenal.Core
                     GameLoopManager.Instance.BeginEvening();
                     foreach (var step in WaitForPhase(GamePhase.Evening, 10f)) { if (_errorCount > 0) yield break; yield return step; }
                     if (_errorCount > 0) yield break;
+                    // The first clear unlocks a diary page: its toast, while it is up.
+                    if (day == 1) foreach (var step in Settle("day1_evening_toast")) yield return step;
                     // A fight that earned part of the story plays it over the Evening first.
                     foreach (var step in PlayOutCutscenes($"day{day} evening", expect: false)) yield return step;
                     ExpeditionReport today = GameLoopManager.Instance.LatestReport;
@@ -1059,7 +1061,7 @@ namespace AlchemistsArsenal.Core
             {
                 for (int biome = 0; biome < BiomeLibrary.Count; biome++)
                     for (int seed = 11; seed <= 15; seed++)
-                        foreach (var step in RunScenario(biome, seed, $"sweep_b{biome}_s{seed}", capture: false))
+                        foreach (var step in RunScenario(biome, seed, $"sweep_b{biome}_s{seed}", capture: false, snapAt: seed == 11 ? 6f : -1f))
                             yield return step;
             }
 
@@ -1069,7 +1071,8 @@ namespace AlchemistsArsenal.Core
             /// Great flask of the element the Counter recommends for that road. The day
             /// seeds the monster spawner, so the fight is reproducible.
             /// </summary>
-            private IEnumerable RunScenario(int biome, int seedDay, string label, bool capture, int quality = 85, int partySize = 0)
+            private IEnumerable RunScenario(int biome, int seedDay, string label, bool capture, int quality = 85, int partySize = 0,
+                float snapAt = -1f)
             {
                 RunState st = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
                 if (st == null) { Fail($"Scenario {label}: no run state."); yield break; }
@@ -1114,6 +1117,11 @@ namespace AlchemistsArsenal.Core
                             }
                         }
                         if (!watch.BoundsChecked && watch.Settled) CheckBossFigure(watch, label);
+                    }
+                    if (snapAt >= 0f && Time.time - start >= snapAt)
+                    {
+                        Capture($"{label}_view");
+                        snapAt = -1f;
                     }
                     yield return null;
                 }
