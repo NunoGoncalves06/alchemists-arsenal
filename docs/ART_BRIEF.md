@@ -93,3 +93,25 @@ That error had two causes, both handled in code now, but the clean fix is:
    game builds a runtime font from a system font so text still renders — but
    importing the real essentials gives sharper text and the SDF shader.
 3. The camera error is fixed by `Bootstrap` creating a persistent `BootCamera`.
+
+
+## Procedural art (2026-09)
+Everything that is not a hand-typed grid is drawn from geometry with
+`PixelCanvas`, in the same style as the grids:
+- 16 px per world unit, the same pixel size as the characters;
+- a 1-px ink outline (`#17111c`) on figures;
+- flat ramps lit from the upper left, with Bayer-dithered steps between them.
+
+| Where | What |
+|---|---|
+| `ShopArt`, `ShopProps` | the pot (split front and back around the liquid), mortar, pestle, flask, ladle, cork, planks, wall, shelves of jars, candles, herb bundles |
+| `BossArt` | the Woodwose and the Matriarch as rig parts, each baked with a white silhouette for the hit flash; decals, ward runes, projectiles, debris chips |
+| `StoryArt` | eight lit 192×108 scenes and the cast (Nell, Tam, Veil, Ysolde unmasked, the kettle) |
+| `BiomeArt` | the five 544×320 arena backdrops |
+| `ParticleArt` | the round glow and puff textures (particles show their whole texture) |
+
+Rules:
+- A sprite swapped at runtime swaps its material with it (`SpriteMaterials.For`).
+- The headless harness exports every procedural sprite, as baked, to
+  `headless-screens/art/` (`PixelCanvas.ExportDir`). The design document's images
+  come from there, and from the harness screenshots.

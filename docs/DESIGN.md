@@ -880,3 +880,97 @@ party size (§7.7), scene layout (§11), `QualityTier` → deleted in favour of
   why the cauldron sim lives in `Shop.unity`, not under the Cauldron panel.
 - The cauldron does not need to simulate during the afternoon; `Shop.unity` is
   simply unloaded, which is cleaner than pausing it.
+
+
+## 12. The rebuild of 2026-09: departments, benches, guardians, arenas, story
+
+This section is authoritative for everything it covers; where it disagrees with
+an older section above, this one wins.
+
+### 12.1 Two departments
+- **PhysicsKit** (`Assets/Scripts/PhysicsKit`). Fixed layer indices, applied per
+  collider with `excludeLayers` (never the global matrix, which an open Editor can
+  write back into `Physics2DSettings`):
+
+  | Layer | # | Touches |
+  |---|---|---|
+  | Combatant | 8 | Combatant, ArenaBounds, Projectile |
+  | Projectile | 9 | Combatant |
+  | ArenaBounds | 10 | Combatant, Debris |
+  | ShopProp | 11 | ShopProp, ShopStatic, Liquid |
+  | ShopStatic | 12 | ShopProp, Liquid |
+  | Liquid | 13 | ShopStatic, ShopProp, Liquid |
+  | Debris | 14 | ArenaBounds, Debris |
+
+  Tools: `RadialImpulse` (one falloff for every blast), `Pointer` (mouse or a
+  scripted pointer for the harness), `Grabbable2D`, `PointerGrabber`,
+  `ImpactSensor2D`, `LiquidBody2D`, `PourStream2D`, `PhysicsMaterials`,
+  `ImpulseQueue` (pushes decided outside the step are applied at the top of
+  `FixedUpdate`), `Draft2D`. Every force runs in `FixedUpdate`.
+- **Art + Vfx.** Grid sprites live in `PixelSprites` and its partial files;
+  geometric and organic art is drawn from shapes with `PixelCanvas` (`ShopArt`,
+  `ShopProps`, `BossArt`, `StoryArt`, `BiomeArt`, `ParticleArt`).
+  `SpriteMaterials` is the one material cache: one material per texture, never
+  shared. `Vfx`: `VfxWorld` (seeded particles), `CameraRig` (pan and shake),
+  `BodyVisuals`, `BossVisual`, `TelegraphDecal`, `DebrisPiece`, `BiomeBackdrop`,
+  `DamagePopups`, `CandleFlicker`.
+
+### 12.2 The benches (morning)
+Scoring caps live in `Data/QualityBudget` (a flawless morning is 113 points, and
+the harness asserts it).
+- **Prep:** leaves are thrown into the mortar on ballistic arcs (click, or drag
+  them in). A strike is the pestle's measured impact speed (ideal 6.5 m/s). Too
+  hard throws a leaf out.
+- **Cauldron:** a surface-space vortex dissolves the floating herbs, and brew
+  progress scales with how much has dissolved. Stirring too hard slops a herb over
+  the rim (a named penalty).
+- **Bottling:** a ladle on a `HingeJoint2D` pours real droplets; the fill is the
+  droplets counted in the flask. A cork on a `SliderJoint2D` seats on the beat.
+
+### 12.3 Guardians
+- **Rig:** `BossVisual` builds the rig from `BossArt` parts on an unscaled physics
+  root. The collider stays inside the drawn figure (the harness asserts this).
+- **Attack shapes:** `BossAttackShape`: **Strike** (lands on the spot marked at the
+  start of the windup), **Shockwave** (bursts from the planted boss) and
+  **Volley** (`BossProjectile2D` on real ballistic arcs).
+- **Telegraphs:** the target is locked at telegraph start. Every spot is marked by
+  a `TelegraphDecal` and published to `DangerZones`, which heroes step out of after
+  0.25 s.
+- **Phases:** Neutral, Enraged, Ward and Recovering, scored with IAUS as before.
+  `MoveSpeedMultiplier` is read.
+- **Health:** authored for a party of three; one or two heroes face 0.32 / 0.66 of
+  it (`BossDefinition.HealthFor`).
+
+| Guardian | HP (x3) | Attacks |
+|---|---|---|
+| Elder Woodwose (Nature) | 1500 | Bramble Swipe, Thorn Volley, Root Slam, Briar Pulse |
+| Coven Matriarch (Arcane) | 1250 | Hex Volley, Hex Storm, Coven Slam, Sundering Ring, Ward Pulse |
+
+Measured with the harness's grade × party sweep: the Matriarch falls to a Great
+or Perfect flask at every party size, and to no Okay or Poor one. The optional
+Woodwose forgives Okay but not Poor. The Woodwose appears only once the Woods have
+been cleared, so a failed day-1 retry never meets it.
+
+### 12.4 Arenas
+- **Backdrops:** `BiomeArt` draws each road (floor, skyline, margins, vignette),
+  and `BiomeBackdrop` adds the air over it (leaves, embers, snow, spores, motes).
+- **Surfaces:** `ArenaSurface`. The Frostbite floor is ice: grip ×0.4 and damping
+  ×0.35. The Venom Swamp's bog pools are `AreaEffector2D` drag fields on the pools
+  its floor is drawn with.
+- **Left out on purpose:** nothing may bend a projectile's path, because that would
+  break the heroes' aim.
+
+### 12.5 The story: *The Kettle-Charm*
+The canon is the doc comment on `Story/StoryScript.cs`. The rules:
+- **An overlay, never a GamePhase.** The opening plays between the first Day Intro
+  and the morning. Later scenes play over the Evening that earned them.
+- **Saved before it plays.** A scene is flagged inside `BeginEvening`'s
+  resolve-once block (`RunState.storyFlags`, saved), and cleared only once watched.
+  If the game closes mid-scene, it replays at the next Day Intro. The credits set
+  `endingSeen` and the epilogue flag.
+- **Diary.** Eleven pages; the ids `diary_00`, `diary_ww` and `diary_perfect` are
+  kept for old saves. Unlocks: BiomeCleared, FirstPerfectPotion, BossDefeated,
+  StoryFlag. A toast announces pages of the live run only.
+- **Voices.** Veil's and Mira's Counter lines follow the roads cleared. The music
+  is the kettle-charm lullaby (minor), a reveal drone, and the lullaby in major for
+  the ending.
