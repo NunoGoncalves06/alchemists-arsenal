@@ -57,11 +57,6 @@ namespace AlchemistsArsenal.Combat
         public int TotalWaves => biome != null ? biome.Waves.Count : 0;
         public GameObject BossInstance { get; private set; }
 
-        private bool _skipWaveRequested;
-
-        /// <summary>HUD "NEXT WAVE" button — clear the field now and move on.</summary>
-        public void SkipCurrentWave() => _skipWaveRequested = true;
-
         public event Action<ExpeditionPhase> OnPhaseChanged;
         public event Action<int> OnWaveStarted;
         public event Action<bool> OnFinished; // true = won
@@ -99,8 +94,6 @@ namespace AlchemistsArsenal.Combat
             {
                 BiomeData.Wave wave = waves[w];
                 WaveNumber = w + 1;
-                _skipWaveRequested = false; // reset here, not right before the hold loop —
-                                             // a click during spawn-in must still register.
                 OnWaveStarted?.Invoke(WaveNumber);
                 if (logProgress) Debug.Log($"[Expedition] Wave {WaveNumber}/{waves.Count}: {wave.count}x {(wave.monster != null ? wave.monster.DisplayName : "?")}");
 
@@ -115,10 +108,8 @@ namespace AlchemistsArsenal.Combat
                 }
 
                 // Hold until the field is clear before the next wave. The wave
-                // auto-advances the instant the last monster dies; a safety cap and
-                // the HUD "NEXT WAVE" button both force it early so it can't drag.
+                // auto-advances the instant the last monster dies.
                 float held = 0f, dry = 0f;
-                bool cleared = true;
                 while (LiveMonsters() > 0)
                 {
                     if (AllAdventurersDead()) { Lose("The party was wiped out."); yield break; }
@@ -139,18 +130,23 @@ namespace AlchemistsArsenal.Combat
                     }
                     else dry = 0f;
 
+                    // The safety cap ends the ROAD, not just the wave. Only a clear
+                    // wins, so an uncleared wave already meant a loss - but the old
+                    // code despawned the survivors and carried on, making the party
+                    // fight every remaining wave and the guardian for nothing, and a
+                    // HUD "NEXT WAVE" button that did the same was a silent forfeit.
                     held += Time.deltaTime;
-                    if (_skipWaveRequested || held >= maxWaveSeconds)
+                    if (held >= maxWaveSeconds)
                     {
-                        cleared = false;
-                        if (logProgress) Debug.Log($"[Expedition] Wave {WaveNumber} ended early ({LiveMonsters()} left).");
+                        int left = LiveMonsters();
+                        if (logProgress) Debug.Log($"[Expedition] Wave {WaveNumber} hit its cap ({left} left).");
                         DespawnLiveMonsters();
-                        break;
+                        Lose($"Wave {WaveNumber} held out - {left} still standing when the party fell back.");
+                        yield break;
                     }
                     yield return null;
                 }
-                _skipWaveRequested = false;
-                if (cleared) WavesCleared++;
+                WavesCleared++;
                 yield return WaitOrLose(gapBetweenWaves);
                 if (Phase == ExpeditionPhase.Lost) yield break;
             }
