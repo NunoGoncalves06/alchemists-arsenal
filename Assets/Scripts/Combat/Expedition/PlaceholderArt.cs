@@ -43,10 +43,13 @@ namespace AlchemistsArsenal.Combat
         }
 
         /// <summary>Add a SpriteRenderer with a placeholder sprite + unlit material.</summary>
-        public static SpriteRenderer AddRenderer(GameObject go, Shape shape, Color fill, int sortingOrder)
+        /// <param name="outlined">False for glows, rings and ground: an opaque dark
+        /// outline around a faint glow read as a dark ring rather than light.</param>
+        public static SpriteRenderer AddRenderer(GameObject go, Shape shape, Color fill, int sortingOrder,
+            bool outlined = true)
         {
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = Make(shape, fill, new Color(0.10f, 0.10f, 0.12f));
+            sr.sprite = Make(shape, fill, outlined ? new Color(0.10f, 0.10f, 0.12f) : fill);
             Material mat = MaterialFor(sr.sprite);
             if (mat != null) sr.sharedMaterial = mat;
             sr.sortingOrder = sortingOrder;
@@ -58,23 +61,21 @@ namespace AlchemistsArsenal.Combat
             ElementType.Fire => new Color(0.93f, 0.35f, 0.18f),
             ElementType.Water => new Color(0.30f, 0.62f, 0.95f),
             ElementType.Nature => new Color(0.36f, 0.74f, 0.36f),
-            ElementType.Poison => new Color(0.62f, 0.36f, 0.80f),
+            ElementType.Poison => new Color(0.71f, 0.76f, 0.25f), // #b6c33f, as in UITheme
             ElementType.Arcane => new Color(0.86f, 0.42f, 0.86f),
             _ => new Color(0.7f, 0.7f, 0.7f),
         };
 
-        private static readonly System.Collections.Generic.Dictionary<int, Sprite> _cache =
-            new System.Collections.Generic.Dictionary<int, Sprite>();
+        private static readonly System.Collections.Generic.Dictionary<string, Sprite> _cache =
+            new System.Collections.Generic.Dictionary<string, Sprite>();
 
         public static Sprite Make(Shape shape, Color fill, Color outline)
         {
-            // Cache by shape + quantised colours so we bake each distinct sprite once
-            // (bombs share one, monsters share one per element, etc.).
-            int key = (int)shape
-                      ^ (Mathf.RoundToInt(fill.r * 31) << 3)
-                      ^ (Mathf.RoundToInt(fill.g * 31) << 8)
-                      ^ (Mathf.RoundToInt(fill.b * 31) << 13)
-                      ^ (Mathf.RoundToInt(outline.r * 31) << 18);
+            // Cache by shape + both colours in full (alpha included) so each distinct
+            // sprite is baked once. The old key XOR-folded a few channels together,
+            // ignored alpha, and only looked at the outline's red, so two different
+            // discs could come back as the same sprite.
+            string key = $"{shape}:{ColorUtility.ToHtmlStringRGBA(fill)}:{ColorUtility.ToHtmlStringRGBA(outline)}";
             if (_cache.TryGetValue(key, out Sprite cached) && cached != null)
                 return cached;
 

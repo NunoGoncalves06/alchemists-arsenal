@@ -255,7 +255,7 @@ namespace AlchemistsArsenal.UI
                     if (_bossPhaseText != null) _bossPhaseText.text = DescribePhase(bp);
                     _lastPip = pip;
                 }
-                banner = "THE BOSS";
+                banner = BossName();
             }
             else
             {
@@ -269,6 +269,14 @@ namespace AlchemistsArsenal.UI
 
         private string BiomeName() => GameLoopManager.Instance != null
             ? BiomeLibrary.Name(GameLoopManager.Instance.TargetBiomeIndex) : "";
+
+        /// <summary>The guardian's own name. The banner used to read "THE BOSS" for both.</summary>
+        private static string BossName()
+        {
+            var biome = GameLoopManager.Instance != null
+                ? BiomeLibrary.Get(GameLoopManager.Instance.TargetBiomeIndex) : null;
+            return biome != null && biome.HasBoss ? biome.Boss.DisplayName.ToUpperInvariant() : "THE GUARDIAN";
+        }
 
         private void SetPips(int active)
         {

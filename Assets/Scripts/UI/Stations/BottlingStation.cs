@@ -197,7 +197,7 @@ namespace AlchemistsArsenal.UI.Stations
             }
 
             if (_fillBar != null) _fillBar.fillAmount = Mathf.Clamp01(_fill);
-            if (_fillReadout != null) _fillReadout.text = $"{Mathf.Clamp01(_fill):P0}";
+            if (_fillReadout != null) _fillReadout.text = PercentText.Of(_fill);
 
             if (_step == Step.Seal && _sealNeedle != null)
             {

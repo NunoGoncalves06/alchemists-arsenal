@@ -64,7 +64,7 @@ namespace AlchemistsArsenal.Combat
         private void OnDetonated(DetonationInfo d)
         {
             if (Report == null) return;
-            var line = Report.LineFor(NameFor(d.Element), d.Element, d.Grade);
+            var line = Report.LineFor(d.BombName, d.Element, d.Grade);
             line.throws++;                       // one detonation == one thrown bomb
             line.hits += d.HitCount;
             line.totalDamage += d.TotalDamage;
@@ -113,13 +113,5 @@ namespace AlchemistsArsenal.Combat
             Unsubscribe();
         }
 
-        private static string NameFor(ElementType e) => e switch
-        {
-            ElementType.Fire => "Firebloom Flask",
-            ElementType.Water => "Tidevial",
-            ElementType.Nature => "Thornburst",
-            ElementType.Poison => "Miremist Phial",
-            _ => "Arcane Draught",
-        };
     }
 }

@@ -82,14 +82,19 @@ namespace AlchemistsArsenal.Core
             private const int HarnessSlot = 7;
 
             /// <summary>
-            /// Every frame advances game time by exactly this much. Fights used to run
-            /// on real, variable frame deltas, so drawing one sprite fewer on one frame
-            /// could flip a seeded fight's outcome. With a fixed step the same build
-            /// gives the same fight, and a changed outcome means a real change.
-            /// Time scale stays 1: the harness gets its speed from batchmode rendering
-            /// frames as fast as it can, not from coarser steps.
+            /// Every frame advances game time by exactly one physics step. Fights used
+            /// to run on real, variable frame deltas, so drawing one sprite fewer on one
+            /// frame could flip a seeded fight's outcome.
+            ///
+            /// It has to be the physics step itself, not a round 1/60: at 1/60 against
+            /// 50 Hz physics the fixed-step accumulator carries a remainder from frame
+            /// to frame, so a harness that spent a few extra frames anywhere earlier
+            /// (one more screenshot) started the next fight at a different phase, and
+            /// the fight diverged. One step per frame leaves no remainder to carry.
+            /// Time scale stays 1: the speed comes from batchmode rendering frames as
+            /// fast as it can, not from coarser steps.
             /// </summary>
-            private const float FrameStep = 1f / 60f;
+            private float FrameStep => Time.fixedDeltaTime;
 
             public void Begin()
             {
@@ -275,7 +280,7 @@ namespace AlchemistsArsenal.Core
                     // never catch (the DEFEAT frame is taken after the adventurer's
                     // corpse is already gone — there's no "damaged but still alive"
                     // frame in that pair at all).
-                    foreach (var step in WaitForExpeditionEndWithCaptures(90f, $"day{day}_afternoon")) { if (_errorCount > 0) yield break; yield return step; }
+                    foreach (var step in WaitForExpeditionEndWithCaptures(90f, $"day{day}_afternoon", captureEvery: 2f)) { if (_errorCount > 0) yield break; yield return step; }
                     if (_errorCount > 0) yield break;
                     foreach (var step in Settle($"day{day}_afternoon_result")) yield return step;
 
@@ -313,6 +318,29 @@ namespace AlchemistsArsenal.Core
                     foreach (var step in WaitForPhase(GamePhase.Evening, 10f)) { if (_errorCount > 0) yield break; yield return step; }
                     if (_errorCount > 0) yield break;
                     foreach (var step in Settle($"day{day}_evening_report")) yield return step;
+
+                    if (day == 1)
+                    {
+                        // A first clear must unlock its diary entry. BeginEvening used to
+                        // evaluate the diary after advancing the road, i.e. against the
+                        // NEXT biome, and the day-3 replay of biome 0 hid it.
+                        ExpeditionReport first = GameLoopManager.Instance.LatestReport;
+                        if (first != null && first.won && !SaveSystem.Instance.State.HasDiary("diary_ww"))
+                            Fail("Day 1 cleared the Whispering Woods but 'diary_ww' did not unlock.");
+
+                        // The UI is English and formats numbers invariantly ("x1.00", not "x1,00").
+                        string formatted = string.Format("{0:0.00}", 1.5f);
+                        if (formatted != "1.50")
+                            Fail($"UI numbers format as \"{formatted}\" - the invariant culture is not in effect.");
+
+                        // The diary, for its layout and its nav glyphs.
+                        DiaryScreen.OpenEntryId = null;
+                        DiaryScreen.FromOpeningCinematic = false;
+                        UIManager.Instance.Show(ScreenId.Diary);
+                        foreach (var step in Settle("day1_diary")) yield return step;
+                        UIManager.Instance.Show(ScreenId.Evening);
+                        yield return null;
+                    }
 
                     object eveningScreen = UIManager.Instance != null ? UIManager.Instance.ScreenOf(ScreenId.Evening) : null;
                     CallPrivate(eveningScreen, "ShowUpgrades");
@@ -483,7 +511,7 @@ namespace AlchemistsArsenal.Core
             {
                 float start = Time.unscaledTime;
                 float gameStart = Time.time;
-                float nextCapture = start;
+                float nextCapture = gameStart;
                 ExpeditionWorld world = GameLoopManager.Instance.CurrentExpedition;
                 if (world == null || world.Expedition == null)
                 {
@@ -521,16 +549,19 @@ namespace AlchemistsArsenal.Core
                     }
 
                     float now = Time.unscaledTime;
+                    float gameNow = Time.time;
                     if (now - start > timeoutSeconds)
                     {
                         Fail($"Expedition never resolved within {timeoutSeconds}s " +
                              $"(stuck at {world.Expedition.Phase}, wave {world.Expedition.WaveNumber}/{world.Expedition.TotalWaves}).");
                         yield break;
                     }
-                    if (now >= nextCapture)
+                    // Spaced in GAME seconds: under the fixed step a whole fight takes
+                    // about a wall-clock second, so a real-time cadence caught one frame.
+                    if (gameNow >= nextCapture)
                     {
-                        Capture($"{namePrefix}_t{Mathf.RoundToInt(now - start):00}s");
-                        nextCapture = now + captureEvery;
+                        Capture($"{namePrefix}_t{Mathf.RoundToInt(gameNow - gameStart):00}s");
+                        nextCapture = gameNow + captureEvery;
                     }
                     yield return null;
                 }

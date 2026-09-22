@@ -176,7 +176,8 @@ namespace AlchemistsArsenal.UI
 
                 var verdict = UIFactory.Label(c,
                     r.won
-                        ? r.contractMet ? "Contract met — bonus paid in full."
+                        ? r.contractMet ? (r.replayDay ? "Contract met — paid at the replay rate, half of it."
+                                                        : "Contract met — bonus paid in full.")
                                         : "Below the grade they asked for. They paid half, and said so."
                         : $"{(string.IsNullOrEmpty(r.contractBuyer) ? "They" : r.contractBuyer)} didn't come back with the job done. No fee.",
                     UITheme.SizeBody, r.won && r.contractMet ? UITheme.Ok : UITheme.Danger);
@@ -194,7 +195,7 @@ namespace AlchemistsArsenal.UI
             if (hasJob && !r.contractMet && r.won)
                 UIKit.KeyValue(c, "Below grade", "x0.50", valueColor: UITheme.Danger);
             if (r.perfectTip) UIKit.KeyValue(c, "Perfect tip", $"+{Economy.PerfectTip} g", valueColor: UITheme.Ok);
-            if (SaveSystem.Instance.State.IsReplayDay) UIKit.KeyValue(c, "Replay", "x0.50");
+            if (r.replayDay) UIKit.KeyValue(c, "Replayed road", "x0.50", valueColor: UITheme.Danger);
             UIKit.KeyValue(c, "PAID", $"{r.goldPaidByGrade} g", keyColor: UITheme.Candle, valueColor: UITheme.Candle);
         }
 
@@ -396,14 +397,19 @@ namespace AlchemistsArsenal.UI
 
             bool resting = !hero.IsFit(s.day);
             bool wouldExceed = !hero.deployed && outToday >= cap;
+            // The last hero going out cannot be stood down: the road always takes
+            // someone (RunState.DeployedParty would quietly send them anyway), so
+            // the button says so instead of showing "0 / 1 going out".
+            bool leads = hero.deployed && !resting && outToday <= 1;
             string deployCaption = resting ? $"RESTING — back day {hero.restUntilDay}"
+                : leads ? "LEADS THE PARTY"
                 : hero.deployed ? "GOING OUT"
                 : "SEND OUT";
             var dep = UIFactory.Button(inner, deployCaption,
-                resting ? (System.Action)null : () => ToggleDeploy(heroId),
+                resting || leads ? (System.Action)null : () => ToggleDeploy(heroId),
                 primary: hero.deployed && !resting);
             UIFactory.Place(dep.image.rectTransform, 0.735f, 0.06f, 0.99f, 0.48f);
-            dep.interactable = !resting && !wouldExceed;
+            dep.interactable = !resting && !wouldExceed && !leads;
         }
 
         private void BuildHireRow(Transform parent, RunState s)
@@ -484,7 +490,11 @@ namespace AlchemistsArsenal.UI
             HeroRecord hero = s.FindHero(heroId);
             if (hero == null || !hero.IsFit(s.day)) return;
 
-            if (hero.deployed) hero.deployed = false;
+            if (hero.deployed)
+            {
+                if (CountDeployed(s) <= 1) return;   // someone always walks the road
+                hero.deployed = false;
+            }
             else
             {
                 if (CountDeployed(s) >= s.DeployCap) return;

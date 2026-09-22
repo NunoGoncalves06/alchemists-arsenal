@@ -15,13 +15,16 @@ namespace AlchemistsArsenal.Combat
         public readonly int TotalDamage;
         public readonly bool HadElementalAdvantage;
         public readonly ICombatant Thrower;
+        /// <summary>The flask's own name ("Fireblood"), so reports name what was brewed.</summary>
+        public readonly string BombName;
 
         public DetonationInfo(Vector2 pos, ElementType element, PotionGrade grade,
-            int hitCount, int totalDamage, bool advantage, ICombatant thrower)
+            int hitCount, int totalDamage, bool advantage, ICombatant thrower, string bombName = null)
         {
             Position = pos; Element = element; Grade = grade;
             HitCount = hitCount; TotalDamage = totalDamage;
             HadElementalAdvantage = advantage; Thrower = thrower;
+            BombName = string.IsNullOrWhiteSpace(bombName) ? $"{element} Flask" : bombName;
         }
     }
 
@@ -219,7 +222,7 @@ namespace AlchemistsArsenal.Combat
 
             if (_bomb != null)
                 OnDetonatedGlobal?.Invoke(new DetonationInfo(
-                    epicenter, _bomb.Element, grade, hitCount, totalDamage, hadAdvantage, _thrower));
+                    epicenter, _bomb.Element, grade, hitCount, totalDamage, hadAdvantage, _thrower, _bomb.DisplayName));
 
             Destroy(gameObject);
         }

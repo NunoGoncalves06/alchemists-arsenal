@@ -26,10 +26,9 @@ namespace AlchemistsArsenal.Core
         public IReadOnlyList<CombatantBody> Party => _party;
 
         /// <summary>
-        /// Who is actually fighting this afternoon. The potion is carried by the
-        /// person who ordered it — a wallguard captain who commissioned a Fire flask
-        /// walks the road himself — so the name and the sprite both come from the
-        /// morning's contract rather than always being Rookie.
+        /// The morning contract's buyer. Only the fallback identity for an arena built
+        /// without a roster (the bootstrap demo): since the hero roster, the party is
+        /// whoever was deployed, and the buyer stays at the Counter.
         /// </summary>
         public string FighterName { get; private set; } = "Rookie";
 
@@ -57,7 +56,13 @@ namespace AlchemistsArsenal.Core
             ArenaCamera.transform.SetParent(transform, false);
             ArenaCamera.transform.position = new Vector3(0f, 0f, -10f);
             ArenaCamera.orthographic = true;
-            ArenaCamera.orthographicSize = 8.5f;
+            // Tall enough for the height, and wide enough that the walls of the widest
+            // road (The Coven's Peak, ±15.5) stay on screen at the actual aspect.
+            float halfWidthNeeded = biome.ArenaWidth * 0.5f + 2.1f;
+            // Batchmode has no real window (its "screen" is 4:3), while the playtest
+            // captures at 16:9, so frame for what is actually looked at.
+            float aspect = Application.isBatchMode ? 16f / 9f : ArenaCamera.aspect;
+            ArenaCamera.orthographicSize = Mathf.Max(8.5f, halfWidthNeeded / Mathf.Max(1f, aspect));
             ArenaCamera.clearFlags = CameraClearFlags.SolidColor;
             ArenaCamera.backgroundColor = new Color(0.06f, 0.05f, 0.07f);
             ArenaCamera.depth = -1;
@@ -244,9 +249,14 @@ namespace AlchemistsArsenal.Core
             // adventurer impossible to mistake for a monster regardless of cause —
             // a fast-moving 16px sprite at typical arena zoom is genuinely hard to
             // track by eye once several monsters close in around it (playtest).
+            // At the feet, not the body centre: centred, the ring sat almost entirely
+            // behind the 1.9-wide sprite and was invisible. A flattened ellipse under
+            // the boots reads as a ground marker.
             var marker = new GameObject("PlayerMarker");
             marker.transform.SetParent(go.transform, false);
-            PixelArt.AddDisc(marker, new Color(0.35f, 0.95f, 1f, 0.6f), 4, 1.15f);
+            marker.transform.localPosition = new Vector3(0f, -0.95f, 0f);
+            PixelArt.AddDisc(marker, new Color(0.35f, 0.95f, 1f, 0.55f), 4);
+            marker.transform.localScale = new Vector3(1.5f, 0.55f, 1f);
 
             var art = new GameObject("Art");
             art.transform.SetParent(go.transform, false);
@@ -255,7 +265,9 @@ namespace AlchemistsArsenal.Core
 
             // Everyone in the arena carries a health bar now, the party included —
             // the HUD card is easy to miss while you are watching the fight itself.
-            HealthBar2D.Attach(body, width: 1.2f, lift: 0.85f);
+            // The sprite's top is at +1.07 (18 px tall at 1.9 wide); 0.85 put the bar
+            // across the hero's face.
+            HealthBar2D.Attach(body, width: 1.2f, lift: 1.25f);
         }
     }
 }

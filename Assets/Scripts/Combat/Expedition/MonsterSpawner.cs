@@ -50,7 +50,7 @@ namespace AlchemistsArsenal.Combat
 
             go.AddComponent<MonsterTag>().Data = data; // instance -> archetype, for loot / telemetry
 
-            AddSprite(go, data.Sprite != null ? data.Sprite : PixelSprites.Monster(data.DisplayName), 5);
+            AddSprite(go, data.Sprite != null ? data.Sprite : PixelSprites.Monster(data.DisplayName, data.Element), 5);
             go.SetActive(true);
             HealthBar2D.Attach(go.GetComponent<CombatantBody>(), width: 0.9f, lift: 0.62f);
             return go;
