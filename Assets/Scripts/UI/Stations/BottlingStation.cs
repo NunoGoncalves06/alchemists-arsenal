@@ -2,325 +2,181 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using AlchemistsArsenal.Art;
-using AlchemistsArsenal.Audio;
 using AlchemistsArsenal.Combat;
-using AlchemistsArsenal.Systems;
+using AlchemistsArsenal.Crafting;
 
 namespace AlchemistsArsenal.UI.Stations
 {
     /// <summary>
-    /// Bottling, in the three moves it actually takes: pour to the line, seal on the
-    /// beat, label it right. It used to be a single needle-timing click.
-    ///
-    /// Each step is a different kind of input on purpose — a held press you have to
-    /// let go of at the right moment, a tap against a moving needle, and a straight
-    /// recognition check under no time pressure — so the station teaches three
-    /// things rather than testing one three times.
+    /// The Bottling bench's HUD. The pour, the flask and the cork are physical and
+    /// live in the shop world (<see cref="BottlingBench"/>); this strip shows the fill
+    /// against the line, holds the pour for anyone who prefers a button to pressing on
+    /// the ladle, times the seal, and carries the label choice.
     /// </summary>
     public class BottlingStation : StationPanel
     {
-        private const float PourRate = 0.42f;      // flask fraction per second
-        private const float PourTargetLow = 0.78f;
-        private const float PourTargetHigh = 0.96f;
-        private const int SealAttempts = 2;
-
         public override string RailName => "Bottling";
         public override Sprite RailIcon => PixelSprites.Flask(ElementType.Nature);
-        public override bool Complete => _step == Step.Done;
+        public override bool ShowsWorld => true;
+        public override bool Complete => Bench != null && Bench.Current == BottlingBench.Step.Done;
 
-        private enum Step { Pour, Seal, Label, Done }
+        private static BottlingBench Bench => BottlingBench.Instance;
 
-        private Step _step = Step.Pour;
-        private float _fill;
-        private bool _pouring;
-        private int _sealsLeft = SealAttempts;
-        private float _sealHalfWidth = 0.09f;
-
-        private Image _flaskArt, _fillBar, _pourBand, _sealBand, _sealNeedle;
-        private TextMeshProUGUI _pourHint, _sealHint, _labelHint, _fillReadout;
+        private Image _fill, _pourCard, _sealCard, _labelCard, _sealBand, _sealNeedle;
+        private TextMeshProUGUI _fillText, _pourHint, _sealHint, _labelHint, _banner;
         private HoldButton _pourButton;
         private Button _sealButton;
         private Transform _labelRow;
-        private Image _pourCard, _sealCard, _labelCard;
+        private BottlingBench _hooked;
 
         protected override void BuildContent(RectTransform root)
         {
-            BuildFlaskColumn(root);
+            // Top-left caption, clear of the ladle and flask in the middle of the bench.
+            _banner = UIFactory.Label(root, "", UITheme.SizeBody, UITheme.TextMid, TextAlignmentOptions.TopLeft, true);
+            UIFactory.Place(_banner.rectTransform, 0.02f, 0.78f, 0.40f, 0.875f);
+            _banner.raycastTarget = false;
 
-            // --- 1. pour ------------------------------------------------------
-            _pourCard = UIKit.Card(root, "1 — pour to the line", out Transform pour, spacing: 6f);
-            UIFactory.Place(_pourCard.rectTransform, 0.26f, 0.66f, 1f, 1f);
+            var strip = UIKit.Surface(root, out Transform s, UITheme.Alpha(UITheme.Ground, 0.94f), UITheme.Line, "Hud");
+            UIFactory.Place(strip.rectTransform, 0f, 0f, 1f, 0.255f);
 
-            _pourHint = UIFactory.Label(pour, "", UITheme.SizeBody, UITheme.TextMid);
-            UIFactory.Flex(_pourHint.gameObject, 1f, 1f, minHeight: 40f);
+            // 1 — pour
+            _pourCard = UIKit.Card(s, "1 — pour to the line", out Transform pour, spacing: 4f);
+            UIFactory.Place(_pourCard.rectTransform, 0.01f, 0.04f, 0.33f, 0.96f);
+            var track = UIFactory.Panel(pour, UITheme.Surface, "FillTrack");
+            UIFactory.FixedHeight(track.gameObject, 22f);
+            _fill = UIFactory.Panel(track.transform, UITheme.Nature, "Fill");
+            _fill.rectTransform.anchorMin = Vector2.zero;
+            _fill.rectTransform.anchorMax = new Vector2(0f, 1f);
+            _fill.rectTransform.offsetMin = _fill.rectTransform.offsetMax = Vector2.zero;
+            var line = UIFactory.Panel(track.transform, UITheme.Alpha(UITheme.Ok, 0.45f), "Line");
+            UIFactory.Place(line.rectTransform, BottlingBench.TargetLow, 0f, BottlingBench.TargetHigh, 1f);
+            _fillText = UIFactory.MonoLabel(pour, "", UITheme.SizeTiny, UITheme.TextMid, TextAlignmentOptions.Left);
+            UIFactory.FixedHeight(_fillText.gameObject, 16f);
+            _pourButton = UIKit.Hold(pour, "HOLD TO POUR", () => { if (Bench != null) Bench.PourHeld = true; },
+                () => { if (Bench != null) Bench.PourHeld = false; });
+            UIFactory.FixedHeight(_pourButton.gameObject, 40f);
 
-            _pourButton = UIKit.Hold(pour, "HOLD TO POUR", StartPour, StopPour);
-            UIFactory.FixedHeight(_pourButton.gameObject, 50f);
-
-            // --- 2. seal ------------------------------------------------------
-            _sealCard = UIKit.Card(root, "2 — seal on the beat", out Transform seal, spacing: 6f);
-            UIFactory.Place(_sealCard.rectTransform, 0.26f, 0.33f, 1f, 0.63f);
-
-            _sealHint = UIFactory.Label(seal, "", UITheme.SizeSmall, UITheme.TextMid);
-            UIFactory.Flex(_sealHint.gameObject, 1f, 0f, minHeight: 20f);
-
-            var track = UIFactory.Panel(seal, UITheme.Ground, "SealTrack");
-            UIFactory.FixedHeight(track.gameObject, 32f);
-            _sealBand = UIFactory.Panel(track.transform, UITheme.Alpha(UITheme.Ok, 0.35f), "Band");
-            _sealNeedle = UIFactory.Panel(track.transform, UITheme.CandleHot, "Needle");
+            // 2 — seal
+            _sealCard = UIKit.Card(s, "2 — seal on the beat", out Transform seal, spacing: 4f);
+            UIFactory.Place(_sealCard.rectTransform, 0.34f, 0.04f, 0.63f, 0.96f);
+            _sealHint = UIFactory.Label(seal, "", UITheme.SizeTiny, UITheme.TextMid);
+            UIFactory.FixedHeight(_sealHint.gameObject, 16f);
+            var sealTrack = UIFactory.Panel(seal, UITheme.Surface, "SealTrack");
+            UIFactory.FixedHeight(sealTrack.gameObject, 22f);
+            _sealBand = UIFactory.Panel(sealTrack.transform, UITheme.Alpha(UITheme.Ok, 0.35f), "Band");
+            _sealNeedle = UIFactory.Panel(sealTrack.transform, UITheme.CandleHot, "Needle");
             _sealNeedle.rectTransform.anchorMin = _sealNeedle.rectTransform.anchorMax = new Vector2(0f, 0.5f);
-            _sealNeedle.rectTransform.sizeDelta = new Vector2(8f, 40f);
-            ApplySealBand();
+            _sealNeedle.rectTransform.sizeDelta = new Vector2(8f, 30f);
+            _sealButton = UIFactory.Button(seal, "SEAL", () => { if (Bench != null) Bench.Seal(); });
+            UIFactory.FixedHeight(_sealButton.gameObject, 40f);
 
-            _sealButton = UIFactory.Button(seal, "SEAL", Seal);
-            UIFactory.FixedHeight(_sealButton.gameObject, 46f);
-
-            // --- 3. label -----------------------------------------------------
-            _labelCard = UIKit.Card(root, "3 — label the flask", out Transform label, spacing: 6f);
-            UIFactory.Place(_labelCard.rectTransform, 0.26f, 0f, 1f, 0.30f);
-
-            _labelHint = UIFactory.Label(label, "", UITheme.SizeSmall, UITheme.TextMid);
-            UIFactory.Flex(_labelHint.gameObject, 1f, 0f, minHeight: 20f);
-
-            var row = UIFactory.HStack(label, 8f);
-            UIFactory.FixedHeight(row.gameObject, 58f);
+            // 3 — label
+            _labelCard = UIKit.Card(s, "3 — label the flask", out Transform label, spacing: 4f);
+            UIFactory.Place(_labelCard.rectTransform, 0.64f, 0.04f, 0.99f, 0.96f);
+            _labelHint = UIFactory.Label(label, "", UITheme.SizeTiny, UITheme.TextMid);
+            UIFactory.FixedHeight(_labelHint.gameObject, 16f);
+            var row = UIFactory.HStack(label, 4f);
+            UIFactory.FixedHeight(row.gameObject, 44f);
             _labelRow = row.transform;
-
-            foreach (ElementType e in new[]
-                     { ElementType.Nature, ElementType.Fire, ElementType.Water, ElementType.Poison, ElementType.Arcane })
+            foreach (ElementType e in new[] { ElementType.Nature, ElementType.Fire, ElementType.Water, ElementType.Poison, ElementType.Arcane })
             {
                 ElementType captured = e;
                 var b = UIFactory.Button(_labelRow, e.ToString().ToUpperInvariant(),
-                    () => ApplyLabel(captured), primary: false);
-                UIFactory.Flex(b.gameObject, 1f, 1f, minHeight: 52f);
-                UIFactory.TintButton(b, UITheme.Alpha(UITheme.Element(e), 0.55f),
-                    UITheme.Alpha(UITheme.Element(e), 0.85f), UITheme.TextHi);
+                    () => { if (Bench != null) Bench.ApplyLabel(captured); }, primary: false);
+                UIFactory.Flex(b.gameObject, 1f, 1f, minHeight: 40f);
+                UIFactory.TintButton(b, UITheme.Alpha(UITheme.Element(e), 0.55f), UITheme.Alpha(UITheme.Element(e), 0.85f), UITheme.TextHi);
             }
         }
 
-        private void BuildFlaskColumn(RectTransform root)
-        {
-            Image column = UIKit.Surface(root, out Transform inner, UITheme.Surface, UITheme.Line, "Flask");
-            UIFactory.Place(column.rectTransform, 0f, 0f, 0.23f, 1f);
-
-            _flaskArt = UIFactory.Icon(inner, PixelSprites.Flask(ElementType.Nature), 120f);
-            UIFactory.Place(_flaskArt.rectTransform, 0.1f, 0.58f, 0.9f, 0.96f);
-
-            var track = UIFactory.Panel(inner, UITheme.Ground, "FillTrack");
-            UIFactory.Place(track.rectTransform, 0.30f, 0.12f, 0.70f, 0.54f);
-
-            _fillBar = UIFactory.Panel(track.transform, UITheme.Nature, "Fill");
-            UIFactory.Stretch(_fillBar.rectTransform, 3f);
-            _fillBar.type = Image.Type.Filled;
-            _fillBar.fillMethod = Image.FillMethod.Vertical;
-            _fillBar.fillOrigin = 0;   // bottom
-            _fillBar.fillAmount = 0f;
-
-            _pourBand = UIFactory.Panel(track.transform, UITheme.Alpha(UITheme.Ok, 0.45f), "Line");
-            UIFactory.Place(_pourBand.rectTransform, 0f, PourTargetLow, 1f, PourTargetHigh);
-
-            _fillReadout = UIFactory.MonoLabel(inner, "0%", UITheme.SizeBody, UITheme.TextMid,
-                TextAlignmentOptions.Center);
-            UIFactory.Place(_fillReadout.rectTransform, 0f, 0.03f, 1f, 0.10f);
-        }
-
-        // -------------------------------------------------------------- lifecycle
-
         public override void NewDay()
         {
-            _step = Step.Pour;
-            _fill = 0f;
-            _pouring = false;
-            _sealsLeft = SealAttempts;
-            _sealHalfWidth = 0.09f;
-            ApplySealBand();
+            if (Bench != null) Bench.NewDay();
             Refresh();
         }
 
-        public override void OnEnter() => Refresh();
+        public override void OnEnter()
+        {
+            var bench = Bench;
+            if (bench != null)
+            {
+                bench.Attended = true;
+                if (_hooked != bench)
+                {
+                    if (_hooked != null) _hooked.Changed -= OnBenchChanged;
+                    bench.Changed += OnBenchChanged;
+                    _hooked = bench;
+                }
+            }
+            Refresh();
+        }
 
-        public override void OnExit() => _pouring = false;
+        public override void OnExit()
+        {
+            if (Bench != null) { Bench.Attended = false; Bench.PourHeld = false; }
+        }
+
+        private void OnBenchChanged()
+        {
+            Refresh();
+            Changed?.Invoke();
+        }
 
         public override void Refresh()
         {
             var order = Order;
-            bool has = order != null;
+            var bench = Bench;
+            bool has = order != null && bench != null;
+            var step = bench != null ? bench.Current : BottlingBench.Step.Pour;
 
-            if (has && _flaskArt != null)
-            {
-                _flaskArt.sprite = PixelSprites.Flask(order.element);
-                if (_fillBar != null) _fillBar.color = UITheme.Element(order.element);
-            }
+            if (has) _fill.color = UITheme.Element(order.element);
 
-            _pourHint.text = !has
-                ? "Take a job at the Counter first."
-                : _step == Step.Pour
-                    ? "Hold the button and let go between the marks. Overfill it and you'll spill."
-                    : "Poured.";
+            _banner.text = !has ? "TAKE A JOB AT THE COUNTER FIRST"
+                : step == BottlingBench.Step.Pour ? "HOLD ON THE LADLE TO TIP IT — LET GO AT THE LINE"
+                : step == BottlingBench.Step.Seal ? "SEAL IT ON THE BEAT"
+                : step == BottlingBench.Step.Label ? $"LABEL IT — THIS IS A {order.element.ToString().ToUpperInvariant()} FLASK"
+                : "SEALED AND LABELLED — READY TO SEND";
 
-            _sealHint.text = !has ? "" :
-                _step == Step.Seal
-                    ? $"Click SEAL while the wax is over the band. <b>{_sealsLeft}</b> attempt(s) left."
-                    : _step == Step.Pour ? "Pour first." : "Sealed.";
+            _sealHint.text = !has ? "" : step == BottlingBench.Step.Seal
+                ? $"Press SEAL while the needle is on the band. {bench.SealsLeft} attempt(s)."
+                : step == BottlingBench.Step.Pour ? "Pour first." : "Sealed.";
+            _labelHint.text = !has ? "" : step == BottlingBench.Step.Label ? "Which flask is this?"
+                : step == BottlingBench.Step.Done ? "Labelled." : "Seal it first.";
 
-            _labelHint.text = !has ? "" :
-                _step == Step.Label
-                    ? $"Which flask is this? Pick the label that matches <b>{order.element}</b>."
-                    : _step == Step.Done ? "Labelled and ready to send." : "Seal it first.";
-
-            if (_pourButton != null)
-            {
-                var b = _pourButton.GetComponent<Button>();
-                if (b != null) b.interactable = has && _step == Step.Pour;
-            }
-            if (_sealButton != null) _sealButton.interactable = has && _step == Step.Seal;
+            var holdBtn = _pourButton != null ? _pourButton.GetComponent<Button>() : null;
+            if (holdBtn != null) holdBtn.interactable = has && step == BottlingBench.Step.Pour;
+            _sealButton.interactable = has && step == BottlingBench.Step.Seal;
             foreach (var b in _labelRow.GetComponentsInChildren<Button>(true))
-                b.interactable = has && _step == Step.Label;
+                b.interactable = has && step == BottlingBench.Step.Label;
 
-            Dim(_pourCard, _step == Step.Pour);
-            Dim(_sealCard, _step == Step.Seal);
-            Dim(_labelCard, _step == Step.Label);
-        }
+            _pourCard.color = step == BottlingBench.Step.Pour ? UITheme.Candle : UITheme.Line;
+            _sealCard.color = step == BottlingBench.Step.Seal ? UITheme.Candle : UITheme.Line;
+            _labelCard.color = step == BottlingBench.Step.Label ? UITheme.Candle : UITheme.Line;
 
-        private static void Dim(Image card, bool active)
-        {
-            if (card == null) return;
-            card.color = active ? UITheme.Candle : UITheme.Line;
+            if (bench != null)
+            {
+                var rt = _sealBand.rectTransform;
+                rt.anchorMin = new Vector2(0.5f - bench.SealHalfWidth, 0f);
+                rt.anchorMax = new Vector2(0.5f + bench.SealHalfWidth, 1f);
+                rt.offsetMin = rt.offsetMax = Vector2.zero;
+            }
         }
 
         public override void Tick()
         {
-            if (_pouring && _step == Step.Pour)
-            {
-                _fill += Time.unscaledDeltaTime * PourRate;
-                if (_fill >= 1f) Overflow();
-            }
+            var bench = Bench;
+            if (bench == null) return;
+            float f = Mathf.Clamp01(bench.Fill01);
+            _fill.rectTransform.anchorMax = new Vector2(f, 1f);
+            _fillText.text = bench.Fill01 > 1f || bench.Spilled > 8
+                ? $"{PercentText.Of(f)} — SPILLING"
+                : $"{PercentText.Of(f)}   tilt {PercentText.Of(bench.Tilt01)}";
 
-            if (_fillBar != null) _fillBar.fillAmount = Mathf.Clamp01(_fill);
-            if (_fillReadout != null) _fillReadout.text = PercentText.Of(_fill);
-
-            if (_step == Step.Seal && _sealNeedle != null)
+            if (bench.Current == BottlingBench.Step.Seal)
             {
-                float t = SealNeedle01();
+                float t = BottlingBench.SealNeedle01();
                 _sealNeedle.rectTransform.anchorMin = _sealNeedle.rectTransform.anchorMax = new Vector2(t, 0.5f);
-                _sealNeedle.color = Mathf.Abs(t - 0.5f) <= _sealHalfWidth ? UITheme.Ok : UITheme.CandleHot;
+                _sealNeedle.color = Mathf.Abs(t - 0.5f) <= bench.SealHalfWidth ? UITheme.Ok : UITheme.CandleHot;
             }
-        }
-
-        // ------------------------------------------------------------------ pour
-
-        private void StartPour()
-        {
-            if (Order == null || _step != Step.Pour) return;
-            _pouring = true;
-        }
-
-        private void StopPour()
-        {
-            if (!_pouring) return;
-            _pouring = false;
-
-            var order = Order;
-            if (order == null || _step != Step.Pour) return;
-
-            if (_fill >= PourTargetLow && _fill <= PourTargetHigh)
-            {
-                float centre = (PourTargetLow + PourTargetHigh) * 0.5f;
-                float off = Mathf.Abs(_fill - centre) / ((PourTargetHigh - PourTargetLow) * 0.5f);
-                int gain = Mathf.RoundToInt(Mathf.Lerp(9f, 4f, off));
-                order.ApplyBonus(gain, "Bottling", $"Poured to the line ({_fill:P0})");
-                AudioManager.Play(Sfx.Confirm);
-            }
-            else if (_fill < PourTargetLow)
-            {
-                order.ApplyDeduction(10, "Bottling", $"Short measure ({_fill:P0}) — the flask is half air");
-                AudioManager.Play(Sfx.Deny);
-            }
-
-            _step = Step.Seal;
-            Refresh();
-            Changed?.Invoke();
-        }
-
-        private void Overflow()
-        {
-            _pouring = false;
-            _fill = 1f;
-            var order = Order;
-            if (order != null)
-            {
-                order.ApplyDeduction(16, "Bottling", "Overfilled — brew all over the bench");
-                AudioManager.Play(Sfx.Deny);
-            }
-            _step = Step.Seal;
-            Refresh();
-            Changed?.Invoke();
-        }
-
-        // ------------------------------------------------------------------ seal
-
-        private static float SealNeedle01() => Mathf.PingPong(Time.unscaledTime * 0.75f, 1f);
-
-        private void ApplySealBand()
-        {
-            if (_sealBand == null) return;
-            _sealBand.rectTransform.anchorMin = new Vector2(0.5f - _sealHalfWidth, 0f);
-            _sealBand.rectTransform.anchorMax = new Vector2(0.5f + _sealHalfWidth, 1f);
-            _sealBand.rectTransform.offsetMin = _sealBand.rectTransform.offsetMax = Vector2.zero;
-        }
-
-        private void Seal()
-        {
-            var order = Order;
-            if (order == null || _step != Step.Seal || _sealsLeft <= 0) return;
-
-            float dist = Mathf.Abs(SealNeedle01() - 0.5f);
-            bool hit = dist <= _sealHalfWidth;
-            _sealsLeft--;
-
-            if (hit)
-            {
-                int gain = Mathf.RoundToInt(Mathf.Lerp(9f, 4f, dist / Mathf.Max(0.001f, _sealHalfWidth)));
-                order.ApplyBonus(gain, "Bottling", $"Sealed clean (+{gain})");
-                AudioManager.Play(Sfx.Seal);
-                _step = Step.Label;
-            }
-            else
-            {
-                order.ApplyDeduction(11, "Bottling", "Wax set off-centre");
-                AudioManager.Play(Sfx.Deny);
-                _sealHalfWidth = Mathf.Max(0.05f, _sealHalfWidth - 0.02f);
-                ApplySealBand();
-                if (_sealsLeft <= 0) _step = Step.Label; // out of attempts — move on, the damage is done
-            }
-
-            Refresh();
-            Changed?.Invoke();
-        }
-
-        // ----------------------------------------------------------------- label
-
-        private void ApplyLabel(ElementType element)
-        {
-            var order = Order;
-            if (order == null || _step != Step.Label) return;
-
-            if (element == order.element)
-            {
-                order.ApplyBonus(4, "Bottling", $"Labelled {element} — correct");
-                AudioManager.Play(Sfx.Chime);
-            }
-            else
-            {
-                order.ApplyDeduction(14, "Bottling",
-                    $"Labelled {element} on a {order.element} flask — Rookie will grab the wrong one");
-                AudioManager.Play(Sfx.Deny);
-            }
-
-            _step = Step.Done;
-            if (CraftingManager.Instance != null) CraftingManager.Instance.CompleteActiveOrder();
-            Refresh();
-            Changed?.Invoke();
         }
     }
 }

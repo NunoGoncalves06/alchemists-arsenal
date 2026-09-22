@@ -40,6 +40,7 @@ namespace AlchemistsArsenal.UI
         private readonly UIKit.RailTab[] _tabs = new UIKit.RailTab[4];
 
         private StationTab _activeTab = StationTab.Counter;
+        private bool _everSwitched;
         private int _builtForDay = -1;
 
         private Image _bg;
@@ -209,6 +210,7 @@ namespace AlchemistsArsenal.UI
                 GameLoopManager.Instance.OnMorningTimeChanged += SetClock;
             HookOrder();
             RefreshDock();
+            _everSwitched = false;          // cut, don't glide, to the Counter on a new morning
             SwitchTab(StationTab.Counter); // a fresh morning starts back at the Counter
         }
 
@@ -239,7 +241,11 @@ namespace AlchemistsArsenal.UI
             StationPanel active = _stations[(int)tab];
             active.OnEnter();
 
-            // Only the Cauldron shows the world behind the UI.
+            // The benches stand side by side in one room; the camera walks to this one.
+            // Stations that play out in the world (Prep, Cauldron, Bottling) let it
+            // show through; the Counter is all paper and talk.
+            if (ShopWorld.Instance != null) ShopWorld.Instance.Focus((int)tab, instant: !_everSwitched);
+            _everSwitched = true;
             if (_bg != null) _bg.enabled = !active.ShowsWorld;
 
             RefreshRail();

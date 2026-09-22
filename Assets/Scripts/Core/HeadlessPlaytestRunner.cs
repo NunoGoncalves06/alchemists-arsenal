@@ -240,25 +240,24 @@ namespace AlchemistsArsenal.Core
                     // Prep comes first now: the Cauldron will not brew until the
                     // recipe's leaves are crushed in and ground, so a driver that
                     // skipped straight to stirring would sit on a cold pot forever.
+                    // Every bench is played for real through the scripted pointer.
                     SwitchMorningTab(morningScreen, "Prep");
                     foreach (var step in Settle($"day{day}_morning_prep")) yield return step;
-                    CompletePrep(order);
+                    foreach (var step in DrivePrep(order, day)) { if (_errorCount > 0) break; yield return step; }
+                    if (_errorCount > 0) yield break;
 
                     SwitchMorningTab(morningScreen, "Cauldron");
                     foreach (var step in Settle($"day{day}_morning_cauldron")) yield return step;
+                    foreach (var step in DriveCauldron(order, day)) { if (_errorCount > 0) break; yield return step; }
+                    if (_errorCount > 0) yield break;
+                    foreach (var step in Settle($"day{day}_morning_cauldron_done")) yield return step;
 
-                    // A moment of real simulated time so the world pot + heat gauge +
-                    // brew bar are all visibly live in the screenshot, then finish the
-                    // brew directly (this driver isn't a mouse).
-                    foreach (var step in SettleFrames(20)) yield return step;
-                    order.AdjustQuality(SimulatedBrewPoints, "HeadlessPlaytest", "simulated good brew");
-                    order.AdjustQuality(SimulatedBenchPoints, "HeadlessPlaytest", "simulated bench work");
-
-                    if (day == DaysToRun)
-                    {
-                        SwitchMorningTab(morningScreen, "Bottling");
-                        foreach (var step in Settle($"day{day}_morning_bottling")) yield return step;
-                    }
+                    SwitchMorningTab(morningScreen, "Bottling");
+                    foreach (var step in Settle($"day{day}_morning_bottling")) yield return step;
+                    foreach (var step in DriveBottling(order, day)) { if (_errorCount > 0) break; yield return step; }
+                    if (_errorCount > 0) yield break;
+                    foreach (var step in Settle($"day{day}_morning_bottling_done")) yield return step;
+                    Log($"Morning done: {order.qualityScore} ({order.GetGrade()}); flawless would be {QualityBudget.FlawlessMorning()}.");
 
                     GameLoopManager.Instance.BeginHandoff();
                     foreach (var step in WaitForPhase(GamePhase.Handoff, 5f)) { if (_errorCount > 0) yield break; yield return step; }
@@ -430,49 +429,166 @@ namespace AlchemistsArsenal.Core
                 if (_errorCount == 0) Log("=== FULL LOOP COMPLETED — all days resolved cleanly ===");
             }
 
-            /// <summary>
-            /// Follow the day's recipe exactly and grind it. This works the mixture
-            /// directly rather than clicking bench cards: which tray slot holds which
-            /// leaf is a per-day shuffle, and a driver that guessed slots would be
-            /// testing the shuffle rather than the loop. The effects it triggers
-            /// (quality swing, cauldron band width) are the same ones the bench
-            /// applies.
-            /// </summary>
-            /// <summary>
-            /// What a flawless cauldron is worth: brewBonusPoints (2) per
-            /// deductionInterval (1s) across brewSeconds (11). Mirror this if
-            /// PhysicsCauldronManager's quality constants change.
-            /// </summary>
-            private const int SimulatedBrewPoints = 22;
+            // --------------------------------------------------------- bench bots
+            //
+            // The morning is played through the real benches with a scripted pointer
+            // (PhysicsKit.Pointer.Scripted): the same code path a mouse drives, so the
+            // leaves really fly into the mortar, the pestle really falls, the spoon
+            // really stirs the floating herbs and the ladle really pours droplets into
+            // the flask. The points that come out are what a careful player earns, not
+            // a transcribed constant.
 
-            /// <summary>
-            /// The per-leaf and per-grind bonuses CompletePrep deliberately does
-            /// not simulate (3 leaves on cue at a mid potency, 3 clean strikes),
-            /// so the driver's flask is comparable to a played one.
-            /// </summary>
-            private const int SimulatedBenchPoints = 24;
+            private readonly PhysicsKit.ScriptedPointer _pointer = new PhysicsKit.ScriptedPointer();
 
-            private void CompletePrep(ActiveOrder order)
+            private IEnumerable Frames(int n)
             {
-                var mix = CraftingManager.Instance != null ? CraftingManager.Instance.Mixture : null;
-                if (mix == null) { Log("No mixture on the order — Prep skipped."); return; }
+                for (int i = 0; i < n; i++) yield return null;
+            }
 
-                var pot = Crafting.PhysicsCauldronManager.Instance;
-                foreach (ElementType leaf in mix.Recipe.Steps)
+            private IEnumerable DrivePrep(ActiveOrder order, int day)
+            {
+                var bench = Crafting.PrepBench.Instance;
+                var mix = CraftingManager.Instance != null ? CraftingManager.Instance.Mixture : null;
+                if (bench == null || mix == null) { Fail("Prep bench or mixture missing."); yield break; }
+                PhysicsKit.Pointer.Scripted = _pointer;
+
+                // Leaves: click each one the recipe asks for; a click tosses it into the bowl.
+                foreach (ElementType want in mix.Recipe.Steps)
                 {
-                    if (mix.AllLeavesIn) break;
-                    mix.Added.Add(leaf);
-                    if (pot != null) pot.DropIngredient(leaf);
+                    var leaf = bench.BestLeafFor(want);
+                    if (leaf == null) { Fail($"No {want} leaf on the Prep bench."); break; }
+                    int before = mix.Added.Count;
+                    Vector2 at = leaf.Body.position;
+                    _pointer.World = at;
+                    _pointer.Press();
+                    foreach (var f in Frames(3)) yield return f;
+                    _pointer.Release();
+                    foreach (var f in Frames(2)) yield return f;
+                    Log($"Prep: clicked {leaf.Data.DisplayName} at {at}; it left at {leaf.Body.linearVelocity} toward the bowl at {bench.MortarWorld}.");
+                    float t = 0f;
+                    while (mix.Added.Count == before && t < 6f) { t += Time.deltaTime; yield return null; }
+                    if (mix.Added.Count == before)
+                    {
+                        Fail($"The {leaf.Data.DisplayName} never settled in the mortar (at {leaf.Body.position}, bowl {bench.MortarWorld}).");
+                        break;
+                    }
+                }
+                if (_errorCount > 0) { PhysicsKit.Pointer.Scripted = null; yield break; }
+                foreach (var step in Settle($"day{day}_morning_prep_mortar")) yield return step;
+
+                // Strikes: hold on the mortar until the pestle would land at the ideal
+                // speed, then let go and let gravity do it.
+                for (int s = 0; s < QualityBudget.GrindStrikes && !mix.Ground; s++)
+                {
+                    int left = bench.StrikesLeft;
+                    _pointer.World = bench.MortarWorld;
+                    _pointer.Press();
+                    float t = 0f;
+                    // Lift, let the pestle settle under the hold, then keep lifting to
+                    // the height that lands it at the ideal speed.
+                    while (!bench.LiftReady && t < 3f) { t += Time.deltaTime; yield return null; }
+                    while (bench.PredictedStrikeSpeed < Crafting.PrepBench.IdealStrike - 0.1f && t < 6f)
+                    { t += Time.deltaTime; yield return null; }
+                    Log($"Prep lift {s + 1}: ready={bench.LiftReady} pestle at {bench.PestleWorld} (bowl {bench.MortarWorld}), predicted {bench.PredictedStrikeSpeed:0.00} m/s after {t:0.00}s.");
+                    _pointer.Release();
+                    t = 0f;
+                    while (bench.StrikesLeft == left && t < 4f) { t += Time.deltaTime; yield return null; }
+                    if (bench.StrikesLeft == left) { Fail($"Pestle strike {s + 1} never registered on the bowl."); break; }
+                    Log($"Prep strike {s + 1}: {bench.LastStrikeSpeed:0.00} m/s (clean {Crafting.PrepBench.IdealStrike}±{bench.CurrentBand})");
+                    foreach (var f in Frames(25)) yield return f;
+                }
+                PhysicsKit.Pointer.Scripted = null;
+                if (!mix.Ready) Fail("Prep did not finish: the mixture is not ready after three strikes.");
+                Log($"Prep: {mix.Recipe.Name} ({mix.Recipe.Shorthand}) -> {mix.Evaluate()} mix, quality {order.qualityScore}");
+            }
+
+            private IEnumerable DriveCauldron(ActiveOrder order, int day)
+            {
+                var pot = Crafting.PhysicsCauldronManager.Instance;
+                var mix = CraftingManager.Instance != null ? CraftingManager.Instance.Mixture : null;
+                if (pot == null || pot.Liquid == null) { Fail("No cauldron / surface to stir."); yield break; }
+
+                // Wait for the mash to land on the surface.
+                float w = 0f;
+                int want = mix != null ? mix.Added.Count : 0;
+                while (pot.Liquid.Floaters.Count < want && w < 5f) { w += Time.deltaTime; yield return null; }
+                if (pot.Liquid.Floaters.Count < want)
+                    Fail($"Only {pot.Liquid.Floaters.Count} of {want} leaves reached the cauldron's surface.");
+
+                PhysicsKit.Pointer.Scripted = _pointer;
+                float R = pot.Liquid.Radius;
+                float dir = pot.RequiredClockwise ? -1f : 1f;
+                float angle = 0f;
+
+                // Day 2 also checks the fumble: a frantic stir must slop a herb out.
+                if (day == 2)
+                {
+                    int splashes = pot.SplashCount;
+                    for (float t = 0f; t < 1.8f && pot.SplashCount == splashes; t += Time.deltaTime)
+                    {
+                        angle += dir * 820f * Time.deltaTime * Mathf.Deg2Rad;
+                        _pointer.World = pot.ToWorld(new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * R * 0.6f);
+                        yield return null;
+                    }
+                    if (pot.SplashCount == splashes) Fail("A frantic stir (820 deg/s) never slopped a herb out of the pot.");
+                    else Log("Cauldron fumble: a frantic stir slopped a herb out, as it should.");
+                    foreach (var f in Frames(40)) yield return f;
                 }
 
-                mix.Ground = true;
-                Data.MixOutcome outcome = mix.Evaluate();
-                int delta = Data.RecipeBook.QualityDelta(outcome);
-                if (delta != 0)
-                    order.AdjustQuality(delta, "Prep", $"{outcome} mix — {mix.Recipe.Name}");
-                if (pot != null) pot.ApplyMix(outcome);
+                float elapsed = 0f;
+                bool captured = false;
+                while (!pot.IsBrewComplete && elapsed < 60f)
+                {
+                    // Aim the stir speed at the heat the band wants; come up to it quickly.
+                    float target = pot.BandCentre;
+                    float power = pot.Heat01 < pot.MinOptimalHeat ? 0.85f
+                        : pot.Heat01 > pot.MaxOptimalHeat ? 0.2f
+                        : Mathf.Clamp((target - 0.15f) / 0.85f, 0.15f, 0.9f);
+                    angle += dir * power * 420f * Time.deltaTime * Mathf.Deg2Rad;
+                    _pointer.World = pot.ToWorld(new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * R * 0.6f);
+                    elapsed += Time.deltaTime;
+                    if (!captured && pot.BrewProgress01 > 0.4f)
+                    {
+                        captured = true;
+                        Capture($"day{day}_morning_cauldron_brewing");
+                    }
+                    yield return null;
+                }
+                PhysicsKit.Pointer.Scripted = null;
+                if (!pot.IsBrewComplete) Fail($"The brew never completed in 60 s of stirring (progress {pot.BrewProgress01:P0}).");
+                Log($"Cauldron: brewed in {elapsed:0.0}s, {pot.DissolvedFraction:P0} dissolved, {pot.SplashCount} slopped, quality {order.qualityScore}");
+            }
 
-                Log($"Prep: {mix.Recipe.Name} ({mix.Recipe.Shorthand}) -> {outcome} mix, quality {order.qualityScore}");
+            private IEnumerable DriveBottling(ActiveOrder order, int day)
+            {
+                var bench = Crafting.BottlingBench.Instance;
+                if (bench == null) { Fail("No Bottling bench."); yield break; }
+
+                bench.PourHeld = true;
+                float t = 0f;
+                bool captured = false;
+                // Let go a little early: what is already in the air still lands.
+                while (bench.Fill01 < 0.72f && t < 12f)
+                {
+                    t += Time.deltaTime;
+                    if (!captured && bench.Fill01 > 0.35f) { captured = true; Capture($"day{day}_morning_bottling_pour"); }
+                    yield return null;
+                }
+                bench.PourHeld = false;
+                if (bench.Fill01 < 0.72f) Fail($"Pouring for 12 s only filled the flask to {bench.Fill01:P0}.");
+                t = 0f;
+                while (bench.Current == Crafting.BottlingBench.Step.Pour && t < 8f) { t += Time.deltaTime; yield return null; }
+                if (bench.Current == Crafting.BottlingBench.Step.Pour) { Fail("The pour was never scored (droplets never settled)."); yield break; }
+                Log($"Bottling: poured to {bench.Fill01:P0} ({bench.Spilled} spilled)");
+
+                // Seal on the beat (the needle runs on real time).
+                for (int guard = 0; guard < 200000 && Mathf.Abs(Crafting.BottlingBench.SealNeedle01() - 0.5f) > 0.02f; guard++)
+                    yield return null;
+                bench.Seal();
+                foreach (var f in Frames(30)) yield return f;
+                bench.ApplyLabel(order.element);
+                if (bench.Current != Crafting.BottlingBench.Step.Done) Fail($"Bottling ended at step {bench.Current}, not Done.");
+                Log($"Bottling: sealed and labelled, quality {order.qualityScore}");
             }
 
             private void SwitchMorningTab(object morningScreen, string stationTabName)
@@ -678,6 +794,7 @@ namespace AlchemistsArsenal.Core
                 _captureCam = go.AddComponent<Camera>();
                 _captureCam.enabled = false; // rendered manually via Render(), never by the normal camera loop
                 _captureRT = new RenderTexture(CapW, CapH, 24, RenderTextureFormat.ARGB32);
+
             }
 
             private void Capture(string name)
@@ -703,6 +820,25 @@ namespace AlchemistsArsenal.Core
                     }
                     _captureCam.targetTexture = _captureRT;
                     _captureCam.enabled = false;
+
+                    // The shop camera draws into a viewport rect (the station column).
+                    // Canvases retargeted onto a rect camera get squeezed into its rect,
+                    // so the capture camera covers the whole frame instead and is
+                    // zoomed out and shifted so the world lands in exactly the pixels
+                    // the viewport would have put it in. Outside that rect the opaque
+                    // UI panels cover what the extra frame shows.
+                    if (world != null && world.orthographic && world.rect.width < 0.999f)
+                    {
+                        Rect r = world.rect;
+                        float size = world.orthographicSize / Mathf.Max(0.01f, r.height);
+                        float aspect = CapW / (float)CapH;
+                        Vector2 centre = r.center;
+                        Vector3 offset = new Vector3((0.5f - centre.x) * 2f * size * aspect, (0.5f - centre.y) * 2f * size, 0f);
+                        _captureCam.rect = new Rect(0f, 0f, 1f, 1f);
+                        _captureCam.orthographicSize = size;
+                        _captureCam.transform.position = world.transform.position + offset;
+                        _captureCam.backgroundColor = new Color(0.106f, 0.078f, 0.122f);
+                    }
 
                     foreach (var c in FindObjectsByType<Canvas>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
                     {
@@ -983,6 +1119,7 @@ namespace AlchemistsArsenal.Core
                 _finished = true;
 
                 Application.logMessageReceived -= OnUnityLog;
+                PhysicsKit.Pointer.Scripted = null;
                 Time.captureDeltaTime = 0f;
                 SaveSystem.SlotOverride = -1;
                 SettingsService.ExpeditionSpeedOverride = null;

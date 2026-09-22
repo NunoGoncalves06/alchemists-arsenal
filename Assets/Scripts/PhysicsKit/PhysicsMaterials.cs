@@ -13,7 +13,7 @@ namespace AlchemistsArsenal.PhysicsKit
     {
         private static readonly Dictionary<string, PhysicsMaterial2D> _cache = new Dictionary<string, PhysicsMaterial2D>();
 
-        public static PhysicsMaterial2D Herb => Get("Herb", friction: 0.55f, bounce: 0.18f);
+        public static PhysicsMaterial2D Herb => Get("Herb", friction: 0.8f, bounce: 0.04f);   // a leaf thuds, it does not bounce
         public static PhysicsMaterial2D Wood => Get("Wood", friction: 0.6f, bounce: 0.1f);
         public static PhysicsMaterial2D Stone => Get("Stone", friction: 0.7f, bounce: 0.04f);
         public static PhysicsMaterial2D Glass => Get("Glass", friction: 0.12f, bounce: 0.08f);

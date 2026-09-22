@@ -236,9 +236,6 @@ namespace AlchemistsArsenal.UI.Stations
             return HasOrder;
         }
 
-        /// <summary>Head start for taking the job that counters today's road.</summary>
-        private const int CounterReadBonus = 5;
-
         private void Accept(ContractRecord offer)
         {
             if (HasOrder || GameLoopManager.Instance == null) return;
@@ -257,7 +254,7 @@ namespace AlchemistsArsenal.UI.Stations
                     ? SaveSystem.Instance.State.TargetBiomeIndex : 0);
                 ElementType dominant = ContractBoard.Dominant(ContractBoard.ThreatCounts(road));
                 if (offer.element == ContractBoard.Counter(dominant))
-                    order.ApplyBonus(CounterReadBonus, "Counter",
+                    order.ApplyBonus(QualityBudget.CounterRead, "Counter",
                         $"Took the {offer.element} job against a {dominant} road");
             }
 

@@ -31,10 +31,11 @@ namespace AlchemistsArsenal.UI.Stations
 
         protected override void BuildContent(RectTransform root)
         {
-            // Recipe card, middle-left: clear of the pot in the centre, clear of the
-            // gauge deck below, and clear of the tutorial's top band.
+            // Recipe card, top-left over the wall: clear of the pot in the middle. The
+            // world view is the column above the HUD strip (the shop camera's viewport),
+            // and nothing drawn over it takes a raycast.
             var recipe = UIKit.Card(root, "Recipe", out Transform card, spacing: 6f);
-            UIFactory.Place(recipe.rectTransform, 0f, 0.34f, 0.28f, 0.66f);
+            UIFactory.Place(recipe.rectTransform, 0f, 0.60f, 0.25f, 0.875f);
 
             _recipeElement = UIFactory.Label(card, "", UITheme.SizeBody, UITheme.TextHi);
             UIFactory.Flex(_recipeElement.gameObject, 1f, 0f, minHeight: 24f);
@@ -44,16 +45,19 @@ namespace AlchemistsArsenal.UI.Stations
             _ingredients = UIFactory.Label(card, "", UITheme.SizeSmall, UITheme.TextLow);
             UIFactory.Flex(_ingredients.gameObject, 1f, 1f, minHeight: 34f);
 
-            // Status line sits above the gauges, under the pot.
+            foreach (var g in recipe.GetComponentsInChildren<Graphic>(true)) g.raycastTarget = false;
+
+            // Status line along the top of the world view, above the pot.
             _status = UIFactory.Label(root, "ACCEPT AN ORDER FIRST", UITheme.SizeTitle, UITheme.TextLow,
                 TextAlignmentOptions.Center, true);
-            UIFactory.Place(_status.rectTransform, 0.08f, 0.27f, 0.92f, 0.36f);
+            UIFactory.Place(_status.rectTransform, 0.26f, 0.80f, 1f, 0.875f);
+            _status.raycastTarget = false;
 
-            // Gauge deck, bottom.
-            var deckOuter = UIKit.Surface(root, out Transform deck, UITheme.Alpha(UITheme.Ground, 0.88f), UITheme.Line);
-            UIFactory.Place(deckOuter.rectTransform, 0.06f, 0.02f, 0.94f, 0.25f);
+            // Gauge deck: the HUD strip under the world view.
+            var deckOuter = UIKit.Surface(root, out Transform deck, UITheme.Alpha(UITheme.Ground, 0.94f), UITheme.Line);
+            UIFactory.Place(deckOuter.rectTransform, 0f, 0f, 1f, 0.255f);
 
-            var stack = UIFactory.VStack(deck, 8f, new RectOffset(18, 18, 12, 12));
+            var stack = UIFactory.VStack(deck, 6f, new RectOffset(18, 18, 10, 10));
             UIFactory.Stretch((RectTransform)stack.transform);
 
             _heat = UIKit.Meter(stack.transform, "Heat — hold it inside the band", UITheme.Ok, withBand: true);
@@ -191,7 +195,11 @@ namespace AlchemistsArsenal.UI.Stations
             }
             else if (!pot.MouseOverCauldron)
             {
-                SetStatus("BRING THE SPOON OVER THE POT", UITheme.TextMid);
+                SetStatus("BRING THE SPOON OVER THE BREW", UITheme.TextMid);
+            }
+            else if (pot.StirPower01 >= 0.99f)
+            {
+                SetStatus("TOO HARD — YOU'LL SLOP IT OUT", UITheme.Danger);
             }
             else if (pot.StirringBackwards)
             {
