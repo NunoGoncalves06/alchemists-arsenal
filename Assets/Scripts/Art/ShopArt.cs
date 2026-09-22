@@ -267,11 +267,18 @@ namespace AlchemistsArsenal.Art
             return c;
         }
 
-        /// <summary>The bowl: draws behind whatever is in it.</summary>
+        /// <summary>The far half of the rim and the hollow: draws behind whatever is in the bowl.</summary>
         public static Sprite MortarBack() => MortarPart("mortar_back", back: true);
 
-        /// <summary>The bowl's low front wall: hides the bottom of the leaves inside.</summary>
+        /// <summary>The near lip and the whole belly: draws over whatever is in the bowl.</summary>
         public static Sprite MortarFront() => MortarPart("mortar_front", back: false);
+
+        /// <summary>
+        /// Height of the hollow's middle line above the mortar's base, in its unscaled
+        /// local units. What is in the bowl shows above this line; the near lip hides
+        /// it below.
+        /// </summary>
+        public const float MortarLipLocalY = (MortarH - (MortarRimY + 0.4f)) / PPU;
 
         private static Sprite MortarPart(string key, bool back)
         {
@@ -281,7 +288,11 @@ namespace AlchemistsArsenal.Art
             for (int y = 0; y < MortarH; y++)
             for (int x = 0; x < MortarW; x++)
             {
-                bool isFront = y >= 15;
+                // A three-quarter bowl: the hollow and the far rim are behind the
+                // contents, and everything nearer than the hollow's middle line (the
+                // near lip, the belly) is in front of them. A fixed row split used to
+                // leave the upper belly behind the leaves, so they were drawn over it.
+                bool isFront = !MortarCavity(x, y) && y + 0.5f > MortarRimY + 0.4f;
                 if (isFront != back) c.Set(x, y, whole.Get(x, y));
             }
             return c.Bake(key, PPU, new Vector2(0.5f, 0f));
@@ -321,6 +332,97 @@ namespace AlchemistsArsenal.Art
             if (PixelCanvas.TryGet(key, out Sprite s)) return s;
             var c = new PixelCanvas(FlaskW, FlaskH);
             c.Fill(FlaskInterior, (x, y) => new Color32(0x9f, 0xd4, 0xf0, 38));
+            return c.Bake(key, PPU, new Vector2(0.5f, 0f));
+        }
+
+        /// <summary>The inside of the glass the brew can fill: the interior less its 1-px glass edge.</summary>
+        private static bool FlaskHollow(int x, int y) =>
+            FlaskInterior(x, y) && FlaskInterior(x - 1, y) && FlaskInterior(x + 1, y)
+            && FlaskInterior(x, y - 1) && FlaskInterior(x, y + 1);
+
+        private static int[] _hollowRow;
+
+        private static int HollowRow(int y)
+        {
+            if (_hollowRow == null)
+            {
+                _hollowRow = new int[FlaskH];
+                for (int yy = 0; yy < FlaskH; yy++)
+                for (int x = 0; x < FlaskW; x++)
+                    if (FlaskHollow(x, yy)) _hollowRow[yy]++;
+            }
+            return y >= 0 && y < FlaskH ? _hollowRow[y] : 0;
+        }
+
+        /// <summary>The bulb's volume "to the line" in square art pixels: what a fill of 1 means.</summary>
+        public static float FlaskBulbVolumePx => Mathf.PI * (FlaskBodyR - 1f) * (FlaskBodyR - 1f);
+
+        /// <summary>
+        /// The top row a volume of brew (square art pixels) reaches, filling the hollow
+        /// from the bottom up. <see cref="FlaskH"/> is an empty flask; it stops at the
+        /// top of the neck however much is poured.
+        /// </summary>
+        public static int FlaskLevelRow(float volumePx)
+        {
+            int level = FlaskH;
+            float left = volumePx;
+            for (int y = FlaskH - 1; y >= 0; y--)
+            {
+                int n = HollowRow(y);
+                if (n == 0)
+                {
+                    if (level < FlaskH) break;   // above the neck: brimful
+                    continue;                    // below the bulb: nothing to fill yet
+                }
+                if (left < n * 0.5f) break;
+                left -= n;
+                level = y;
+            }
+            return level;
+        }
+
+        /// <summary>The top row of the neck the brew can reach (a brimful flask).</summary>
+        public static int FlaskBrimRow => FlaskLevelRow(float.MaxValue);
+
+        /// <summary>
+        /// The brew in the glass, filled up to row <paramref name="level"/>, in greys to
+        /// be tinted with the element colour: a light surface line, darkening with depth.
+        /// </summary>
+        public static Sprite FlaskLiquid(int level)
+        {
+            level = Mathf.Clamp(level, 0, FlaskH);
+            string key = "flask_liquid_" + level;
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            var ramp = new[]
+            {
+                PixelCanvas.Hex(0x8a8a8a), PixelCanvas.Hex(0xa8a8a8), PixelCanvas.Hex(0xc6c6c6),
+                PixelCanvas.Hex(0xe2e2e2), PixelCanvas.Hex(0xffffff),
+            };
+            var c = new PixelCanvas(FlaskW, FlaskH);
+            float depth = Mathf.Max(1f, FlaskH - 1 - level);
+            c.Fill((x, y) => y >= level && FlaskHollow(x, y), (x, y) =>
+            {
+                if (y == level) return ramp[4];
+                float light = 0.72f - 0.5f * (y - level) / depth + (x < FlaskCX - 4f ? 0.12f : 0f);
+                Color32 k = PixelCanvas.Shade(ramp, light, x, y);
+                return new Color32(k.r, k.g, k.b, 235);
+            });
+            return c.Bake(key, PPU, new Vector2(0.5f, 0f));
+        }
+
+        /// <summary>Two small ticks etched on the glass at rows <paramref name="low"/> and <paramref name="high"/>: the line to pour to.</summary>
+        public static Sprite FlaskMarks(int low, int high)
+        {
+            string key = $"flask_marks_{low}_{high}";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            var c = new PixelCanvas(FlaskW, FlaskH);
+            foreach (int row in new[] { low, high })
+            {
+                int right = -1;
+                for (int x = 0; x < FlaskW; x++) if (FlaskHollow(x, row)) right = x;
+                for (int x = right - 2; right >= 0 && x <= right; x++)
+                    c.Set(x, row, new Color32(255, 255, 255, 150));
+            }
             return c.Bake(key, PPU, new Vector2(0.5f, 0f));
         }
 

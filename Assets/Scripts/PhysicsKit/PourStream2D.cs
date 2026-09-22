@@ -7,11 +7,12 @@ namespace AlchemistsArsenal.PhysicsKit
     /// <summary>
     /// A poured liquid as a pool of small physics droplets. Each droplet is a real
     /// circle body with gravity and no friction, so a pour arcs off the lip, splashes
-    /// against the glass, and piles up in the flask the way a thick brew would. How
-    /// full a vessel is, is simply how many droplets ended up inside it.
+    /// against the glass and gathers in the flask. How full a vessel is, is simply
+    /// how many droplets ended up inside it.
     ///
-    /// Drawn as chunky square pixels in the brew's colour, which reads as a pixel-art
-    /// liquid once they pile together.
+    /// Drawn as chunky square pixels in the brew's colour, which read as a stream in
+    /// the air. A vessel draws the liquid they make as its own level and hides the
+    /// droplets under its surface (<see cref="SetHidden"/>).
     /// </summary>
     public class PourStream2D : MonoBehaviour
     {
@@ -28,7 +29,12 @@ namespace AlchemistsArsenal.PhysicsKit
         public IReadOnlyList<Rigidbody2D> Droplets => _drops;
         public int Emitted { get; private set; }
 
-        public void Build(int size, float radius, int order)
+        /// <summary>
+        /// Make the pool: <paramref name="size"/> droplets whose colliders have world
+        /// radius <paramref name="radius"/>, each drawn as a square
+        /// <paramref name="drawSize"/> across.
+        /// </summary>
+        public void Build(int size, float radius, float drawSize, int order)
         {
             poolSize = size;
             dropletRadius = radius;
@@ -46,11 +52,15 @@ namespace AlchemistsArsenal.PhysicsKit
                 col.radius = dropletRadius;
                 col.sharedMaterial = PhysicsMaterials.Droplet;
 
-                var sr = go.AddComponent<SpriteRenderer>();
+                // The art is scaled on a child: scaling the droplet itself scaled its
+                // collider with it, to a fifth of the radius it was given.
+                var art = new GameObject("Art");
+                art.transform.SetParent(go.transform, false);
+                art.transform.localScale = Vector3.one * drawSize;
+                var sr = art.AddComponent<SpriteRenderer>();
                 sr.sprite = Core.PixelArt.White;
                 sr.sharedMaterial = SpriteMaterials.For(sr.sprite);
                 sr.sortingOrder = sortingOrder;
-                go.transform.localScale = Vector3.one * (dropletRadius * 2.3f);
 
                 GameLayers.Assign(go, GameLayers.Liquid);
                 go.SetActive(false);
@@ -95,8 +105,39 @@ namespace AlchemistsArsenal.PhysicsKit
         public void ResetAll()
         {
             foreach (var rb in _drops) rb.gameObject.SetActive(false);
+            for (int i = 0; i < _art.Count; i++) _art[i].enabled = true;
             Emitted = 0;
             _next = 0;
+        }
+
+        /// <summary>
+        /// Hide the live droplets for which <paramref name="hidden"/> (world position)
+        /// is true and show the rest: a vessel that draws its own liquid hides the
+        /// droplets that have gone under its surface.
+        /// </summary>
+        public void SetHidden(System.Func<Vector2, bool> hidden)
+        {
+            for (int i = 0; i < _drops.Count; i++)
+                if (_drops[i].gameObject.activeSelf) _art[i].enabled = !hidden(_drops[i].position);
+        }
+
+        /// <summary>
+        /// Every live droplet for which <paramref name="select"/> (position, velocity)
+        /// is true is moved by <paramref name="move"/>, which returns its new position
+        /// and velocity. Call from FixedUpdate.
+        /// </summary>
+        public int Redirect(System.Func<Vector2, Vector2, bool> select, System.Func<Vector2, Vector2, (Vector2, Vector2)> move)
+        {
+            int n = 0;
+            foreach (var rb in _drops)
+            {
+                if (!rb.gameObject.activeSelf || !select(rb.position, rb.linearVelocity)) continue;
+                (Vector2 p, Vector2 v) = move(rb.position, rb.linearVelocity);
+                rb.position = p;
+                rb.linearVelocity = v;
+                n++;
+            }
+            return n;
         }
 
         /// <summary>How many live droplets satisfy <paramref name="inside"/> (world position).</summary>
