@@ -120,7 +120,11 @@ namespace AlchemistsArsenal.DebugTools
                     ok && req.Target == (ICombatant)natureMob);
             }
 
-            // Scenario 3 — target sitting on top of the hero (inside min-safe range): distance axis vetoes.
+            // Scenario 3 — the cornered hero: a monster hugging them, inside min-safe
+            // range. This used to be a veto (and this check asserted it), which is the
+            // stall that lost Cinder Peaks: the last monster hugged the hero, nothing
+            // scored, and the wave ran out its cap with the belt still full. Bombs
+            // cannot hurt the party, so a point-blank throw is poor but legal.
             {
                 var self = new FakeCombatant(Team.Adventurer, ElementType.Nature, 100, 100, new Vector2(0, 0));
                 var pointBlank = new FakeCombatant(Team.Monster, ElementType.Nature, 80, 80, new Vector2(1f, 0));
@@ -128,9 +132,18 @@ namespace AlchemistsArsenal.DebugTools
 
                 bool ok = CombatDecisionEngine.TrySelectThrow(self, monsters, bombs, matrix, axes,
                     potionQuality01: 0.95f, ScoreThreshold,
-                    out _, out _, DumpBreakdown("S3 point-blank"));
+                    out _, out CombatDecisionEngine.ScoredCandidate best, DumpBreakdown("S3 point-blank"));
 
-                Report("S3: point-blank target scores below threshold (no throw)", !ok);
+                Report($"S3: a monster hugging the hero still draws a throw ({best.Score:F3} >= {ScoreThreshold})", ok);
+
+                // ...but the band is still a preference: given a second target at the
+                // ideal range, that one wins.
+                var ideal = new FakeCombatant(Team.Monster, ElementType.Nature, 80, 80, new Vector2(6f, 0));
+                bool ok2 = CombatDecisionEngine.TrySelectThrow(self, new List<ICombatant> { pointBlank, ideal },
+                    bombs, matrix, axes, potionQuality01: 0.95f, ScoreThreshold,
+                    out BombThrowRequest req2, out _, DumpBreakdown("S3b point-blank vs ideal"));
+                Report("S3: with a target at the ideal range too, that one is preferred",
+                    ok2 && req2.Target == (ICombatant)ideal);
             }
 
             Done = true;
