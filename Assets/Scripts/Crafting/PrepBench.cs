@@ -495,6 +495,44 @@ namespace AlchemistsArsenal.Crafting
             }
         }
 
+        // ------------------------------------------------------------------ view
+
+        /// <summary>
+        /// How much of the bowl's physical depth shows through its mouth. The mortar is
+        /// drawn in three-quarter view, so its inside is foreshortened: a leaf lying on
+        /// the floor of the (side-on, physical) bowl is seen just inside the mouth,
+        /// its lower half behind the near lip. Drawn where the body really was, it hung
+        /// in the middle of the belly, painted over the bowl's front.
+        /// </summary>
+        private const float DepthShown = 0.22f;
+
+        /// <summary>Where something at physical point <paramref name="world"/> is drawn (the bowl's inside is foreshortened).</summary>
+        public Vector2 ToView(Vector2 world)
+        {
+            float rim = RimTopY;
+            float bowlX = transform.position.x + MortarLocal.x;
+            if (world.y >= rim || Mathf.Abs(world.x - bowlX) > 1.1f * MortarScale) return world;
+            return new Vector2(world.x, rim - (rim - world.y) * DepthShown);
+        }
+
+        /// <summary>True when <paramref name="leaf"/> is drawn inside the bowl's mouth (the playtest checks it).</summary>
+        public bool ShowsInBowl(Leaf leaf)
+        {
+            if (leaf == null || leaf.Art == null) return false;
+            Vector2 at = leaf.Art.transform.position;
+            float baseY = transform.position.y + MortarLocal.y;
+            float lip = baseY + ShopArt.MortarLipLocalY * MortarScale;
+            float halfMouth = 13.5f / ShopArt.PPU * MortarScale;
+            return Mathf.Abs(at.y - lip) < 0.3f && Mathf.Abs(at.x - (transform.position.x + MortarLocal.x)) < halfMouth;
+        }
+
+        private void LateUpdate()
+        {
+            foreach (var l in _leaves)
+                if (l.Body != null && l.Art != null)
+                    l.Art.transform.position = ToView(l.Body.position);
+        }
+
         /// <summary>A leaf came to rest in the bowl: it is in the mix now, for better or worse.</summary>
         private void Settle(Leaf leaf)
         {
@@ -538,7 +576,7 @@ namespace AlchemistsArsenal.Crafting
             }
 
             if (VfxWorld.Active != null)
-                VfxWorld.Active.Burst(leaf.Body.position, PixelArt.Element(ing.Element), 8, 1.6f, 0.08f, 0.4f);
+                VfxWorld.Active.Burst(ToView(leaf.Body.position), PixelArt.Element(ing.Element), 8, 1.6f, 0.08f, 0.4f);
             AudioManager.Play(onCue || inRecipe ? Sfx.Confirm : Sfx.Deny);
             Changed?.Invoke();
         }
@@ -608,7 +646,7 @@ namespace AlchemistsArsenal.Crafting
         {
             if (VfxWorld.Active == null || Mix == null) return;
             Color c = PixelArt.Element(Mix.Recipe.Result);
-            VfxWorld.Active.Burst(at + Vector2.up * 0.2f, c, n, 2.4f, 0.08f, 0.45f);
+            VfxWorld.Active.Burst(ToView(at) + Vector2.up * 0.2f, c, n, 2.4f, 0.08f, 0.45f);
         }
 
         /// <summary>A too-hard strike throws a crushed leaf clean out of the bowl.</summary>
@@ -644,7 +682,7 @@ namespace AlchemistsArsenal.Crafting
             foreach (var l in _leaves)
             {
                 if (!l.InBowl || l.Body == null) continue;
-                if (VfxWorld.Active != null) VfxWorld.Active.Puff(l.Body.position, new Color(0.7f, 0.65f, 0.6f, 0.35f), 3, 0.2f, 0.3f);
+                if (VfxWorld.Active != null) VfxWorld.Active.Puff(ToView(l.Body.position), new Color(0.7f, 0.65f, 0.6f, 0.35f), 3, 0.2f, 0.3f);
                 Destroy(l.Body.gameObject);
                 l.Body = null;
             }
