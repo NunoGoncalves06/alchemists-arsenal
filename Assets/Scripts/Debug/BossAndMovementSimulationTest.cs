@@ -12,8 +12,10 @@ namespace AlchemistsArsenal.DebugTools
     /// phase scoring / hard override, the ward feedback consideration, and the
     /// physics-driven adventurer movement FSM.
     /// </summary>
-    public class BossAndMovementSimulationTest : MonoBehaviour
+    public class BossAndMovementSimulationTest : MonoBehaviour, ISimulationSuite
     {
+        public bool Done { get; private set; }
+
         private const float HardThreshold = 100f;
         private const float Decay = 8f;
 
@@ -29,6 +31,7 @@ namespace AlchemistsArsenal.DebugTools
             yield return Test_AccumulatorHardOverride();
             yield return Test_AdventurerMovement();
 
+            Done = true;
             Debug.Log("<color=cyan><b>=== SIMULATION COMPLETE ===</b></color>");
         }
 
