@@ -41,6 +41,20 @@ namespace AlchemistsArsenal.Data
         public Vector2 ProjectileOrigin => projectileOrigin;
         public ElementType CoreElement => coreElement;
         public int MaxHealth => maxHealth;
+
+        /// <summary>
+        /// <see cref="MaxHealth"/> is authored for a full party of three. A party
+        /// starts as one hero (the second and third are bought), and a guardian
+        /// tuned for three is a wall for one: each hero brings their own belt of
+        /// flasks, so a smaller party has proportionally less to throw.
+        /// </summary>
+        // Measured, not guessed (the harness's grade sweep): with these a Great
+        // flask beats the Matriarch at any party size and an Okay one does not.
+        public static readonly float[] PartyHealthScale = { 0.32f, 0.66f, 1f };
+
+        /// <summary>The health this guardian has against a party of <paramref name="partySize"/>.</summary>
+        public int HealthFor(int partySize) =>
+            Mathf.Max(1, Mathf.RoundToInt(maxHealth * PartyHealthScale[Mathf.Clamp(partySize, 1, PartyHealthScale.Length) - 1]));
         public ElementalThreatProfile ThreatProfile => threatProfile;
         public IReadOnlyList<BossPhaseData> Phases => phases;
         public float PhaseEvalInterval => phaseEvalInterval;

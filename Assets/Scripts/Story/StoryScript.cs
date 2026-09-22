@@ -52,7 +52,7 @@ namespace AlchemistsArsenal.Story
             bool flip = false, float? fromX = null, float scale = 1f, float delay = 0f, float rotation = 0f, Color? tint = null) =>
             new CutsceneActor
             {
-                Id = id, At = new Vector2(x, y), From = fromX.HasValue ? new Vector2(fromX.Value, y) : (Vector2?)null,
+                Id = id, At = new Vector2(x, y), Enters = fromX.HasValue, From = new Vector2(fromX ?? x, y),
                 Motion = motion, Flip = flip, Scale = scale, Delay = delay, Rotation = rotation, Tint = tint ?? Color.white,
             };
 
@@ -76,10 +76,7 @@ namespace AlchemistsArsenal.Story
 
         // ------------------------------------------------------------- opening
 
-        public static readonly Cutscene Opening = new Cutscene
-        {
-            Id = "opening", Title = "The Night of the Crooked Charm", Music = StoryMusic.Lullaby,
-            Shots = new[]
+        public static readonly Cutscene Opening = Cutscene.Create("opening", "The Night of the Crooked Charm", StoryMusic.Lullaby, new[]
             {
                 Tell("shop_night", "The night before Tam went up the mountain, it rained.",
                     A("kettle", 0.26f, 0.26f, ActorMotion.Still), A("nell", 0.4f, ShopFloor), A("tam", 0.64f, ShopFloor, flip: true))
@@ -108,8 +105,7 @@ namespace AlchemistsArsenal.Story
                     A("kettle", 0.26f, 0.26f, ActorMotion.Still), A("nell", 0.44f, ShopFloor, fromX: 0.4f), A("veil", 0.8f, ShopFloor, flip: true))
                     .Pan(0.02f, 0.0f, 1.08f, 1.14f),
                 Card("ALCHEMIST'S ARSENAL", "brew in the morning · arm them · bring them home", ShotStyle.Title, 2.6f),
-            },
-        };
+            });
 
         // ------------------------------------------------------------ woodwose
 
@@ -124,10 +120,7 @@ namespace AlchemistsArsenal.Story
             A("woodwose_arm", 0.424f, 0.353f, ActorMotion.Still, scale: 0.75f, rotation: 6f),
         };
 
-        public static readonly Cutscene Woodwose = new Cutscene
-        {
-            Id = "woodwose", Title = "What the Woodwose Remembered", Music = StoryMusic.Lullaby,
-            Shots = new[]
+        public static readonly Cutscene Woodwose = Cutscene.Create("woodwose", "What the Woodwose Remembered", StoryMusic.Lullaby, new[]
             {
                 Tell("woods", "The heroes found the old guardian where it fell, its heart-knot going dark.",
                     FallenWoodwose(ActorMotion.Still))
@@ -139,15 +132,11 @@ namespace AlchemistsArsenal.Story
                     FallenWoodwose(ActorMotion.Still))
                     .WithFx(ShotFx.Fireflies).Pan(0f, 0.1f, 1.3f, 1.4f),
                 Tell("black", "They carried the words home like a stone in a pocket. I wrote them down. I did not understand them yet."),
-            },
-        };
+            });
 
         // -------------------------------------------------------------- reveal
 
-        public static readonly Cutscene Reveal = new Cutscene
-        {
-            Id = "reveal", Title = "Behind the Mask", Music = StoryMusic.Reveal,
-            Shots = new[]
+        public static readonly Cutscene Reveal = Cutscene.Create("reveal", "Behind the Mask", StoryMusic.Reveal, new[]
             {
                 Tell("summit", "Her mask broke along the old crack. The face behind it was one I had watched grow old.",
                     A("matriarch_crown", 0.68f, 0.13f, ActorMotion.Still, rotation: -28f), A("mask_l", 0.4f, 0.14f, ActorMotion.Still, rotation: 18f),
@@ -176,15 +165,11 @@ namespace AlchemistsArsenal.Story
                 Say("summit", "Grandmother Ysolde", "You didn't break my charm, Nell. You finished it.", 0.75f,
                     A("ysolde", 0.56f, 0.22f, ActorMotion.FadeOut), A("nell_flask", 0.3f, 0.12f))
                     .WithFx(ShotFx.Motes).Pan(0.03f, 0.03f, 1.1f, 1.04f),
-            },
-        };
+            });
 
         // -------------------------------------------------------------- ending
 
-        public static readonly Cutscene Ending = new Cutscene
-        {
-            Id = "ending", Title = "The Kettle, Boiling", Music = StoryMusic.Resolution,
-            Shots = new[]
+        public static readonly Cutscene Ending = Cutscene.Create("ending", "The Kettle, Boiling", StoryMusic.Resolution, new[]
             {
                 Tell("shop_night", "The ward would lift only when the one who spoke it let the anger go.",
                     A("kettle_glow", 0.26f, 0.26f, ActorMotion.Still), A("nell_flask", 0.4f, ShopFloor, fromX: 0.5f), A("tam_asleep", 0.66f, 0.333f))
@@ -214,15 +199,11 @@ namespace AlchemistsArsenal.Story
                     A("nell", 0.18f, ShopFloor, fromX: -0.1f))
                     .Pan(-0.03f, 0.02f, 1.1f, 1.14f),
                 Card("THE END", "...for now", ShotStyle.Title, 2.8f),
-            },
-        };
+            });
 
         // ------------------------------------------------------------- credits
 
-        public static readonly Cutscene Credits = new Cutscene
-        {
-            Id = "credits", Title = "Credits", Music = StoryMusic.Resolution,
-            Shots = new[]
+        public static readonly Cutscene Credits = Cutscene.Create("credits", "Credits", StoryMusic.Resolution, new[]
             {
                 Card("ALCHEMIST'S ARSENAL", "The Kettle-Charm", ShotStyle.Credits, 2.4f),
                 Card("NELL ASHGROVE", "who kept the shop, and the kettle", ShotStyle.Credits, 2.2f),
@@ -231,8 +212,7 @@ namespace AlchemistsArsenal.Story
                 Card("SISTER VEIL · MIRA THORN · THE ELDER WOODWOSE", "and every hero who walked the five roads", ShotStyle.Credits, 2.4f),
                 Card("MADE IN-HOUSE", "the art, the music, the voices and the story were made for this game", ShotStyle.Credits, 2.4f),
                 Card("THANK YOU FOR PLAYING", "The shop is still open.", ShotStyle.Credits, 2.8f),
-            },
-        };
+            });
 
         // --------------------------------------------------------------- diary
 

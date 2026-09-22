@@ -181,8 +181,8 @@ namespace AlchemistsArsenal.UI
             CutsceneActor d = a.Data;
             Sprite s = a.Img.sprite;
             float t = Mathf.Max(0f, _t - d.Delay);
-            float enter = d.From.HasValue && !still ? Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / SettleSeconds)) : 1f;
-            Vector2 at = d.From.HasValue ? Vector2.Lerp(d.From.Value, d.At, enter) : d.At;
+            float enter = d.Enters && !still ? Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / SettleSeconds)) : 1f;
+            Vector2 at = d.Enters ? Vector2.Lerp(d.From, d.At, enter) : d.At;
 
             // Size and place in picture space (art pixels over the picture's size).
             Vector2 size01 = new Vector2(s.rect.width * d.Scale / StoryArt.W, s.rect.height * d.Scale / StoryArt.H);

@@ -439,7 +439,10 @@ namespace AlchemistsArsenal.Core
 
                 foreach (var step in RunBossScenarios()) yield return step;
                 if (FullSuite)
+                {
                     foreach (var step in RunBiomeSweep()) yield return step;
+                    foreach (var step in RunGradeSweep()) yield return step;
+                }
 
                 // Last, because it changes what the whole run remembers.
                 foreach (var step in RunEnding()) yield return step;
@@ -1029,6 +1032,28 @@ namespace AlchemistsArsenal.Core
                 foreach (var step in RunScenario(BiomeLibrary.Count - 1, 5, "boss_matriarch", capture: true)) yield return step;
             }
 
+            /// <summary>
+            /// Full suite only: both guardians against every flask grade, with a full
+            /// party and alone. This is the loop's promise measured, not assumed: what
+            /// the morning brewed decides whether the afternoon's guardian falls.
+            /// </summary>
+            private IEnumerable RunGradeSweep()
+            {
+                int[] grades = { 97, 85, 70, 50 };
+                foreach (int biome in new[] { 0, BiomeLibrary.Count - 1 })
+                {
+                    foreach (int q in grades)
+                        foreach (var step in RunScenario(biome, 11, $"grade_b{biome}_q{q}_x3", capture: false, quality: q, partySize: 3))
+                            yield return step;
+                    foreach (int q in new[] { 97, 85, 70 })
+                        foreach (var step in RunScenario(biome, 11, $"grade_b{biome}_q{q}_x1", capture: false, quality: q, partySize: 1))
+                            yield return step;
+                    foreach (int q in new[] { 85, 70 })
+                        foreach (var step in RunScenario(biome, 11, $"grade_b{biome}_q{q}_x2", capture: false, quality: q, partySize: 2))
+                            yield return step;
+                }
+            }
+
             /// <summary>Full suite only: every biome on five seeds, for win rates and HP margins.</summary>
             private IEnumerable RunBiomeSweep()
             {
@@ -1044,7 +1069,7 @@ namespace AlchemistsArsenal.Core
             /// Great flask of the element the Counter recommends for that road. The day
             /// seeds the monster spawner, so the fight is reproducible.
             /// </summary>
-            private IEnumerable RunScenario(int biome, int seedDay, string label, bool capture)
+            private IEnumerable RunScenario(int biome, int seedDay, string label, bool capture, int quality = 85, int partySize = 0)
             {
                 RunState st = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
                 if (st == null) { Fail($"Scenario {label}: no run state."); yield break; }
@@ -1060,8 +1085,9 @@ namespace AlchemistsArsenal.Core
                 BiomeData data = BiomeLibrary.Get(biome);
                 ElementType element = ContractBoard.Counter(ContractBoard.Dominant(ContractBoard.ThreatCounts(data)));
                 var order = new ActiveOrder("scenario", $"{element} Flask", element);
-                order.AdjustQuality(60, "HeadlessPlaytest", "scenario flask (Great)");
+                order.AdjustQuality(quality - order.qualityScore, "HeadlessPlaytest", $"scenario flask ({CombatQuality.GradeFor(quality)})");
                 var party = st.DeployedParty();
+                if (partySize > 0 && party.Count > partySize) party = party.GetRange(0, partySize);
                 var loadouts = LoadoutBuilder.BuildAll(new[] { order }, party);
 
                 var root = new GameObject($"~Scenario_{label}");
