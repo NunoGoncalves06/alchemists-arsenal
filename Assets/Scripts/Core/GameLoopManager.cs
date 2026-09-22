@@ -128,7 +128,7 @@ namespace AlchemistsArsenal.Core
 
         public void BeginDay()
         {
-            // Fresh shop every day — no stale heat / herb positions (reviewer P9).
+            // Fresh shop every day — no stale brew / herb positions (reviewer P9).
             DestroyWorld(ref _shopRoot);
             BuildShopWorld();
             DestroyWorld(ref _expeditionRoot);

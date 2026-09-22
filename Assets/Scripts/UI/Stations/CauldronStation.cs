@@ -9,13 +9,14 @@ namespace AlchemistsArsenal.UI.Stations
 {
     /// <summary>
     /// The Cauldron — the one station that plays out in the world rather than in the
-    /// UI, so this panel is deliberately a HUD: a recipe card, the heat band, the
+    /// UI, so this panel is deliberately a HUD: a recipe card, the stir band, the
     /// spin needle and the brew bar, all pushed to the edges so the middle of the
     /// screen stays the pot.
     ///
-    /// Three readouts because there are three things to hold: heat inside a band
-    /// that drifts, the spoon turning the way the recipe asked, and the brew bar
-    /// that only advances while both are true.
+    /// Three readouts because there are three things to hold: the stir speed inside
+    /// a band that drifts (too slow and it catches on the bottom, too fast and it
+    /// slops over the rim), the spoon turning the way the recipe asked, and the brew
+    /// bar that only advances while both are true.
     /// </summary>
     public class CauldronStation : StationPanel
     {
@@ -25,7 +26,7 @@ namespace AlchemistsArsenal.UI.Stations
         public override bool Complete =>
             PhysicsCauldronManager.Instance != null && PhysicsCauldronManager.Instance.IsBrewComplete;
 
-        private UIKit.MeterView _heat, _brew;
+        private UIKit.MeterView _stir, _brew;
         private Image _spinNeedle, _spinTrack;
         private TextMeshProUGUI _status, _recipeDirection, _recipeElement, _ingredients;
 
@@ -60,7 +61,7 @@ namespace AlchemistsArsenal.UI.Stations
             var stack = UIFactory.VStack(deck, 6f, new RectOffset(18, 18, 10, 10));
             UIFactory.Stretch((RectTransform)stack.transform);
 
-            _heat = UIKit.Meter(stack.transform, "Heat — hold it inside the band", UITheme.Ok, withBand: true);
+            _stir = UIKit.Meter(stack.transform, "Stir speed — hold it inside the band", UITheme.Ok, withBand: true);
             BuildSpinRow(stack.transform);
             _brew = UIKit.Meter(stack.transform, "Brew", UITheme.Candle);
         }
@@ -165,9 +166,9 @@ namespace AlchemistsArsenal.UI.Stations
             var pot = PhysicsCauldronManager.Instance;
             if (pot == null) return;
 
-            float heat = pot.Heat01;
-            _heat.Set(heat, PercentText.Of(heat));
-            _heat.SetBand(pot.MinOptimalHeat, pot.MaxOptimalHeat);
+            float stir = pot.StirPower01;
+            _stir.Set(stir, PercentText.Of(stir));
+            _stir.SetBand(pot.MinOptimalStir, pot.MaxOptimalStir);
             _brew.Set(pot.BrewProgress01, PercentText.Of(pot.BrewProgress01));
 
             if (_spinNeedle != null)
@@ -179,7 +180,7 @@ namespace AlchemistsArsenal.UI.Stations
                     : pot.StirringBackwards ? UITheme.Danger : UITheme.CandleHot;
             }
 
-            bool inBand = heat >= pot.MinOptimalHeat && heat <= pot.MaxOptimalHeat;
+            bool inBand = pot.InBand;
 
             if (!HasOrder)
             {
@@ -193,26 +194,29 @@ namespace AlchemistsArsenal.UI.Stations
             {
                 SetStatus("BREW READY — BOTTLE IT", UITheme.Candle);
             }
+            else if (pot.Burning)
+            {
+                SetStatus("BURNING ON THE BOTTOM — STIR FASTER", UITheme.Danger);
+            }
             else if (!pot.MouseOverCauldron)
             {
-                SetStatus("BRING THE SPOON OVER THE BREW", UITheme.TextMid);
-            }
-            else if (pot.StirPower01 >= 0.99f)
-            {
-                SetStatus("TOO HARD — YOU'LL SLOP IT OUT", UITheme.Danger);
+                SetStatus(pot.Sticking ? "IT'S CATCHING — GET THE SPOON BACK IN" : "BRING THE SPOON OVER THE BREW",
+                    pot.Sticking ? UITheme.Danger : UITheme.TextMid);
             }
             else if (pot.StirringBackwards)
             {
                 SetStatus(pot.RequiredClockwise ? "WRONG WAY — TURN CLOCKWISE" : "WRONG WAY — TURN ANTICLOCKWISE",
                     UITheme.Danger);
             }
-            else if (heat < pot.MinOptimalHeat)
+            else if (pot.TooFast)
             {
-                SetStatus("TOO COLD — STIR FASTER", UITheme.Water);
+                SetStatus(pot.Slosh01 > 0.5f ? "IT'S ABOUT TO GO OVER THE RIM — EASE OFF" : "TOO FAST — IT'S STARTING TO SLOSH",
+                    UITheme.Water);
             }
-            else if (heat > pot.MaxOptimalHeat)
+            else if (pot.TooSlow)
             {
-                SetStatus("OVERHEATING — EASE OFF", UITheme.Danger);
+                SetStatus(pot.Sticking ? "STICKING TO THE BOTTOM — STIR FASTER" : "TOO SLOW — STIR FASTER",
+                    pot.Sticking ? UITheme.Danger : UITheme.CandleHot);
             }
             else if (!pot.StirringCorrectly)
             {
@@ -223,8 +227,9 @@ namespace AlchemistsArsenal.UI.Stations
                 SetStatus("BREWING — QUALITY CLIMBING", UITheme.Ok);
             }
 
-            // The band is the thing being chased; colour the fill by whether it's in it.
-            _heat.SetFillColor(inBand ? UITheme.Ok : heat < pot.MinOptimalHeat ? UITheme.Water : UITheme.Danger);
+            // The band is the thing being chased; colour the fill by where the stir is:
+            // amber below it (the bottom catches), blue above it (it slops).
+            _stir.SetFillColor(inBand ? UITheme.Ok : pot.TooSlow ? UITheme.CandleHot : UITheme.Water);
         }
 
         private void SetStatus(string text, Color color)

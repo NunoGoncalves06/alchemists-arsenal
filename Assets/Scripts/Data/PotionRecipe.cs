@@ -126,10 +126,10 @@ namespace AlchemistsArsenal.Data
         };
 
         /// <summary>
-        /// How forgiving the cauldron's heat band is, given the mix. This is the
+        /// How wide the cauldron's band of stir speeds is, given the mix. This is the
         /// dependency made mechanical rather than merely sequential: prep it properly
         /// and the stirring is genuinely easier; botch it and you are chasing a narrow
-        /// band around a pot that will not settle.
+        /// band around a pot that catches the moment you ease off.
         /// </summary>
         public static float BandScale(MixOutcome outcome) => outcome switch
         {
@@ -141,9 +141,9 @@ namespace AlchemistsArsenal.Data
 
         public static string Describe(MixOutcome outcome) => outcome switch
         {
-            MixOutcome.Perfect => "PERFECT MIX — the recipe exactly. The pot will hold its heat easily.",
+            MixOutcome.Perfect => "PERFECT MIX — the recipe exactly. The pot will forgive a ragged stir.",
             MixOutcome.Close => "CLOSE — one leaf off. It will brew, but watch the band.",
-            MixOutcome.Weak => "WEAK — mostly wrong. The heat band is narrow now.",
+            MixOutcome.Weak => "WEAK — mostly wrong. The stirring band is narrow now.",
             _ => "RUINED — none of this belongs together. Good luck.",
         };
     }

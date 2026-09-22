@@ -6,7 +6,7 @@ namespace AlchemistsArsenal.DebugTools
 {
     /// <summary>
     /// Headless checks for the reworked <see cref="ActiveOrder"/> quality model:
-    /// born at 25 (Poor), raised by clean brewing, lowered by heat penalties, and
+    /// born at 25 (Poor), raised by clean brewing, lowered by a pot left to catch, and
     /// graded on the 4-band <see cref="PotionGrade"/> (reviewer X4).
     /// </summary>
     public class CauldronSimulationTest : MonoBehaviour, ISimulationSuite
@@ -21,7 +21,7 @@ namespace AlchemistsArsenal.DebugTools
         {
             Debug.Log("<color=cyan><b>=== CAULDRON QUALITY MODEL SIMULATION ===</b></color>");
             Scenario_CleanBrewClimbs();
-            Scenario_OverheatingPenalises();
+            Scenario_BurningPenalises();
             Scenario_UntouchedStaysPoor();
             Done = true;
             Debug.Log("<color=cyan><b>=== SIMULATION SUITE COMPLETE ===</b></color>");
@@ -47,27 +47,27 @@ namespace AlchemistsArsenal.DebugTools
             Report(ok, "Clean brewing raised quality and fired OnQualityChanged upward.");
         }
 
-        private void Scenario_OverheatingPenalises()
+        private void Scenario_BurningPenalises()
         {
-            Debug.Log("\n<b>[2: Overheating]</b> Heat 0.95 for 5 s should drive a mid brew back down to Poor.");
+            Debug.Log("\n<b>[2: Burning]</b> A bottom left catching for 5 s should drive a mid brew back down to Poor.");
             var order = new ActiveOrder("SIM-002", "Fire Blast Potion", ElementType.Fire);
             order.ApplyBonus(55, "Cauldron Brewing", "decent brew so far", 0f); // ~80, Great
 
-            float heat = 0.95f, nextDeduction = 0f, interval = 1f;
+            float scorch = 0.95f, nextDeduction = 0f, interval = 1f;
             for (float t = 0f; t <= 5f; t += simStepTime)
             {
-                if (heat > 0.7f && t >= nextDeduction)
+                if (scorch > 0.7f && t >= nextDeduction)
                 {
-                    float severity = (heat - 0.7f) / (1f - 0.7f);
+                    float severity = (scorch - 0.7f) / (1f - 0.7f);
                     int pts = 5 + Mathf.RoundToInt(severity * 10f);
-                    order.ApplyDeduction(pts, "Cauldron Brewing", $"overheating at {t:F1}s", t);
+                    order.ApplyDeduction(pts, "Cauldron Brewing", $"burning on the bottom at {t:F1}s", t);
                     nextDeduction = t + interval;
                 }
             }
 
             Debug.Log($"Result: quality {order.qualityScore}/100 | grade {order.GetGrade()} | logs {order.deductions.Count}");
             Report(order.qualityScore < 80 && order.GetGrade() == PotionGrade.Poor,
-                   "Sustained overheating collapsed a Great brew to Poor.");
+                   "A bottom left to burn collapsed a Great brew to Poor.");
         }
 
         private void Scenario_UntouchedStaysPoor()
