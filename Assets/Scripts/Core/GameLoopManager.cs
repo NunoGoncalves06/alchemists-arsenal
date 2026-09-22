@@ -199,9 +199,13 @@ namespace AlchemistsArsenal.Core
             _expeditionWorld = _expeditionRoot.AddComponent<ExpeditionWorld>();
             _expeditionWorld.OnFinished += HandleExpeditionFinished;
 
-            // Day 1 is the teaching run — no boss, just the waves.
-            bool enableBoss = SaveSystem.Instance == null || SaveSystem.Instance.State == null
-                || SaveSystem.Instance.State.day > 1;
+            // Day 1 is the teaching run — no boss, just the waves. And the Woods'
+            // guardian waits until the Woods have been cleared once: a player who
+            // lost the teaching run walks the same road again on day 2, and must
+            // not find a guardian at the end of it on the retry.
+            RunState run = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+            bool enableBoss = run == null
+                || (run.day > 1 && !(TargetBiomeIndex == 0 && run.bestGrades != null && run.bestGrades[0] == 0));
             _expeditionWorld.Build(biome, PendingLoadouts, PendingParty, enableBoss: enableBoss);
 
             SetPhase(GamePhase.Afternoon);

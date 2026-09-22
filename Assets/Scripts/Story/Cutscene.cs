@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace AlchemistsArsenal.Story
@@ -25,13 +26,15 @@ namespace AlchemistsArsenal.Story
     /// <summary>
     /// One person or thing in a shot, placed by its feet on the 0..1 stage (x left
     /// to right, y bottom to top), drawn at the stage's own pixel scale times
-    /// <see cref="Scale"/>. It walks in from <see cref="From"/> when that is set.
+    /// <see cref="Scale"/>. It walks in from <see cref="From"/> when it <see cref="Enters"/>.
     /// </summary>
+    [Serializable]
     public sealed class CutsceneActor
     {
         public string Id;
         public Vector2 At;
-        public Vector2? From;
+        public bool Enters;
+        public Vector2 From;
         public float Scale = 1f;
         public bool Flip;
         public float Delay;
@@ -45,6 +48,7 @@ namespace AlchemistsArsenal.Story
     /// moves. Every shot moves (a slow push-in at least), so no beat is a still
     /// slide with a text wall under it.
     /// </summary>
+    [Serializable]
     public sealed class Shot
     {
         public string Scene = "black";
@@ -64,12 +68,35 @@ namespace AlchemistsArsenal.Story
         public float Hold;
     }
 
-    /// <summary>A scene of the story, played by the cutscene screen from start to end.</summary>
-    public sealed class Cutscene
+    /// <summary>
+    /// A scene of the story, played by the cutscene screen from start to end. A
+    /// ScriptableObject like the rest of the game's content: the shipped scenes
+    /// are built in code (<see cref="StoryScript"/>, the same pattern as
+    /// BiomeLibrary), and a scene can equally be authored as an asset.
+    /// </summary>
+    [CreateAssetMenu(fileName = "Cutscene", menuName = "Alchemist's Arsenal/Story/Cutscene", order = 41)]
+    public sealed class Cutscene : ScriptableObject
     {
-        public string Id;
-        public string Title;
-        public StoryMusic Music;
-        public Shot[] Shots;
+        [SerializeField] private string id = "scene";
+        [SerializeField] private string title = "";
+        [SerializeField] private StoryMusic music = StoryMusic.Lullaby;
+        [SerializeField] private Shot[] shots = new Shot[0];
+
+        public string Id => id;
+        public string Title => title;
+        public StoryMusic Music => music;
+        public Shot[] Shots => shots;
+
+        public static Cutscene Create(string id, string title, StoryMusic music, Shot[] shots)
+        {
+            var c = CreateInstance<Cutscene>();
+            c.name = "Cutscene_" + id;
+            c.hideFlags = HideFlags.DontUnloadUnusedAsset;   // held only by StoryScript's statics
+            c.id = id;
+            c.title = title;
+            c.music = music;
+            c.shots = shots ?? new Shot[0];
+            return c;
+        }
     }
 }

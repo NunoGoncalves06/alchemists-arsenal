@@ -37,6 +37,9 @@ namespace AlchemistsArsenal.Combat
 
         private float SpawnY() => (float)(_rng.NextDouble() * 2.0 - 1.0) * spawnBandY;
 
+        /// <summary>How many heroes went out: a guardian's health is sized to them.</summary>
+        public int PartySize { get; set; } = 3;
+
         public GameObject SpawnMonster(MonsterData data)
         {
             if (data == null) return null;
@@ -79,7 +82,7 @@ namespace AlchemistsArsenal.Combat
 
             string look = boss.VisualId;
             var go = NewBody("Boss_" + boss.DisplayName, new Vector2(spawnEdgeX - 2.5f, 0f),
-                Team.Monster, boss.CoreElement, boss.MaxHealth, Vfx.BossVisual.ColliderRadius(look));
+                Team.Monster, boss.CoreElement, boss.HealthFor(PartySize), Vfx.BossVisual.ColliderRadius(look));
             go.transform.SetParent(transform, worldPositionStays: true);
             go.GetComponent<Rigidbody2D>().mass = BossMass;
             go.GetComponent<CombatantBody>().SetDeathLinger(Vfx.BossVisual.DeathSeconds);
