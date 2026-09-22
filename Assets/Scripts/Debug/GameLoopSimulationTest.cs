@@ -67,22 +67,15 @@ namespace AlchemistsArsenal.DebugTools
         /// budget is now deliberately just over 100 so every station is load
         /// bearing and a botched step actually costs a grade.
         ///
-        /// These numbers are transcribed, not computed - the scoring lives in
-        /// MonoBehaviour/UI classes that need a scene. If you retune a station,
-        /// update the matching constant here and this test tells you whether the
-        /// morning still adds up.
+        /// These numbers come from Data.QualityBudget, the same constants the
+        /// benches pay out of, so a retune at a bench is checked here automatically
+        /// (they used to be transcribed by hand and silently went stale).
         /// </summary>
         private void TestQualityCeiling()
         {
-            const int start        = ActiveOrder.StartingQuality;                    // 25
-            const int counterRead  = 5;                                              // CounterStation.CounterReadBonus
-            const int prepLeaves   = 3 * 5;                                          // PrepStation.Pick, on cue at potency 3
-            const int prepGrinds   = 3 * 4;                                          // PrepStation.Grind, dead centre
-            int       prepMix      = Data.RecipeBook.QualityDelta(Data.MixOutcome.Perfect);
-            const int cauldron     = 2 * 11;                                         // brewBonusPoints x brewSeconds
-            const int bottling     = 9 + 9 + 4;                                      // pour + seal + correct label
-
-            int best = start + counterRead + prepLeaves + prepGrinds + prepMix + cauldron + bottling;
+            const int start = ActiveOrder.StartingQuality;
+            const int cauldron = QualityBudget.BrewTotal;
+            int best = QualityBudget.FlawlessMorning();
             Check(best >= 95 && best <= 120,
                 $"a flawless morning is worth {best} points - just over the 100 cap, not double it");
 
@@ -95,7 +88,7 @@ namespace AlchemistsArsenal.DebugTools
             // And a clean morning with one fumbled step should still cost a
             // grade. Measured from the clamped 100 a player can actually hold -
             // the slack above the cap is headroom, not spendable points.
-            int fumbled = Mathf.Min(best, 100) - 16;   // e.g. an overfilled flask
+            int fumbled = Mathf.Min(best, 100) - QualityBudget.PourOverflow;   // e.g. an overfilled flask
             Check(CombatQuality.GradeFor(fumbled) > PotionGrade.Perfect,
                 $"one botched step drops a flawless morning to {CombatQuality.GradeFor(fumbled)}");
         }
