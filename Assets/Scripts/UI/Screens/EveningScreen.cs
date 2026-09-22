@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
@@ -146,6 +147,19 @@ namespace AlchemistsArsenal.UI
             UIKit.KeyValue(c, "Waves cleared", $"{r.wavesCleared} / {r.totalWaves}");
             UIKit.KeyValue(c, "Boss", r.bossDefeated ? "defeated" : "—");
             UIKit.KeyValue(c, "Party returned", $"{r.partyTotal - r.partyDown} / {r.partyTotal}");
+            if (r.downedHeroIds.Count > 0)
+            {
+                var fallen = new List<string>();
+                foreach (string id in r.downedHeroIds)
+                {
+                    HeroRecord h = SaveSystem.Instance.State.FindHero(id);
+                    if (h != null) fallen.Add(h.displayName);
+                }
+                var hurt = UIFactory.Label(c,
+                    $"Fell on the road: {string.Join(", ", fallen)}. They sit tomorrow out.",
+                    UITheme.SizeSmall, UITheme.Danger, TextAlignmentOptions.TopLeft);
+                UIFactory.Flex(hurt.gameObject, 1f, 0f, minHeight: 34f);
+            }
             UIKit.KeyValue(c, "Time on the road", $"{r.durationSeconds:0}s");
         }
 
@@ -401,7 +415,8 @@ namespace AlchemistsArsenal.UI
             // someone (RunState.DeployedParty would quietly send them anyway), so
             // the button says so instead of showing "0 / 1 going out".
             bool leads = hero.deployed && !resting && outToday <= 1;
-            string deployCaption = resting ? $"RESTING — back day {hero.restUntilDay}"
+            string deployCaption = resting && hero.deployed ? "LIMPS OUT — nobody else is fit"
+                : resting ? $"RESTING — back day {hero.restUntilDay}"
                 : leads ? "LEADS THE PARTY"
                 : hero.deployed ? "GOING OUT"
                 : "SEND OUT";

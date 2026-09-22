@@ -264,10 +264,15 @@ namespace AlchemistsArsenal.Core
                         if (!s.ownedHerbs.Contains(kv.Key)) s.ownedHerbs.Add(kv.Key);
 
                     DiaryManager.EvaluateAfterExpedition(s, played, r);
+
+                    // Whoever went down sits tomorrow out. HeroTag/restUntilDay existed
+                    // for this and nothing ever set it, so a hero could fall every day.
+                    HeroCatalog.ApplyInjuries(s, r.downedHeroIds, s.day);
                 }
 
                 s.lastResolvedDay = s.day;
                 s.day++;
+                s.EnsureDeployment();
                 s.replayBiomeIndex = -1;
                 s.contract = ContractRecord.None; // tomorrow's customer brings their own job
                 if (CraftingManager.Instance != null) CraftingManager.Instance.ClearOrder();

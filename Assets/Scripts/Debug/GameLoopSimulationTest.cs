@@ -32,6 +32,7 @@ namespace AlchemistsArsenal.DebugTools
             TestMigrationClamps();
             TestRosterRoundTrip();
             TestRosterMigration();
+            TestInjuries();
             TestPerkSymmetry();
             TestCostCurve();
             Done = true;
@@ -243,6 +244,42 @@ namespace AlchemistsArsenal.DebugTools
                 "roster: archetypes survive intact");
             Check(back.roster[2].restUntilDay == 7 && !back.roster[2].IsFit(6) && back.roster[2].IsFit(7),
                 "roster: an injured hero is unfit on day 6 and fit again on day 7");
+        }
+
+        /// <summary>
+        /// A hero who goes down misses exactly one expedition, and the road still
+        /// always gets someone. restUntilDay existed with nothing ever setting it.
+        /// </summary>
+        private void TestInjuries()
+        {
+            var s = new RunState { day = 3, bestGrades = new int[5] };
+            s.roster = new System.Collections.Generic.List<HeroRecord>
+            {
+                HeroCatalog.NewHire("A", 0), HeroCatalog.NewHire("B", 1),
+            };
+            s.ownedUpgrades.Add(UpgradeCatalog.SecondPack);   // cap 2: both out today
+            foreach (var hero in s.roster) hero.deployed = true;
+            string downId = s.roster[1].id;
+
+            // Day 3 resolves with B down, then the day rolls over (as BeginEvening does).
+            int benched = HeroCatalog.ApplyInjuries(s, new[] { downId }, s.day);
+            s.day++;
+            s.EnsureDeployment();
+
+            HeroRecord b = s.FindHero(downId);
+            Check(benched == 1 && b.restUntilDay == 5, $"injury: a hero down on day 3 rests until day 5 (got {b.restUntilDay})");
+            Check(!b.IsFit(4) && b.IsFit(5), "injury: they miss exactly one expedition (day 4) and are back on day 5");
+            var party = s.DeployedParty();
+            Check(party.Count == 1 && party[0].id == s.roster[0].id,
+                $"injury: day 4 goes out without them ({party.Count} going)");
+
+            // The whole party down: someone still limps out, or the expedition never resolves.
+            var solo = new RunState { day = 2, bestGrades = new int[5] };
+            solo.roster = new System.Collections.Generic.List<HeroRecord> { HeroCatalog.NewHire("Rookie", 0) };
+            HeroCatalog.ApplyInjuries(solo, new[] { solo.roster[0].id }, solo.day);
+            solo.day++;
+            solo.EnsureDeployment();
+            Check(solo.DeployedParty().Count == 1, "injury: a lone downed hero still limps out the next day");
         }
 
         private void TestRosterMigration()
