@@ -264,6 +264,10 @@ namespace AlchemistsArsenal.Core
                         if (!s.ownedHerbs.Contains(kv.Key)) s.ownedHerbs.Add(kv.Key);
 
                     DiaryManager.EvaluateAfterExpedition(s, played, r);
+                    // The story due tonight is flagged here, inside the resolve-once
+                    // block, and saved by the AutoSave below: quit mid-cutscene and it
+                    // still plays (at the next Day Intro).
+                    StoryDirector.OnDayResolved(s, played, r);
 
                     // Whoever went down sits tomorrow out. HeroTag/restUntilDay existed
                     // for this and nothing ever set it, so a hero could fall every day.

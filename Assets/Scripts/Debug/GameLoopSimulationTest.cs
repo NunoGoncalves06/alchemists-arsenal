@@ -35,6 +35,8 @@ namespace AlchemistsArsenal.DebugTools
             TestInjuries();
             TestPerkSymmetry();
             TestCostCurve();
+            TestStoryRoundTrip();
+            TestStoryRules();
             Done = true;
             Debug.Log($"<color=cyan><b>=== DONE — {_pass} pass, {_fail} fail ===</b></color>");
         }
@@ -184,6 +186,58 @@ namespace AlchemistsArsenal.DebugTools
             Check(back.day == 4 && back.gold == 137 && back.currentBiomeIndex == 2
                   && back.bestGrades[0] == 3 && back.unlockedDiary.Contains("diary_ww") && back.lastResolvedDay == 3,
                 "RunState survives a JSON round-trip intact");
+        }
+
+        /// <summary>The story's memory survives a save, and an old save without it loads.</summary>
+        private void TestStoryRoundTrip()
+        {
+            var s = RunState.NewGame(0);
+            Story.StoryDirector.Set(s, Story.StoryDirector.EndingPending);
+            s.endingSeen = true;
+            var back = SaveSystem.Migrate(JsonUtility.FromJson<RunState>(JsonUtility.ToJson(s)));
+            Check(back.storyFlags != null && back.storyFlags.Contains(Story.StoryDirector.EndingPending) && back.endingSeen,
+                "story: flags and endingSeen survive a JSON round-trip");
+
+            var old = new RunState { saveVersion = 1, storyFlags = null };
+            var migrated = SaveSystem.Migrate(old);
+            Check(migrated.storyFlags != null && !migrated.endingSeen && migrated.saveVersion == RunState.CurrentVersion,
+                "story: a v1 save (no story fields) migrates to an empty story");
+        }
+
+        /// <summary>Which fight earns which scene, and that each plays once.</summary>
+        private void TestStoryRules()
+        {
+            var s = RunState.NewGame(0);
+            var win = new ExpeditionReport { won = true, bossDefeated = true };
+            var noBoss = new ExpeditionReport { won = true, bossDefeated = false };
+
+            Story.StoryDirector.OnDayResolved(s, 0, noBoss);
+            Check(Story.StoryDirector.Due(s).Count == 0, "story: a boss-less win earns no scene");
+
+            Story.StoryDirector.OnDayResolved(s, 0, win);
+            var due = Story.StoryDirector.Due(s);
+            Check(due.Count == 1 && due[0].Id == "woodwose", "story: the Woodwose's defeat earns its scene");
+            Story.StoryDirector.Finished(s, due[0]);
+            Story.StoryDirector.OnDayResolved(s, 0, win);
+            Check(Story.StoryDirector.Due(s).Count == 0, "story: the Woodwose scene plays once, not on every replay");
+
+            Story.StoryDirector.OnDayResolved(s, BiomeLibrary.Count - 1, win);
+            due = Story.StoryDirector.Due(s);
+            Check(due.Count == 3 && due[0].Id == "reveal" && due[1].Id == "ending" && due[2].Id == "credits",
+                "story: the Peak earns reveal, ending, credits, in that order");
+            Story.StoryDirector.Finished(s, due[0]);
+            Story.StoryDirector.Finished(s, due[1]);
+            due = Story.StoryDirector.Due(s);
+            Check(due.Count == 1 && due[0].Id == "credits", "story: quitting before the credits replays only the credits");
+            Story.StoryDirector.Finished(s, due[0]);
+            Check(s.endingSeen && Story.StoryDirector.Due(s).Count == 0 && s.HasDiary("diary_end") && s.HasDiary("diary_after"),
+                "story: the credits end the story and unlock the last pages");
+
+            int entries = Story.DiaryManager.All.Count;
+            var ids = new System.Collections.Generic.HashSet<string>();
+            foreach (var e in Story.DiaryManager.All) ids.Add(e.id);
+            Check(entries >= 11 && ids.Count == entries && ids.Contains("diary_00") && ids.Contains("diary_ww") && ids.Contains("diary_perfect"),
+                $"story: {entries} diary entries, unique ids, the original three kept");
         }
 
         private void TestMigrationClamps()

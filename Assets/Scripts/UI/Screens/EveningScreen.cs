@@ -74,6 +74,16 @@ namespace AlchemistsArsenal.UI
         protected override void OnShow()
         {
             RunState s = SaveSystem.Instance.State;
+
+            // Whatever part of the story today's fight earned plays first, over the
+            // Evening, and comes back here when it is done.
+            var due = Story.StoryDirector.Due(s);
+            if (due.Count > 0 && !CutsceneScreen.Playing)
+            {
+                CutsceneScreen.Play(due, () => UIManager.Instance.Show(ScreenId.Evening));
+                return;
+            }
+
             // BeginEvening already rolled the day over, so the run that just ended
             // was yesterday's.
             _title.text = $"Evening — day {Mathf.Max(1, s.day - 1)}";

@@ -8,7 +8,9 @@ namespace AlchemistsArsenal.Story
         Manual = 0,              // unlocked explicitly (the opening cinematic)
         BiomeCleared = 1,        // param = biome index
         FirstPerfectPotion = 2,
-        IngredientDiscovered = 3 // param = herb id
+        IngredientDiscovered = 3, // param = herb id
+        BossDefeated = 4,        // param = biome index
+        StoryFlag = 5            // param = a StoryDirector flag
     }
 
     [Serializable]
@@ -21,6 +23,8 @@ namespace AlchemistsArsenal.Story
         public static DiaryUnlock Biome(int i) => new DiaryUnlock { kind = DiaryUnlockKind.BiomeCleared, param = i.ToString() };
         public static DiaryUnlock Perfect => new DiaryUnlock { kind = DiaryUnlockKind.FirstPerfectPotion };
         public static DiaryUnlock Ingredient(string id) => new DiaryUnlock { kind = DiaryUnlockKind.IngredientDiscovered, param = id };
+        public static DiaryUnlock Boss(int biome) => new DiaryUnlock { kind = DiaryUnlockKind.BossDefeated, param = biome.ToString() };
+        public static DiaryUnlock Flag(string flag) => new DiaryUnlock { kind = DiaryUnlockKind.StoryFlag, param = flag };
     }
 
     /// <summary>

@@ -105,6 +105,8 @@ namespace AlchemistsArsenal.Core
                 _suite = ReadSuiteArg();
                 SaveSystem.SlotOverride = HarnessSlot;
                 SettingsService.ExpeditionSpeedOverride = 1;
+                CutsceneScreen.AutoAdvance = true;
+                StoryStage.SkipIntro = true;
                 Time.captureDeltaTime = FrameStep;
                 Log($"=== HEADLESS PLAYTEST START (runtime driver, post-reload, suite={_suite}) ===");
                 Log($"Save slot pinned to slot_{HarnessSlot}.json, fight speed pinned to 1x, fixed step {FrameStep:F4}s.");
@@ -199,10 +201,12 @@ namespace AlchemistsArsenal.Core
                     {
                         GameLoopManager.Instance.StartNewGame();
                         yield return null;
-                        // Skip the opening cinematic — it needs a player click to close,
-                        // and this driver is testing the loop, not the diary UI.
-                        if (SaveSystem.Instance.State != null)
-                            SaveSystem.Instance.State.openingCinematicSeen = true;
+                        // The opening plays between the first Day Intro and the morning;
+                        // under the harness each shot moves on by itself once it is in.
+                        foreach (var step in PlayOutCutscenes("opening", expect: true)) yield return step;
+                        if (_errorCount > 0) yield break;
+                        if (!SaveSystem.Instance.State.openingCinematicSeen)
+                            Fail("The opening played but was not recorded as seen.");
                     }
 
                     foreach (var step in WaitForPhase(GamePhase.Morning, 15f)) { if (_errorCount > 0) yield break; yield return step; }
@@ -316,6 +320,17 @@ namespace AlchemistsArsenal.Core
                     GameLoopManager.Instance.BeginEvening();
                     foreach (var step in WaitForPhase(GamePhase.Evening, 10f)) { if (_errorCount > 0) yield break; yield return step; }
                     if (_errorCount > 0) yield break;
+                    // A fight that earned part of the story plays it over the Evening first.
+                    foreach (var step in PlayOutCutscenes($"day{day} evening", expect: false)) yield return step;
+                    ExpeditionReport today = GameLoopManager.Instance.LatestReport;
+                    if (today != null && today.won && today.bossDefeated && SaveSystem.Instance.State.TargetBiomeIndex >= 0)
+                    {
+                        var st0 = SaveSystem.Instance.State;
+                        if (Story.StoryDirector.Has(st0, Story.StoryDirector.WoodwoseSeen) && st0.HasDiary("diary_woodwose"))
+                            Log("The Woodwose fell: its scene played, and its diary page is unlocked.");
+                        else if (!Story.StoryDirector.Has(st0, Story.StoryDirector.WoodwoseSeen))
+                            Fail("A guardian fell but its scene was not recorded as watched.");
+                    }
                     foreach (var step in Settle($"day{day}_evening_report")) yield return step;
 
                     if (day == 1)
@@ -425,6 +440,9 @@ namespace AlchemistsArsenal.Core
                 foreach (var step in RunBossScenarios()) yield return step;
                 if (FullSuite)
                     foreach (var step in RunBiomeSweep()) yield return step;
+
+                // Last, because it changes what the whole run remembers.
+                foreach (var step in RunEnding()) yield return step;
 
                 if (_errorCount == 0) Log("=== FULL LOOP COMPLETED — all days resolved cleanly ===");
             }
@@ -1233,6 +1251,89 @@ namespace AlchemistsArsenal.Core
                 if (bad == 0) Log($"{label}: {seen} sprite renderers, each on its own texture's material.");
             }
 
+            /// <summary>
+            /// Wait for a cutscene (if one starts within a few seconds), photograph every
+            /// shot once it is fully on screen, and wait for it to hand back.
+            /// </summary>
+            private IEnumerable PlayOutCutscenes(string label, bool expect, float startWithin = 4f, float timeout = 180f)
+            {
+                float t0 = Time.unscaledTime;
+                while (!CutsceneScreen.Playing && Time.unscaledTime - t0 < startWithin) yield return null;
+                if (!CutsceneScreen.Playing)
+                {
+                    if (expect) Fail($"{label}: a cutscene was due and none played.");
+                    yield break;
+                }
+                string last = null;
+                int shots = 0;
+                float start = Time.unscaledTime;
+                while (CutsceneScreen.Playing && Time.unscaledTime - start < timeout)
+                {
+                    string key = CutsceneScreen.SettledShot;
+                    if (key != null && key != last)
+                    {
+                        Capture($"cutscene_{key}");
+                        last = key;
+                        shots++;
+                    }
+                    yield return null;
+                }
+                if (CutsceneScreen.Playing) Fail($"{label}: the cutscene was still playing after {timeout}s.");
+                else Log($"{label}: cutscene played through ({shots} shots photographed).");
+            }
+
+            /// <summary>
+            /// The end of the story, as the Evening after a first Peak win meets it: the
+            /// day is resolved (the scene is flagged and saved before anything plays),
+            /// the Evening plays reveal, ending and credits, and the run afterwards
+            /// remembers it, keeps its last diary pages, and still reaches the map.
+            /// </summary>
+            private IEnumerable RunEnding()
+            {
+                RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+                if (s == null) { Fail("Ending: no run state."); yield break; }
+
+                int peak = BiomeLibrary.Count - 1;
+                var report = new ExpeditionReport { won = true, bossDefeated = true };
+                Story.DiaryManager.EvaluateAfterExpedition(s, peak, report);
+                Story.StoryDirector.OnDayResolved(s, peak, report);
+                SaveSystem.Instance.MarkDirty();
+                SaveSystem.Instance.AutoSave();
+
+                RunState onDisk = SaveSystem.Instance.Peek(0);
+                if (onDisk == null || !Story.StoryDirector.Has(onDisk, Story.StoryDirector.EndingPending))
+                    Fail("Ending: the pending ending was not saved before it played (a quit now would lose it).");
+
+                UIManager.Instance.Show(ScreenId.Evening);
+                foreach (var step in PlayOutCutscenes("ending", expect: true, timeout: 240f)) yield return step;
+
+                onDisk = SaveSystem.Instance.Peek(0);
+                if (!s.endingSeen || !Story.StoryDirector.Has(s, Story.StoryDirector.Epilogue))
+                    Fail("Ending: the credits ended but the run does not remember the ending.");
+                else if (onDisk == null || !onDisk.endingSeen)
+                    Fail("Ending: the ending is remembered in memory but not on disk.");
+                foreach (string id in new[] { "diary_mask", "diary_end", "diary_after" })
+                    if (!s.HasDiary(id)) Fail($"Ending: diary page '{id}' did not unlock.");
+                if (Story.StoryDirector.Due(s).Count != 0) Fail("Ending: a scene is still due after the credits.");
+                if (UIManager.Instance.Current != ScreenId.Evening)
+                    Fail($"Ending: the credits handed back to {UIManager.Instance.Current}, not the Evening.");
+                else Log($"Ending: reveal, ending and credits played; {s.unlockedDiary.Count} diary pages; back at the Evening.");
+                foreach (var step in Settle("after_ending_evening")) yield return step;
+
+                // The shop stays open: the diary has the last page, the map still works,
+                // and the menu shows the morning after.
+                DiaryScreen.OpenEntryId = "diary_after";
+                DiaryScreen.FromOpeningCinematic = false;
+                UIManager.Instance.Show(ScreenId.Diary);
+                foreach (var step in Settle("after_ending_diary")) yield return step;
+                UIManager.Instance.Show(ScreenId.BiomeMap);
+                foreach (var step in Settle("after_ending_map")) yield return step;
+                UIManager.Instance.Show(ScreenId.MainMenu);
+                // The key art fades up on unscaled time, which is wall-clock time under the harness.
+                for (float t0 = Time.unscaledTime; Time.unscaledTime - t0 < 1.2f;) yield return null;
+                foreach (var step in Settle("after_ending_menu")) yield return step;
+            }
+
             // ---------------------------------------------------------- plumbing
 
             private void OnUnityLog(string condition, string stackTrace, LogType type)
@@ -1274,6 +1375,8 @@ namespace AlchemistsArsenal.Core
                 Time.captureDeltaTime = 0f;
                 SaveSystem.SlotOverride = -1;
                 SettingsService.ExpeditionSpeedOverride = null;
+                CutsceneScreen.AutoAdvance = false;
+                StoryStage.SkipIntro = false;
 
                 string verdict = _errorCount == 0 ? "PASS" : $"FAIL ({_errorCount} error(s))";
                 _log.AppendLine($"FINGERPRINT: {string.Join(" ", _fingerprint)}");

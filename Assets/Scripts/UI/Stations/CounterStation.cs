@@ -83,9 +83,11 @@ namespace AlchemistsArsenal.UI.Stations
             _portrait.sprite = PixelSprites.Buyer(_buyer.PortraitId);
             _buyerName.text = _buyer.DisplayName;
             _buyerTitle.text = _buyer.Title;
-            _speech.text = _buyer.Greetings != null && _buyer.Greetings.Length > 0
-                ? _buyer.Greetings[(day - 1) % _buyer.Greetings.Length]
-                : "";
+            // Once the story has moved on, the people in it say so.
+            _speech.text = Story.StoryDirector.CounterLine(_buyer, s)
+                           ?? (_buyer.Greetings != null && _buyer.Greetings.Length > 0
+                               ? _buyer.Greetings[(day - 1) % _buyer.Greetings.Length]
+                               : "");
 
             BuildRoad(biome);
             BuildOffers();

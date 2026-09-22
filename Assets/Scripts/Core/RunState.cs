@@ -16,7 +16,7 @@ namespace AlchemistsArsenal.Core
     public class RunState
     {
         /// <summary>Bumped whenever the shape below changes; <see cref="SaveSystem.Migrate"/> handles older files.</summary>
-        public const int CurrentVersion = 1;
+        public const int CurrentVersion = 2;   // 2: storyFlags, endingSeen
 
         public int saveVersion = CurrentVersion;
         public int slot = 0;
@@ -61,6 +61,10 @@ namespace AlchemistsArsenal.Core
 
         public bool tutorialCompleted = false;
         public bool openingCinematicSeen = false;
+        /// <summary>What the story has told so far (see Story.StoryDirector).</summary>
+        public List<string> storyFlags = new List<string>();
+        /// <summary>The Peak has fallen and the ending has been watched to the credits.</summary>
+        public bool endingSeen = false;
         public long lastSavedUnixSeconds = 0;
 
         /// <summary>
