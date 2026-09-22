@@ -83,15 +83,9 @@ namespace AlchemistsArsenal.UI
             _speed2 = MiniBtn(ctrl.transform, "2x", () => SetFast(true));
             _pause = MiniBtn(ctrl.transform, "II", TogglePause);
 
-            // NEXT WAVE — clear the current wave and move on (playtest: waves drag).
-            _nextWave = UIFactory.Button(transform, "NEXT WAVE", () =>
-            {
-                if (_world != null && _world.Expedition != null) _world.Expedition.SkipCurrentWave();
-            }, primary: false);
-            // Out of the arena's middle: the fighter circles now and spent real time
-            // standing behind this button and behind the ticker below it.
-            UIFactory.Place(_nextWave.image.rectTransform, 0.855f, 0.175f, 0.985f, 0.235f);
-            _nextWave.gameObject.SetActive(false);
+            // No NEXT WAVE button. Since a road is only won by clearing every wave,
+            // skipping one was a silent forfeit dressed as a fast-forward. The 2x
+            // speed control is the answer to "waves drag".
 
             // The AI ticker gets its own slab so it reads as HUD rather than as text
             // floating in the middle of the fight.
@@ -117,7 +111,6 @@ namespace AlchemistsArsenal.UI
         }
 
         private Image _bossBar;
-        private Button _nextWave;
         private TextMeshProUGUI _bossPhaseText;
         private readonly List<TextMeshProUGUI> _pipLabels = new List<TextMeshProUGUI>();
 
@@ -236,10 +229,6 @@ namespace AlchemistsArsenal.UI
             if (_pips.gameObject.activeSelf != boss) _pips.gameObject.SetActive(boss);
             if (_bossPhaseText != null && _bossPhaseText.gameObject.activeSelf != boss)
                 _bossPhaseText.gameObject.SetActive(boss);
-
-            bool canSkip = exp.Phase == ExpeditionPhase.Waves;
-            if (_nextWave != null && _nextWave.gameObject.activeSelf != canSkip)
-                _nextWave.gameObject.SetActive(canSkip);
 
             string banner;
             if (boss)
