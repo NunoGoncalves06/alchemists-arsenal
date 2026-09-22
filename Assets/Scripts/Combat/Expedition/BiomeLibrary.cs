@@ -63,7 +63,7 @@ namespace AlchemistsArsenal.Combat
                         // Counter steers you to a Fire flask, which Water halves. That is
                         // the intended lesson — one flask cannot cover a whole road.
                         BiomeData.MakeWave(MonsterData.Create("Mossback", ElementType.Water, 46, 1.9f, 4, 8, "Frostmoss", 0.3f), 3, 0.6f, 1.4f),
-                    }, DefaultExpeditionData.BuildBoss("Elder Woodwose", ElementType.Nature, 300));
+                    }, DefaultExpeditionData.Woodwose());
                     break;
 
                 case 1:
@@ -96,7 +96,7 @@ namespace AlchemistsArsenal.Combat
                     {
                         BiomeData.MakeWave(MonsterData.Create("Coven Acolyte", ElementType.Arcane, 55, 2.4f, 8, 16, ""), 4, 0.5f, 1f),
                         BiomeData.MakeWave(MonsterData.Create("Warded Effigy", ElementType.Poison, 90, 1.5f, 10, 20, "Coven Sigil", 0.5f), 3, 0.7f, 1.6f),
-                    }, DefaultExpeditionData.Boss());
+                    }, DefaultExpeditionData.Matriarch());
                     break;
             }
 

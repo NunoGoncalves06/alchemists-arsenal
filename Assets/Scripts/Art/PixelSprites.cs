@@ -76,7 +76,8 @@ namespace AlchemistsArsenal.Art
         /// </summary>
         public static Sprite Silhouette(Sprite sprite)
         {
-            if (sprite == null || !_rowsOf.TryGetValue(sprite, out string[] rows)) return null;
+            if (sprite == null) return null;
+            if (!_rowsOf.TryGetValue(sprite, out string[] rows)) return PixelCanvas.SilhouetteOf(sprite);
             if (_silhouettes.TryGetValue(sprite, out var s) && s != null) return s;
             var white = new Dictionary<char, char>();
             foreach (string r in rows)

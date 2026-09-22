@@ -33,7 +33,10 @@ namespace AlchemistsArsenal.Combat
         [Tooltip("Safety cap — a wave that hasn't cleared by this is force-ended so the run can't hang.")]
         [Min(5f)] [SerializeField] private float maxWaveSeconds = 45f;
         [Tooltip("Safety cap on the boss fight so the run always resolves.")]
-        [Min(10f)] [SerializeField] private float maxBossSeconds = 60f;
+        // 60 -> 150: a guardian is meant to be a long fight now (it has the HP of a
+        // dozen monsters and phases that blunt the party's element), and this is a
+        // stalemate cap, not a clock the player is racing.
+        [Min(10f)] [SerializeField] private float maxBossSeconds = 150f;
         [Tooltip("Grace after the last flask is thrown, so a bomb still in the air can finish the job.")]
         [Min(0f)] [SerializeField] private float outOfFlasksGraceSeconds = 2.5f;
         [SerializeField] private bool bossEnabled = true;

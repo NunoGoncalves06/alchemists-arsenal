@@ -48,6 +48,7 @@ namespace AlchemistsArsenal.Core
         {
             _biome = biome;
             transform.position = Vector3.zero;
+            DangerZones.Clear();
 
             ElementalMatrix matrix = DefaultExpeditionData.Matrix();
 
@@ -157,6 +158,7 @@ namespace AlchemistsArsenal.Core
         private void OnDestroy()
         {
             BombProjectile2D.OnDetonatedGlobal -= OnDetonated;
+            DangerZones.Clear();
             // Belt-and-braces: the static registries must not carry this run's
             // corpses into tomorrow (reviewer P1). Monsters/adventurers are parented
             // under this root and die with it; stray projectiles get swept here.

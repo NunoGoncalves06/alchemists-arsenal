@@ -35,9 +35,11 @@ namespace AlchemistsArsenal.Vfx
 
         private void Awake()
         {
-            _sparks = Build("Sparks", SpriteMaterials.ParticleBlend.Alpha, gravity: 1.1f, SortingOrder, shrink: true);
-            _glow = Build("Glow", SpriteMaterials.ParticleBlend.Additive, gravity: 0f, SortingOrder + 1, shrink: false);
-            _smoke = Build("Smoke", SpriteMaterials.ParticleBlend.Alpha, gravity: -0.12f, SortingOrder - 1, shrink: false);
+            // Sparks stay square pixels. Glows and smoke are round: on the flat white
+            // square every flask flash was an orange box the size of its blast.
+            _sparks = Build("Sparks", SpriteMaterials.ParticleBlend.Alpha, null, gravity: 1.1f, SortingOrder, shrink: true);
+            _glow = Build("Glow", SpriteMaterials.ParticleBlend.Additive, ParticleArt.GlowDot, gravity: 0f, SortingOrder + 1, shrink: false);
+            _smoke = Build("Smoke", SpriteMaterials.ParticleBlend.Alpha, ParticleArt.Puff, gravity: -0.12f, SortingOrder - 1, shrink: false);
         }
 
         private void OnEnable() => Active = this;
@@ -47,7 +49,8 @@ namespace AlchemistsArsenal.Vfx
             if (Active == this) Active = null;
         }
 
-        private ParticleSystem Build(string name, SpriteMaterials.ParticleBlend blend, float gravity, int order, bool shrink)
+        private ParticleSystem Build(string name, SpriteMaterials.ParticleBlend blend, Texture texture, float gravity, int order,
+            bool shrink)
         {
             var go = new GameObject(name);
             go.transform.SetParent(transform, false);
@@ -80,7 +83,7 @@ namespace AlchemistsArsenal.Vfx
                 : AnimationCurve.Linear(0f, 0.6f, 1f, 1.4f));
 
             var r = go.GetComponent<ParticleSystemRenderer>();
-            r.sharedMaterial = SpriteMaterials.Particle(blend);
+            r.sharedMaterial = SpriteMaterials.Particle(blend, texture);
             r.sortingOrder = order;
             r.renderMode = ParticleSystemRenderMode.Billboard;
 
@@ -120,7 +123,7 @@ namespace AlchemistsArsenal.Vfx
         public void Explosion(Vector2 pos, Color color, float radius)
         {
             float r = Mathf.Max(0.6f, radius);
-            Emit(_glow, pos, Vector2.zero, WithAlpha(color, 0.85f), r * 2.2f, 0.22f);
+            Emit(_glow, pos, Vector2.zero, WithAlpha(color, 0.7f), r * 2f, 0.22f);   // its rim is the blast edge
             Emit(_glow, pos, Vector2.zero, new Color(1f, 0.97f, 0.85f, 0.9f), r * 0.9f, 0.12f);
             int sparks = Mathf.RoundToInt(14 + r * 6);
             for (int i = 0; i < sparks; i++)

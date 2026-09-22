@@ -33,12 +33,13 @@ namespace AlchemistsArsenal.Data
         public float MoveSpeedMultiplier => moveSpeedMultiplier;
 
         public static BossPhaseData Create(BossPhase phase, float dwell,
-            BossConsideration[] considerations, BossAttackPattern[] attacks)
+            BossConsideration[] considerations, BossAttackPattern[] attacks, float moveSpeedMultiplier = 1f)
         {
             var pd = CreateInstance<BossPhaseData>();
             pd.name = "BossPhase_" + phase;
             pd.phase = phase;
             pd.minDwellSeconds = dwell;
+            pd.moveSpeedMultiplier = Mathf.Clamp(moveSpeedMultiplier, 0.1f, 3f);
             pd.entryConsiderations = considerations ?? new BossConsideration[0];
             pd.attackPatterns = attacks ?? new BossAttackPattern[0];
             return pd;

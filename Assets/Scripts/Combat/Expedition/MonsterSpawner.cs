@@ -62,29 +62,45 @@ namespace AlchemistsArsenal.Combat
             return go;
         }
 
+        /// <summary>
+        /// The guardian. Its physics root is never scaled: the old boss was one sprite
+        /// scaled 2.2x on the body itself, which scaled its collider to a 2.42-unit
+        /// radius, wider than the drawn figure, so flasks burst on thin air beside it
+        /// and it shouldered heroes it was not touching. The body is now a modest
+        /// footprint in the lower body, heavy (a blast barely rocks it; its steering
+        /// scales with mass, so it still walks at its own pace), and the figure is a
+        /// rig on a child (<see cref="Vfx.BossVisual"/>) that never touches physics.
+        /// Its HP bar is the HUD's; a floating bar over a figure this tall would sit
+        /// off the top of the screen.
+        /// </summary>
         public GameObject SpawnBoss(BossDefinition boss)
         {
             if (boss == null) return null;
 
-            var go = NewBody("Boss_" + boss.DisplayName, new Vector2(spawnEdgeX - 1f, 0f),
-                Team.Monster, boss.CoreElement, boss.MaxHealth, 1.1f);
+            string look = boss.VisualId;
+            var go = NewBody("Boss_" + boss.DisplayName, new Vector2(spawnEdgeX - 2.5f, 0f),
+                Team.Monster, boss.CoreElement, boss.MaxHealth, Vfx.BossVisual.ColliderRadius(look));
             go.transform.SetParent(transform, worldPositionStays: true);
+            go.GetComponent<Rigidbody2D>().mass = BossMass;
+            go.GetComponent<CombatantBody>().SetDeathLinger(Vfx.BossVisual.DeathSeconds);
 
-            go.AddComponent<MonsterWalker>().Configure(1.4f);
+            // It stops at arm's length, not on top of whoever it is chasing.
+            go.AddComponent<MonsterWalker>().Configure(1.5f, stopAt: 2.3f, contact: true);
 
             go.AddComponent<ElementalDamageAccumulator>();
             var executor = go.AddComponent<BossAttackExecutor>();
-            executor.Configure(elementalMatrix);
+            executor.Configure(elementalMatrix, boss.ProjectileOrigin);
 
             var phase = go.AddComponent<BossPhaseManager>();
             phase.Configure(boss, executor);
 
-            AddSprite(go, PixelSprites.Boss(), 5);
-            go.transform.localScale = Vector3.one * 2.2f;
+            Vfx.BossVisual.Attach(go, boss);
             go.SetActive(true);
-            HealthBar2D.Attach(go.GetComponent<CombatantBody>(), width: 2.6f, lift: 1.5f);
             return go;
         }
+
+        /// <summary>A boss outweighs a 170 HP brute four times over.</summary>
+        public const float BossMass = 10f;
 
         // ---------------------------------------------------------------- helpers
 

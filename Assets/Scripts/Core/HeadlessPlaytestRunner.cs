@@ -1052,13 +1052,24 @@ namespace AlchemistsArsenal.Core
 
                 float start = Time.time, nextCapture = 0f;
                 const float Timeout = 240f;
+                var watch = new BossWatch();
                 while (world.Expedition.Phase != ExpeditionPhase.Won && world.Expedition.Phase != ExpeditionPhase.Lost
                        && Time.time - start < Timeout)
                 {
-                    if (capture && world.Expedition.Phase == ExpeditionPhase.BossFight && Time.time >= nextCapture)
+                    if (world.Expedition.Phase == ExpeditionPhase.BossFight && world.Expedition.BossInstance != null)
                     {
-                        Capture($"{label}_t{Mathf.RoundToInt(Time.time - start):000}s");
-                        nextCapture = Time.time + 3f;
+                        watch.Attach(world.Expedition.BossInstance);
+                        watch.Tick();
+                        if (capture)
+                        {
+                            foreach (string shot in watch.TakeShots()) Capture($"{label}_{shot}");
+                            if (Time.time >= nextCapture)
+                            {
+                                Capture($"{label}_t{Mathf.RoundToInt(Time.time - start):000}s");
+                                nextCapture = Time.time + 5f;
+                            }
+                        }
+                        if (!watch.BoundsChecked && watch.Settled) CheckBossFigure(watch, label);
                     }
                     yield return null;
                 }
@@ -1069,9 +1080,26 @@ namespace AlchemistsArsenal.Core
                     Fail($"Scenario {label} reported a WIN with only {world.Expedition.WavesCleared}/{world.Expedition.TotalWaves} waves.");
 
                 string summary = FightSummary(world, Time.time - start);
+                if (watch.Boss != null || watch.FightSeconds > 0f) summary += $"/bt{watch.FightSeconds:F1}";
                 Log($"Scenario {label} ({BiomeLibrary.Name(biome)}, party x{party.Count}): {summary} — {world.Expedition.OutcomeReason}");
+                if (watch.Telegraphs > 0)
+                    Log($"  {label} boss: {watch.Telegraphs} windups ({watch.ShapeCounts}), {watch.Landings} landings, " +
+                        $"{watch.HeroHits} hero hits, phases {watch.PhasePath}.");
                 _fingerprint.Add($"{label}={summary}");
-                if (capture) Capture($"{label}_end");
+                if (capture && world.Expedition.Phase == ExpeditionPhase.Won && watch.Telegraphs > 0)
+                {
+                    // Let the guardian come apart on camera before the arena is torn down.
+                    float died = Time.time;
+                    bool mid = false;
+                    while (Time.time - died < 1.8f)
+                    {
+                        if (!mid && Time.time - died >= 0.55f) { Capture($"{label}_death"); mid = true; }
+                        yield return null;
+                    }
+                    Capture($"{label}_remains");
+                }
+                else if (capture) Capture($"{label}_end");
+                if (capture) CheckMaterials(root, label);
 
                 Destroy(root);
                 yield return null;
@@ -1080,6 +1108,129 @@ namespace AlchemistsArsenal.Core
                 foreach (var c in canvases) if (c != null) c.enabled = true;
                 st.day = savedDay;
                 st.replayBiomeIndex = savedReplay;
+            }
+
+            /// <summary>
+            /// Follows one boss through its fight: what it wound up, what landed, the
+            /// phases it went through, and the moments worth a screenshot (arrival, the
+            /// first windup of each shape, the first frame of each phase).
+            /// </summary>
+            private sealed class BossWatch
+            {
+                public GameObject Boss;
+                public int Telegraphs, Landings, HeroHits;
+                public float FightSeconds;
+                public bool BoundsChecked;
+                public string PhasePath = "Neutral";
+                private BossPhaseManager _phase;
+                private readonly Dictionary<BossAttackShape, int> _shapes = new Dictionary<BossAttackShape, int>();
+                private readonly List<(float at, string name)> _due = new List<(float, string)>();
+                private readonly HashSet<string> _seen = new HashSet<string>();
+                private float _start;
+
+                public bool Settled => _phase != null && !_phase.IsEntering && Time.time - _start > 0.3f;
+                public string ShapeCounts
+                {
+                    get
+                    {
+                        var parts = new List<string>();
+                        foreach (var kv in _shapes) parts.Add($"{kv.Key} x{kv.Value}");
+                        return string.Join(", ", parts);
+                    }
+                }
+
+                public void Attach(GameObject boss)
+                {
+                    if (boss == Boss) return;
+                    Boss = boss;
+                    _start = Time.time;
+                    _phase = boss.GetComponent<BossPhaseManager>();
+                    var exec = boss.GetComponent<BossAttackExecutor>();
+                    if (exec != null)
+                    {
+                        exec.OnTelegraph += (p, o, spots, windup) =>
+                        {
+                            Telegraphs++;
+                            _shapes.TryGetValue(p.Shape, out int n);
+                            _shapes[p.Shape] = n + 1;
+                            Once("telegraph_" + p.Shape.ToString().ToLowerInvariant(), windup * 0.7f);
+                        };
+                        exec.OnStrike += (p, at, caught) => { Landings++; HeroHits += caught; };
+                    }
+                    if (_phase != null)
+                        _phase.OnPhaseChanged += (from, to) =>
+                        {
+                            PhasePath += ">" + to;
+                            Once("phase_" + to.ToString().ToLowerInvariant(), 0.45f);
+                        };
+                    Once("entrance", 0.7f);
+                    Once("arrived", (_phase != null && _phase.Definition != null ? _phase.Definition.EntranceSeconds : 1.5f) + 0.4f);
+                }
+
+                public void Tick()
+                {
+                    var body = Boss != null ? Boss.GetComponent<CombatantBody>() : null;
+                    if (body != null && body.IsAlive) FightSeconds = Time.time - _start;
+                }
+
+                private void Once(string name, float delay)
+                {
+                    if (_seen.Add(name)) _due.Add((Time.time + delay, name));
+                }
+
+                public IEnumerable<string> TakeShots()
+                {
+                    for (int i = _due.Count - 1; i >= 0; i--)
+                    {
+                        if (Time.time < _due[i].at) continue;
+                        string n = _due[i].name;
+                        _due.RemoveAt(i);
+                        yield return n;
+                    }
+                }
+            }
+
+            /// <summary>
+            /// The boss's physics footprint must sit inside its drawn figure. The old
+            /// boss scaled its collider with its sprite to a 2.42-unit radius, wider
+            /// than the art: flasks burst on thin air beside it.
+            /// </summary>
+            private void CheckBossFigure(BossWatch watch, string label)
+            {
+                watch.BoundsChecked = true;
+                var col = watch.Boss.GetComponent<Collider2D>();
+                bool any = false;
+                Bounds art = default;
+                foreach (var sr in watch.Boss.GetComponentsInChildren<SpriteRenderer>())
+                {
+                    if (!sr.enabled || sr.sprite == null) continue;
+                    string n = sr.gameObject.name;
+                    if (n == "Shadow" || n == "Glow" || n == "Ward" || n == "Flash") continue;
+                    if (!any) { art = sr.bounds; any = true; } else art.Encapsulate(sr.bounds);
+                }
+                if (col == null || !any) { Fail($"{label}: boss has no collider or no drawn figure."); return; }
+                Bounds c = col.bounds;
+                bool inside = c.min.x >= art.min.x && c.max.x <= art.max.x && c.min.y >= art.min.y && c.max.y <= art.max.y;
+                string msg = $"{label}: collider {c.size.x:0.00}x{c.size.y:0.00} at {(Vector2)c.center}, figure {art.size.x:0.00}x{art.size.y:0.00} at {(Vector2)art.center}";
+                if (inside) Log(msg + " - footprint inside the figure.");
+                else Fail(msg + " - the collider pokes out of the drawn boss.");
+            }
+
+            /// <summary>Every sprite draws with a material built for its own texture (never one shared across textures).</summary>
+            private void CheckMaterials(GameObject root, string label)
+            {
+                int bad = 0, seen = 0;
+                foreach (var sr in root.GetComponentsInChildren<SpriteRenderer>(true))
+                {
+                    if (sr.sprite == null || sr.sharedMaterial == null) continue;
+                    seen++;
+                    Texture mt = sr.sharedMaterial.mainTexture;
+                    if (mt != null && mt != sr.sprite.texture)
+                    {
+                        if (bad++ < 3) Fail($"{label}: '{sr.name}' draws {sr.sprite.texture.name} with a material for {mt.name}.");
+                    }
+                }
+                if (bad == 0) Log($"{label}: {seen} sprite renderers, each on its own texture's material.");
             }
 
             // ---------------------------------------------------------- plumbing
