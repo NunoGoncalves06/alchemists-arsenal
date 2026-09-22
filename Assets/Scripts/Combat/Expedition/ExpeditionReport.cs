@@ -25,6 +25,10 @@ namespace AlchemistsArsenal.Combat
         public int partyTotal;
         public int partyDown;
 
+        /// <summary>Roster ids of the heroes who went down, in the order they fell.
+        /// BeginEvening benches them for a day (<see cref="Data.HeroCatalog.ApplyInjuries"/>).</summary>
+        public readonly List<string> downedHeroIds = new List<string>();
+
         public int goldFromLoot;
         public int goldPaidByGrade;   // filled by Economy at hand-off to Evening
         public bool perfectTip;

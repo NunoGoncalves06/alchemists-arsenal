@@ -79,6 +79,11 @@ namespace AlchemistsArsenal.Combat
             if (body.Team == Team.Adventurer)
             {
                 Report.partyDown++;
+                // Who, not just how many: the roster benches exactly these heroes.
+                var hero = body.GetComponent<HeroTag>();
+                if (hero != null && !string.IsNullOrEmpty(hero.heroId)
+                    && !Report.downedHeroIds.Contains(hero.heroId))
+                    Report.downedHeroIds.Add(hero.heroId);
                 return;
             }
 

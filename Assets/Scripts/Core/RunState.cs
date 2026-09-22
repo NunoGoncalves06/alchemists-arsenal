@@ -119,6 +119,31 @@ namespace AlchemistsArsenal.Core
             }
             return party;
         }
+        /// <summary>
+        /// Keep who is marked "going out" honest for today: trim to the cap, drop
+        /// anyone resting, and make sure at least one hero is marked. If the whole
+        /// roster is resting the first hero limps out, because an expedition with no
+        /// heroes never resolves (ExpeditionManager reads an empty list as "nobody
+        /// down yet"). Shared by save migration and the nightly roll-over.
+        /// </summary>
+        public void EnsureDeployment()
+        {
+            if (roster == null || roster.Count == 0) return;
+            int cap = DeployCap, used = 0;
+            foreach (HeroRecord h in roster)
+            {
+                if (h == null) continue;
+                if (h.deployed && (used >= cap || !h.IsFit(day))) h.deployed = false;
+                if (h.deployed) used++;
+            }
+            if (used > 0) return;
+
+            HeroRecord pick = null;
+            foreach (HeroRecord h in roster)
+                if (h != null && h.IsFit(day)) { pick = h; break; }
+            (pick ?? roster[0]).deployed = true;
+        }
+
         public bool HasDiary(string id) => unlockedDiary.Contains(id);
 
         public void AddGold(int amount)

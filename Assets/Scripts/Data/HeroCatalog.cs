@@ -56,6 +56,27 @@ namespace AlchemistsArsenal.Data
         public static bool CanLevel(HeroRecord hero) => hero != null && hero.level < MaxLevel;
 
         /// <summary>
+        /// Bench everyone who went down on <paramref name="resolvedDay"/> until the day
+        /// after tomorrow, i.e. they miss exactly one expedition. Call before the day
+        /// rolls over; then <see cref="RunState.EnsureDeployment"/> once it has.
+        /// Returns how many were benched.
+        /// </summary>
+        public static int ApplyInjuries(RunState s, IEnumerable<string> downedIds, int resolvedDay)
+        {
+            if (s == null || s.roster == null || downedIds == null) return 0;
+            int benched = 0;
+            foreach (string id in downedIds)
+            {
+                HeroRecord h = s.FindHero(id);
+                if (h == null) continue;
+                h.restUntilDay = resolvedDay + 2;
+                h.deployed = false;
+                benched++;
+            }
+            return benched;
+        }
+
+        /// <summary>
         /// Hiring is gated on having actually won a day, not just on gold. A lost
         /// expedition pays no fee at all (only loot), so a player who spends to
         /// zero and then loses can spiral — proving a win first is the guard.

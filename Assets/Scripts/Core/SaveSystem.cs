@@ -236,22 +236,8 @@ namespace AlchemistsArsenal.Core
                     s.roster.Count - Data.HeroCatalog.MaxRoster);
 
             // Trim deployment to the cap, dropping anyone unfit, then guarantee at
-            // least one hero is going out: ExpeditionManager reads an empty
-            // adventurer list as "nobody down yet", so a party of nobody would
-            // leave the expedition running forever.
-            int cap = s.DeployCap, used = 0;
-            foreach (Data.HeroRecord h in s.roster)
-            {
-                if (h.deployed && (used >= cap || !h.IsFit(s.day))) h.deployed = false;
-                if (h.deployed) used++;
-            }
-            if (used == 0)
-            {
-                Data.HeroRecord pick = null;
-                foreach (Data.HeroRecord h in s.roster)
-                    if (h.IsFit(s.day)) { pick = h; break; }
-                (pick ?? s.roster[0]).deployed = true;   // whole roster resting: they limp out
-            }
+            // least one hero is going out (see RunState.EnsureDeployment).
+            s.EnsureDeployment();
         }
     }
 }
