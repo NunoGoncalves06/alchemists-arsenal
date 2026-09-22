@@ -28,7 +28,7 @@ namespace AlchemistsArsenal.Combat
         /// wider bar, further above its head.
         /// </summary>
         public static HealthBar2D Attach(CombatantBody body, float width = 0.9f, float lift = 0.62f,
-            int sortingOrder = 20)
+            int sortingOrder = 300)
         {
             if (body == null) return null;
 
@@ -73,9 +73,10 @@ namespace AlchemistsArsenal.Combat
         {
             if (_body == null || _fill == null) { Destroy(gameObject); return; }
 
+            // A fallen body tumbles and fades; its bar just goes.
             if (!_body.IsAlive)
             {
-                if (_last != 0f) Apply(0f);
+                if (gameObject.activeSelf) gameObject.SetActive(false);
                 return;
             }
 

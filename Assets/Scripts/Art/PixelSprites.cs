@@ -15,7 +15,7 @@ namespace AlchemistsArsenal.Art
     /// Aseprite at the same dimensions and assign it to the matching data SO to
     /// take over, no code change (see docs/ART_BRIEF.md).
     /// </summary>
-    public static class PixelSprites
+    public static partial class PixelSprites
     {
         private const float PPU = 16f;
 
@@ -59,9 +59,34 @@ namespace AlchemistsArsenal.Art
             ['y'] = new Color32(0xe8, 0xb6, 0x4c, 0xff), // candle gold
             ['#'] = new Color32(0x1b, 0x14, 0x1f, 0xff), // ui panel fill
             ['+'] = new Color32(0x33, 0x26, 0x3c, 0xff), // ui panel inner
+            ['@'] = new Color32(0xff, 0xff, 0xff, 0xff), // pure white (hit-flash silhouettes, highlights)
         };
 
         private static readonly Dictionary<string, Sprite> _cache = new Dictionary<string, Sprite>();
+
+        /// <summary>The grid each baked sprite came from, so a white silhouette can be
+        /// baked for it later (the baked textures are not CPU-readable).</summary>
+        private static readonly Dictionary<Sprite, string[]> _rowsOf = new Dictionary<Sprite, string[]>();
+        private static readonly Dictionary<Sprite, Sprite> _silhouettes = new Dictionary<Sprite, Sprite>();
+
+        /// <summary>
+        /// A pure-white silhouette of <paramref name="sprite"/>, same size and pivot, for
+        /// hit flashes. Tinting can only darken a sprite, so a flash needs its own
+        /// texture. Null for sprites that were not baked from a grid here.
+        /// </summary>
+        public static Sprite Silhouette(Sprite sprite)
+        {
+            if (sprite == null || !_rowsOf.TryGetValue(sprite, out string[] rows)) return null;
+            if (_silhouettes.TryGetValue(sprite, out var s) && s != null) return s;
+            var white = new Dictionary<char, char>();
+            foreach (string r in rows)
+                foreach (char c in r)
+                    if (c != '.' && !white.ContainsKey(c)) white[c] = '@';
+            var tex = BakeTexture(rows, white);
+            s = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), sprite.pivot / sprite.rect.size, sprite.pixelsPerUnit);
+            _silhouettes[sprite] = s;
+            return s;
+        }
 
         // ONE material PER TEXTURE — never one shared material for every sprite.
         //
@@ -76,23 +101,8 @@ namespace AlchemistsArsenal.Art
         // where the adventurer and the boss drew as the same sprite at two sizes.
         //
         // Keyed by texture so sprites sharing a texture still batch together.
-        private static readonly Dictionary<Texture, Material> _materials = new Dictionary<Texture, Material>();
-
-        /// <summary>The unlit material for this sprite's texture (2D URP needs an
-        /// unlit shader or sprites render black with no Light2D in the scene).</summary>
-        public static Material MaterialFor(Sprite sprite)
-        {
-            if (sprite == null || sprite.texture == null) return null;
-            if (_materials.TryGetValue(sprite.texture, out Material cached) && cached != null) return cached;
-
-            Shader shader = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default")
-                            ?? Shader.Find("Sprites/Default");
-            if (shader == null) return null;
-
-            var material = new Material(shader) { name = "PixelUnlit_" + sprite.texture.name, mainTexture = sprite.texture };
-            _materials[sprite.texture] = material;
-            return material;
-        }
+        /// <summary>The per-texture unlit material (see <see cref="SpriteMaterials"/>).</summary>
+        public static Material MaterialFor(Sprite sprite) => SpriteMaterials.For(sprite);
 
         // ---- public accessors ----------------------------------------------
 
@@ -230,6 +240,18 @@ namespace AlchemistsArsenal.Art
             var tex = BakeTexture(rows);
             s = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), PPU);
             _cache[key] = s;
+            _rowsOf[s] = rows;
+            return s;
+        }
+
+        /// <summary>Bake with a custom pivot (0..1), e.g. feet-anchored characters and props.</summary>
+        private static Sprite BakePivot(string key, string[] rows, Vector2 pivot01, Dictionary<char, char> swap = null)
+        {
+            if (_cache.TryGetValue(key, out var s) && s != null) return s;
+            var tex = BakeTexture(rows, swap);
+            s = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), pivot01, PPU);
+            _cache[key] = s;
+            _rowsOf[s] = rows;
             return s;
         }
 
@@ -239,6 +261,7 @@ namespace AlchemistsArsenal.Art
             var tex = BakeTexture(rows, swap);
             s = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), PPU);
             _cache[key] = s;
+            _rowsOf[s] = rows;
             return s;
         }
 
@@ -248,14 +271,24 @@ namespace AlchemistsArsenal.Art
             int w = 0;
             foreach (var r in rows) if (r.Length > w) w = r.Length;
 
-            // Every row must be the same width — a ragged constant is an authoring
-            // typo that would skew the sprite. Warn loudly; render it padded.
+            // Every row must be the same width, and every glyph must be in the palette.
+            // Both are authoring typos (a ragged row skews the sprite, an unknown glyph
+            // silently draws a hole), so both are errors: the headless playtest fails
+            // on any logged error, which is how they get caught.
             foreach (var r in rows)
                 if (r.Length != w)
                 {
-                    Debug.LogWarning($"[PixelSprites] ragged sprite: a row is {r.Length} wide, expected {w}. Fix the string grid.");
+                    Debug.LogError($"[PixelSprites] ragged sprite: a row is {r.Length} wide, expected {w}. Fix the string grid.");
                     break;
                 }
+            foreach (var r in rows)
+                foreach (char c in r)
+                    if (!Pal.ContainsKey(c) && (swap == null || !swap.ContainsKey(c)))
+                    {
+                        Debug.LogError($"[PixelSprites] unknown glyph '{c}' in a sprite grid.");
+                        goto glyphsChecked;
+                    }
+            glyphsChecked:
 
             var tex = new Texture2D(Mathf.Max(1, w), Mathf.Max(1, h), TextureFormat.RGBA32, false)
             { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "px" };
@@ -290,636 +323,5 @@ namespace AlchemistsArsenal.Art
                 _ => new Dictionary<char, char>(), // Nature = the default greens
             };
         }
-
-        // ================================================================
-        //  SPRITE DATA  (top row = top of image)
-        // ================================================================
-
-        // 28 x 28 — the bubbling cauldron: fat tapering body, 3 legs, side handles,
-        // lighter rim, green brew, rising bubbles. Redrawn on a strict 28-wide grid —
-        // the previous version had rows of two different lengths and handles that
-        // landed on a different column each row, so the right-hand rim rendered as
-        // loose blocks floating off the pot.
-        private static readonly string[] CAULDRON =
-        {
-            ".............HH.............",
-            "............HGGH............",
-            "............HGGH............",
-            ".......HH....HH....HH.......",
-            "......HGGH........HGGH......",
-            "......HGGH........HGGH......",
-            ".......HH..........HH.......",
-            ".KKKKKKKKKKKKKKKKKKKKKKKKKK.",
-            ".K444444444444444444444444K.",
-            ".K333333333333333333333333K.",
-            "KK1GHGGGHGGGHGGGHGGGHGGGH1KK",
-            "KK1GHHGGHHGGHHGGHHGGHHGGH1KK",
-            "KK1KKKKKKKKKKKKKKKKKKKKKK1KK",
-            "K23333333333333333333333332K",
-            "K23333334433333333333333332K",
-            "K23333344443333333333333332K",
-            "K23333344433333333333333332K",
-            "K23333334333333333333333332K",
-            "K23333333333333333333333332K",
-            "K23333333333333333333333332K",
-            "K23333333333333333333333332K",
-            ".K233333333333333333333332K.",
-            "..K2222222222222222222222K..",
-            "...K22222222222222222222K...",
-            ".....K2222222222222222K.....",
-            "......K22222222222222K......",
-            ".......K2K..K2K...K2K.......",
-            ".......K2K..K2K...K2K.......",
-        };
-
-        // 16 x 16 witch-hat + moon crest for the boot splash
-        private static readonly string[] LOGO =
-        {
-            "................",
-            ".......pp.......",
-            "......pMMp......",
-            "......pMMp......",
-            ".....pMMMMp.....",
-            ".....pMMMMp.....",
-            "....pMMMMMMp....",
-            "...pMMMMMMMMp...",
-            "..pMMMMMMMMMMp..",
-            ".ppppppppppppp..",
-            ".pcccccccccccp..",
-            ".ppppppppppppp..",
-            "......pKKp......",
-            ".....pKKKKp.....",
-            "......pKKp......",
-            "................",
-        };
-
-        // 10 x 10 coin
-        private static readonly string[] COIN =
-        {
-            "...KKKK...",
-            ".KKyyyyKK.",
-            ".KyYYYYyK.",
-            "KyYYccYYyK",
-            "KyYcccYYyK",
-            "KyYccYYYyK",
-            "KyYYYYYYyK",
-            ".KyYYYYyK.",
-            ".KKyyyyKK.",
-            "...KKKK...",
-        };
-
-        // 16 x 18 — Rookie adventurer (red tunic, little sword, round head)
-        private static readonly string[] ROOKIE =
-        {
-            "................",
-            ".....KKKK.......",
-            "....KSSSSK......",
-            "...KSSSSSSK.....",
-            "...KSssssSK.....",
-            "...KSsKsKsK.....",
-            "...KSssssSK.....",
-            "....KSssSK......",
-            "...KKttttKK...L.",
-            "..KtTTTTTTtK..L.",
-            "..KtTtTTtTtK.LL.",
-            "..sKtTTTTtKs.L..",
-            "..sKttttttKs.L..",
-            "...KttttttK..K..",
-            "...KwwKKwwK.....",
-            "...Kww.KwwK.....",
-            "..Kww..KwwK.....",
-            "..KK....KK......",
-        };
-
-        // 16 x 16 — Bark Treant (nature)
-        private static readonly string[] TREANT =
-        {
-            "................",
-            "....KK...KK.....",
-            "...KnnK.KnnK....",
-            "...KnNnKnNnK....",
-            "..KnNNnnnNNnK...",
-            "..KnNnnnnnNnK...",
-            "..KnNnKKKnNnK...",
-            "..KnNnKGKnNnK...",
-            "..KnNnnKnnNnK...",
-            "...KnNnnnNnK....",
-            "...KwwNNNwwK....",
-            "...KwWwnwWwK....",
-            "...KwWwwwWwK....",
-            "...KwwK.KwwK....",
-            "..KwwK...KwwK...",
-            "..KKK.....KKK...",
-        };
-
-        // 13 x 14 — Emberling (fire imp)
-        private static readonly string[] EMBERLING =
-        {
-            "......YY.....",
-            ".....YRRY....",
-            "....KRRRRK...",
-            "...KRrRRrRK..",
-            "..KRRRKRRRK..",
-            "..KRRKYKRRK..",
-            "..KRRRRRRRK..",
-            "..KRrRRRRrK..",
-            "...KRRRRRK...",
-            "....KRKRK....",
-            "....KRK.KRK..",
-            "...KRK...KRK.",
-            "...KK.....KK.",
-            ".............",
-        };
-
-        // 13 x 14 — Frostkin (water/ice)
-        private static readonly string[] FROSTKIN =
-        {
-            "......CC.....",
-            ".....CBBC....",
-            "....KBBBBK...",
-            "...KBbBBbBK..",
-            "..KBBBKBBBK..",
-            "..KBBKCKBBK..",
-            "..KBBBBBBBK..",
-            "..KBbBBBBbK..",
-            "..KBBBBBBBK..",
-            "...KBCBCBK...",
-            "...KBK.KBK...",
-            "..KBK...KBK..",
-            "..KK.....KK..",
-            ".............",
-        };
-
-        // 13 x 14 — Coven Acolyte (arcane)
-        private static readonly string[] ACOLYTE =
-        {
-            "......KK.....",
-            ".....KppK....",
-            "....KpMMpK...",
-            "...KpMMMMpK..",
-            "...KpMsMspK..",
-            "...KpMMMMpK..",
-            "..KppMMMMppK.",
-            "..KpPPPPPPpK.",
-            "..KpPpPPpPpK.",
-            "..KpPPPPPPpK.",
-            "...KpPPPPpK..",
-            "...KppKKppK..",
-            "..KKK...KKK..",
-            ".............",
-        };
-
-        // 13 x 13 — Miremaw (poison)
-        private static readonly string[] MIREMAW =
-        {
-            ".............",
-            "...KK...KK...",
-            "..KppK.KppK..",
-            "..KpMpKpMpK..",
-            ".KppMMpMMppK.",
-            ".KpMMMMMMMpK.",
-            ".KpMKMKMKMpK.",
-            ".KpMMMMMMMpK.",
-            ".KpMHKHKHMpK.",
-            "..KpMMMMMpK..",
-            "..KppKpKppK..",
-            "..KK..K..KK..",
-            ".............",
-        };
-
-        // 28 x 28 — The Coven Matriarch (boss): tall hooded arcane figure, four arms
-        private static readonly string[] BOSS =
-        {
-            "............KKKK............",
-            "..........KKppppKK..........",
-            ".........KpMMMMMMpK.........",
-            "........KpMMMMMMMMpK........",
-            ".......KpMMMMMMMMMMpK.......",
-            ".......KpMMsMMMMsMMpK.......",
-            "......KpMMMMMMMMMMMMpK......",
-            "......KpMMMMKMMKMMMMpK......",
-            "......KpMMMMMMMMMMMMpK......",
-            ".....KppMMMMMMMMMMMMppK.....",
-            "..K..KpPPPPPPPPPPPPPPpK..K..",
-            ".KpK.KpPPPPPPPPPPPPPPpK.KpK.",
-            "KpMpKKpPPMMPPPPPPMMPPpKKpMpK",
-            "KpMpppPPPMMPPPPPPMMPPPpppMpK",
-            "KpMMMPPPPPPPPPPPPPPPPPPMMMpK",
-            ".KpMMPPPPPPMMMMMMPPPPPPMMpK.",
-            "..KppPPPPPPMMYYMMPPPPPPppK..",
-            "...KpPPPPPPPMMMMPPPPPPPpK...",
-            "...KpPPPPPPPPPPPPPPPPPPpK...",
-            "...KpPPPPPPPPPPPPPPPPPPpK...",
-            "...KppPPPPPPPPPPPPPPPPppK...",
-            "....KpPPPPPPPPPPPPPPPPpK....",
-            "....KppPPPPPPPPPPPPPPppK....",
-            ".....KpppPPPPPPPPPPpppK.....",
-            "......KKppppKKKKppppKK......",
-            ".......KKKK......KKKK.......",
-            "......K11K........K11K......",
-            "......KKKK........KKKK......",
-        };
-
-        // 12 x 12 — sleeping cat for the menu counter
-        private static readonly string[] CAT =
-        {
-            "............",
-            "..K......K..",
-            ".KKK....KKK.",
-            ".K1KKKKKK1K.",
-            "K1111111111K",
-            "K1111111111K",
-            "K11K1111K11K",
-            "K1111111111K",
-            ".K11111111K.",
-            "..KKKKKKKK.K",
-            "........KKKK",
-            "............",
-        };
-
-        // 9 x 5 — downward-pointing tutorial arrow (wide base at top, tip at bottom)
-        private static readonly string[] POINTER_ARROW =
-        {
-            ".KKKKKKK.",
-            ".KyyyyyK.",
-            "..KyyyK..",
-            "...KyK...",
-            "....K....",
-        };
-
-        // 12 x 12 — counter service bell (the Counter station's icon)
-        private static readonly string[] BELL =
-        {
-            ".....KK.....",
-            "....KyyK....",
-            "...KyyyyK...",
-            "...KyYYyK...",
-            "..KyYYYYyK..",
-            "..KyYYYYyK..",
-            ".KyYYYYYYyK.",
-            ".KyYYYYYYyK.",
-            "KKKKKKKKKKKK",
-            "....KyyK....",
-            "....KKKK....",
-            "............",
-        };
-
-        // 14 x 11 — mortar and pestle (the Prep station's icon)
-        private static readonly string[] MORTAR =
-        {
-            "..........KK..",
-            ".........KllK.",
-            "........KllK..",
-            ".......KllK...",
-            "..KKKKKKKKKKK.",
-            ".KwWWWWWWWWWwK",
-            ".KwWWWWWWWWWwK",
-            "..KwWWWWWWWwK.",
-            "...KwWWWWWwK..",
-            "....KwwwwwK...",
-            ".....KKKKK....",
-        };
-
-        // 10 x 13 — wooden stirring spoon (follows the cursor over the pot)
-        private static readonly string[] SPOON =
-        {
-            "...KKKK...",
-            "..KWWWWK..",
-            ".KWwwwwWK.",
-            ".KWwwwwWK.",
-            "..KWWWWK..",
-            "...KWWK...",
-            "...KWWK...",
-            "...KWWK...",
-            "...KWWK...",
-            "...KWWK...",
-            "...KWWK...",
-            "...KWWK...",
-            "....KK....",
-        };
-
-        // 9 x 9 — result star
-        private static readonly string[] STAR =
-        {
-            "....K....",
-            "...KYK...",
-            "...KYK...",
-            "KKKKYKKKK",
-            "KYYYYYYYK",
-            ".KYYYYYK.",
-            "..KYKYK..",
-            ".KYK.KYK.",
-            ".K.....K.",
-        };
-
-        // 10 x 11 — padlock, for a station that isn't open yet
-        private static readonly string[] LOCK =
-        {
-            "...KKKK...",
-            "..KllllK..",
-            "..Kl..lK..",
-            "..Kl..lK..",
-            ".KKKKKKKK.",
-            ".KyYYYYyK.",
-            ".KyYKKYyK.",
-            ".KyYKKYyK.",
-            ".KyYYYYyK.",
-            ".KKKKKKKK.",
-            "..........",
-        };
-
-        // --- customer busts (16 x 16) ---------------------------------------
-        // Each buyer reads by silhouette first: helm crest, hood, cap, witch hat.
-
-        private static readonly string[] BUYER_KNIGHT =
-        {
-            "................",
-            "......tttt......",
-            ".....KttttK.....",
-            "....KLLLLLLK....",
-            "...KLLLLLLLLK...",
-            "...KLKKLLKKLK...",
-            "...KLLLLLLLLK...",
-            "...KLKLLLLKLK...",
-            "...KLLKKKKLLK...",
-            "....KLLLLLLK....",
-            "...KlLLLLLLlK...",
-            "..KllLLLLLLllK..",
-            "..KlLLLLLLLLlK..",
-            ".KllLLLLLLLLllK.",
-            ".KlLLLLLLLLLLlK.",
-            ".KKKKKKKKKKKKKK.",
-        };
-
-        private static readonly string[] BUYER_HERBALIST =
-        {
-            "................",
-            "......KKKK......",
-            ".....KnNNnK.....",
-            "....KnNNNNnK....",
-            "....KnSSSSnK....",
-            "....KnSKSKnK....",
-            "....KnSSSSnK....",
-            ".....KnSSnK.....",
-            "....KnnnnnnK....",
-            "...KnNNNNNNnK...",
-            "..KnNNGGGGNNnK..",
-            "..KnNNGHHGNNnK..",
-            "..KnNNGGGGNNnK..",
-            ".KnNNNNNNNNNNnK.",
-            ".KnNNNNNNNNNNnK.",
-            ".KKKKKKKKKKKKKK.",
-        };
-
-        private static readonly string[] BUYER_MERCHANT =
-        {
-            "................",
-            "....KKKKKKKK....",
-            "...KWwwwwwwWK...",
-            "...KWWWWWWWWK...",
-            "....KSSSSSSK....",
-            "....KSKSSKSK....",
-            "....KSSSSSSK....",
-            "....KSKKKKSK....",
-            ".....KSSSSK.....",
-            "...KyyyyyyyyK...",
-            "..KyYYYYYYYYyK..",
-            "..KyYYccccYYyK..",
-            "..KyYYccccYYyK..",
-            ".KyYYYYYYYYYYyK.",
-            ".KyYYYYYYYYYYyK.",
-            ".KKKKKKKKKKKKKK.",
-        };
-
-        private static readonly string[] BUYER_ENVOY =
-        {
-            "................",
-            ".......pp.......",
-            "......pMMp......",
-            ".....pMMMMp.....",
-            "....pMMMMMMp....",
-            "...ppppppppp....",
-            "....KsssssK.....",
-            "....KsKsKsK.....",
-            "....KsssssK.....",
-            ".....KsssK......",
-            "....KpPPPPpK....",
-            "...KpPPPPPPpK...",
-            "..KpPPPMMPPPpK..",
-            ".KpPPPPMMPPPPpK.",
-            ".KpPPPPPPPPPPpK.",
-            ".KKKKKKKKKKKKKK.",
-        };
-
-        // --- full-body fight views (16 x 18, same build as ROOKIE) -----------
-
-        private static readonly string[] FIGHTER_KNIGHT =
-        {
-            "................",
-            ".....tttt.......",
-            "....KttttK......",
-            "....KLLLLK......",
-            "...KLLLLLLK.....",
-            "...KLKLLKLK.....",
-            "...KLLLLLLK.....",
-            "....KLLLLK......",
-            "...KKllllKK...l.",
-            "..KlLLLLLLlK..l.",
-            "..KlLlLLlLlK..l.",
-            "..LKlLLLLlKL..l.",
-            "..LKllllllKL..l.",
-            "...KllllllK...l.",
-            "...KllKKllK...l.",
-            "...Kll.KllK.....",
-            "..Kll..KllK.....",
-            "..KK....KK......",
-        };
-
-        private static readonly string[] FIGHTER_HERBALIST =
-        {
-            "................",
-            "......KKKK......",
-            ".....KnNNnK.....",
-            "....KnNNNNnK....",
-            "....KnSSSSnK....",
-            "....KnSKSKnK....",
-            "....KnSSSSnK....",
-            ".....KnSSnK.....",
-            "....KnnnnnnK....",
-            "...KnNNNNNNnK...",
-            "..KnNNGGGGNNnK..",
-            "..KnNNGHHGNNnK..",
-            "..KnNNGGGGNNnK..",
-            "...KnNNNNNNnK...",
-            "...KnNNNNNNnK...",
-            "...KnnKKKKnnK...",
-            "...KwwK..KwwK...",
-            "...KK......KK...",
-        };
-
-        private static readonly string[] FIGHTER_MERCHANT =
-        {
-            "................",
-            ".....KKKKKK.....",
-            "....KWwwwwWK....",
-            "....KWWWWWWK....",
-            ".....KSSSSK.....",
-            ".....KSKSKK.....",
-            ".....KSSSSK.....",
-            ".....KSKKSK.....",
-            "....KyyyyyyK....",
-            "...KyYYYYYYyK...",
-            "..KyYYccccYYyK..",
-            "..KyYYccccYYyK..",
-            "..KyYYYYYYYYyK..",
-            "...KyYYYYYYyK...",
-            "...KyYYYYYYyK...",
-            "...KyyKKKKyyK...",
-            "...KwwK..KwwK...",
-            "...KK......KK...",
-        };
-
-        private static readonly string[] FIGHTER_ENVOY =
-        {
-            "................",
-            ".......pp.......",
-            "......pMMp......",
-            ".....pMMMMp.....",
-            "....pMMMMMMp....",
-            "...ppppppppp....",
-            "....KsssssK.....",
-            "....KsKsKsK.....",
-            "....KsssssK.....",
-            ".....KsssK......",
-            "....KpPPPPpK....",
-            "...KpPPPPPPpK...",
-            "..KpPPPMMPPPpK..",
-            "..KpPPPMMPPPpK..",
-            "..KpPPPPPPPPpK..",
-            "...KpPPPPPPpK...",
-            "...KppKKKKppK...",
-            "...KK......KK...",
-        };
-
-        // 12 x 12 — herb leaf (green by default; tinted per element by ElementSwap)
-        private static readonly string[] HERB =
-        {
-            "......K.....",
-            ".....KGK....",
-            "....KGHGK...",
-            "...KGHHGK...",
-            "..KGHHHGK...",
-            "..KGHnHGK...",
-            "..KGnHnGK...",
-            "...KGnGK....",
-            "....KwK.....",
-            "....KwK.....",
-            "...KwK......",
-            "...KK.......",
-        };
-
-        // 14 x 16 — potion flask (green fill; tinted per element)
-        private static readonly string[] FLASK =
-        {
-            "....KKKK....",
-            "....KccK....",
-            "....KccK....",
-            "...KKccKK...",
-            "..KKc..cKK..",
-            "..Kc....cK..",
-            ".KKc.HH.cKK.",
-            ".KcGHHHHGcK.",
-            ".KcGHHHHGcK.",
-            ".KcGGHHGGcK.",
-            ".KcGGGGGGcK.",
-            ".KcGGGGGGcK.",
-            ".KKcGGGGcKK.",
-            "..KKccccKK..",
-            "...KKKKKK...",
-            "............",
-        };
-
-        // 16 x 16 — 9-slice UI panel (wood border, ink fill, thin inner bevel)
-        private static readonly string[] PANEL9 =
-        {
-            "WWWWWWWWWWWWWWWW",
-            "WwwwwwwwwwwwwwwW",
-            "Ww############wW",
-            "Ww#++++++++++#wW",
-            "Ww#+########+#wW",
-            "Ww#+########+#wW",
-            "Ww#+########+#wW",
-            "Ww#+########+#wW",
-            "Ww#+########+#wW",
-            "Ww#+########+#wW",
-            "Ww#+########+#wW",
-            "Ww#++++++++++#wW",
-            "Ww############wW",
-            "WwwwwwwwwwwwwwwW",
-            "WWWWWWWWWWWWWWWW",
-            "WWWWWWWWWWWWWWWW",
-        };
-
-        // --- element icons: colour + distinct silhouette (a11y) ------------
-        private static readonly string[] EI_FIRE =
-        {
-            "....K....",
-            "...KRK...",
-            "..KRRRK..",
-            "..KRYRK..",
-            ".KRRYRRK.",
-            ".KRYYYRK.",
-            "KRRYYYRRK",
-            "KRRRRRRRK",
-            ".KKKKKKK.",
-        };
-        private static readonly string[] EI_WATER =
-        {
-            "....K....",
-            "....K....",
-            "...KBK...",
-            "..KBBBK..",
-            "..KBCBK..",
-            ".KBBCBBK.",
-            ".KBCCBBK.",
-            ".KBBBBBK.",
-            "..KKKKK..",
-        };
-        private static readonly string[] EI_NATURE =
-        {
-            "..KKKKK..",
-            ".KGGGGGK.",
-            "KGHGHGHGK",
-            "KGGGHGGGK",
-            "KGHGHGHGK",
-            "KGGGHGGGK",
-            "KGHGHGHGK",
-            ".KGGGGGK.",
-            "..KKKKK..",
-        };
-        private static readonly string[] EI_POISON =
-        {
-            "..KKKKK..",
-            ".KMMMMMK.",
-            "KMMHKHMMK",
-            "KMHMMMHMK",
-            "KMKMHMKMK",
-            "KMHMMMHMK",
-            "KMMHKHMMK",
-            ".KMMMMMK.",
-            "..KKKKK..",
-        };
-        private static readonly string[] EI_ARCANE =
-        {
-            "....K....",
-            "...KMK...",
-            "K..KMK..K",
-            ".KKMMMKK.",
-            "KMMMMMMMK",
-            ".KKMMMKK.",
-            "K..KMK..K",
-            "...KMK...",
-            "....K....",
-        };
     }
 }

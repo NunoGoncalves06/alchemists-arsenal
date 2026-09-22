@@ -57,6 +57,18 @@ namespace AlchemistsArsenal.Combat
         /// <summary>Elemental matrix multiplier only applies at Okay grade and above.</summary>
         public static bool ElementalBonusEnabled(PotionGrade grade) => grade != PotionGrade.Poor;
 
+        /// <summary>
+        /// Blast radius by grade. The design's Perfect band promises "max blast
+        /// radius", and until now every grade blew the same size hole.
+        /// </summary>
+        public static float BlastRadiusMultiplier(PotionGrade grade) => grade switch
+        {
+            PotionGrade.Perfect => 1.25f,
+            PotionGrade.Great   => 1.00f,
+            PotionGrade.Okay    => 0.90f,
+            _                   => 0.80f,
+        };
+
         /// <summary>Perfect potions pay a gold tip on top of the payment multiplier.</summary>
         public static bool GoldTip(PotionGrade grade) => grade == PotionGrade.Perfect;
 

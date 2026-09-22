@@ -94,6 +94,9 @@ namespace AlchemistsArsenal.Combat
 
         private void FixedUpdate()
         {
+            // A downed hero lingers for its death fade; it must not keep running around.
+            if (_body != null && !_body.IsAlive) return;
+
             ICombatant target = Nearest(MonsterRegistry.ActiveMonsters, _rb.position);
 
             MoveState next = DecideState(target);
@@ -104,8 +107,9 @@ namespace AlchemistsArsenal.Combat
             }
 
             Vector2 desired = DesiredVelocity(target);
+            // An acceleration, scaled by mass (see MonsterWalker).
             Vector2 steer = Vector2.ClampMagnitude((desired - _rb.linearVelocity) * steerAccel, maxSteerForce);
-            _rb.AddForce(steer, ForceMode2D.Force);
+            _rb.AddForce(steer * _rb.mass, ForceMode2D.Force);
         }
 
         // FSM transition function — plain guards, by design.
