@@ -10,10 +10,11 @@ using AlchemistsArsenal.Story;
 namespace AlchemistsArsenal.UI
 {
     /// <summary>
-    /// The visual diary (DESIGN.md §7.9.4). Phase 0: a two-page book, prev/next
-    /// through unlocked entries, a procedural cutscene illustration (no authored
-    /// frames yet), and animated text. Also plays the opening cinematic
-    /// (<c>diary_00</c>) after the first Day Intro.
+    /// The visual diary (DESIGN.md §7.9.4): a two-page book, prev/next through
+    /// unlocked entries, the story's own illustration of each entry on the left
+    /// page (<see cref="StoryScript.DiaryPicture"/>, drawn and animated by a
+    /// <see cref="StoryStage"/>), and the text typed out on the right. An entry
+    /// with authored frames shows those instead.
     /// </summary>
     public class DiaryScreen : GameScreen
     {
@@ -25,7 +26,7 @@ namespace AlchemistsArsenal.UI
         private Image _frameImg;
         private Coroutine _frameAnim;
         private TextMeshProUGUI _title, _text, _pageOf;
-        private Image[] _sketchLayers;
+        private StoryStage _picture;
         private List<string> _ids = new List<string>();
         private int _index;
         private Coroutine _typing;
@@ -52,8 +53,9 @@ namespace AlchemistsArsenal.UI
             _frameImg.preserveAspect = true;
             _frameImg.gameObject.SetActive(false);
 
-            _proceduralScene = UIFactory.Root(_cut, "Procedural");
-            BuildProceduralScene(_proceduralScene);
+            _proceduralScene = UIFactory.Root(_cut, "Picture");
+            UIFactory.Place(_proceduralScene, 0.06f, 0.06f, 0.94f, 0.94f);   // on its dark mount
+            _picture = StoryStage.Create(_proceduralScene);
 
             var right = UIFactory.Panel(book.transform, UITheme.Parchment, "RightPage");
             right.rectTransform.anchorMin = new Vector2(0.51f, 0.04f); right.rectTransform.anchorMax = new Vector2(0.98f, 0.96f);
@@ -82,34 +84,6 @@ namespace AlchemistsArsenal.UI
             b.gameObject.AddComponent<LayoutElement>().minWidth = 110;
         }
 
-        private void BuildProceduralScene(RectTransform parent)
-        {
-            // flat blocks: moon, hill, witch, cursed loved one, curse ring, + a 5-layer boss sketch
-            Block(parent, new Vector2(0.7f, 0.72f), new Vector2(0.85f, 0.9f), new Color(0.9f, 0.88f, 0.78f));
-            Block(parent, new Vector2(0f, 0f), new Vector2(1f, 0.28f), new Color(0.15f, 0.2f, 0.12f));
-            Block(parent, new Vector2(0.12f, 0.22f), new Vector2(0.22f, 0.6f), UITheme.Witch);
-            Block(parent, new Vector2(0.62f, 0.2f), new Vector2(0.72f, 0.5f), new Color(0.42f, 0.44f, 0.33f));
-            var ring = Block(parent, new Vector2(0.56f, 0.22f), new Vector2(0.8f, 0.55f), new Color(0f, 0f, 0f, 0f));
-            var ri = ring.GetComponent<Image>();
-            ri.sprite = PlaceholderArt.Make(PlaceholderArt.Shape.Star, new Color(UITheme.Arcane.r, UITheme.Arcane.g, UITheme.Arcane.b, 0.5f), UITheme.Arcane);
-
-            _sketchLayers = new Image[5];
-            for (int i = 0; i < 5; i++)
-            {
-                var s = Block(parent, new Vector2(0.34f + i * 0.02f, 0.30f), new Vector2(0.5f + i * 0.02f, 0.62f - i * 0.03f),
-                    new Color(0.85f, 0.78f, 0.62f, 0.9f));
-                _sketchLayers[i] = s.GetComponent<Image>();
-                _sketchLayers[i].gameObject.SetActive(false);
-            }
-        }
-
-        private RectTransform Block(RectTransform parent, Vector2 min, Vector2 max, Color c)
-        {
-            var img = UIFactory.Panel(parent, c, "B");
-            img.rectTransform.anchorMin = min; img.rectTransform.anchorMax = max;
-            img.rectTransform.offsetMin = img.rectTransform.offsetMax = Vector2.zero;
-            return img.rectTransform;
-        }
 
         protected override void OnShow()
         {
@@ -122,13 +96,6 @@ namespace AlchemistsArsenal.UI
                 _index = _ids.IndexOf(OpenEntryId);
             else
                 _index = Mathf.Max(0, _ids.Count - 1);
-
-            // boss sketch grows with biomes cleared
-            int cleared = 0;
-            foreach (int g in s.bestGrades) if (g > 0) cleared++;
-            if (_sketchLayers != null)
-                for (int i = 0; i < _sketchLayers.Length; i++)
-                    _sketchLayers[i].gameObject.SetActive(i < cleared);
 
             Render();
         }
@@ -168,6 +135,8 @@ namespace AlchemistsArsenal.UI
             _proceduralScene.gameObject.SetActive(!hasFrames);
             if (hasFrames)
                 _frameAnim = StartCoroutine(PlayFrames(entry.cutsceneFrames, Mathf.Max(0.5f, entry.frameRate)));
+            else
+                _picture.Play(StoryScript.DiaryPicture(entry.id), seed: _index + 3);
         }
 
         private IEnumerator PlayFrames(Sprite[] frames, float fps)
@@ -196,7 +165,7 @@ namespace AlchemistsArsenal.UI
         private IEnumerator TypeOut(string full)
         {
             _fullText = full;
-            if (SettingsService.ReduceMotion) { _text.text = full; _typing = null; yield break; }
+            if (SettingsService.ReduceMotion || CutsceneScreen.AutoAdvance) { _text.text = full; _typing = null; yield break; }
             _text.text = "";
             for (int i = 0; i < full.Length; i++)
             {

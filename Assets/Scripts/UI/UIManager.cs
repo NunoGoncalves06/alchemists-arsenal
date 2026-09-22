@@ -9,7 +9,7 @@ namespace AlchemistsArsenal.UI
 {
     public enum ScreenId
     {
-        Boot, MainMenu, Settings, Credits, DayIntro, Morning, Handoff, ExpeditionHud, Evening, Diary, BiomeMap
+        Boot, MainMenu, Settings, Credits, DayIntro, Morning, Handoff, ExpeditionHud, Evening, Diary, BiomeMap, Cutscene
     }
 
     /// <summary>
@@ -86,6 +86,7 @@ namespace AlchemistsArsenal.UI
             Register(ScreenId.Evening,     typeof(EveningScreen));
             Register(ScreenId.Diary,       typeof(DiaryScreen));
             Register(ScreenId.BiomeMap,    typeof(BiomeMapScreen));
+            Register(ScreenId.Cutscene,    typeof(CutsceneScreen));
         }
 
         private void Register(ScreenId id, Type screenType)
@@ -99,19 +100,38 @@ namespace AlchemistsArsenal.UI
             _screens[id] = screen;
         }
 
+        private bool _showing;
+        private ScreenId? _deferred;
+
         public void Show(ScreenId id)
         {
+            // A screen may send us somewhere else from its own OnShow (the Evening
+            // hands over to a cutscene the fight earned). Switching inside the loop
+            // below would be undone by the rest of the loop, so it waits its turn.
+            if (_showing) { _deferred = id; return; }
             if (Current == id && _screens.TryGetValue(id, out var same) && same.gameObject.activeSelf)
                 return; // Show(current) is a no-op — never re-fire OnShow (reviewer P2)
 
-            foreach (var kv in _screens)
+            _showing = true;
+            try
             {
-                bool on = kv.Key == id;
-                if (kv.Value.gameObject.activeSelf == on) continue;
-                kv.Value.gameObject.SetActive(on);
-                if (on) kv.Value.NotifyShown(); else kv.Value.NotifyHidden();
+                foreach (var kv in _screens)
+                {
+                    bool on = kv.Key == id;
+                    if (kv.Value.gameObject.activeSelf == on) continue;
+                    kv.Value.gameObject.SetActive(on);
+                    if (on) kv.Value.NotifyShown(); else kv.Value.NotifyHidden();
+                }
+                Current = id;
             }
-            Current = id;
+            finally { _showing = false; }
+
+            if (_deferred.HasValue)
+            {
+                ScreenId next = _deferred.Value;
+                _deferred = null;
+                Show(next);
+            }
         }
 
         public GameScreen ScreenOf(ScreenId id) => _screens.TryGetValue(id, out var s) ? s : null;

@@ -25,6 +25,8 @@ namespace AlchemistsArsenal.Audio
         private AudioSource _activeMusic;
         private readonly Dictionary<Sfx, AudioClip> _sfxCache = new Dictionary<Sfx, AudioClip>();
         private AudioClip _shopBed, _forestBed;
+        private AudioClip _lullaby, _reveal, _resolution;
+        private AlchemistsArsenal.Story.StoryMusic? _story;
         private bool _forest;
 
         private void Awake()
@@ -40,6 +42,9 @@ namespace AlchemistsArsenal.Audio
 
             _shopBed = BuildBed(cozy: true);
             _forestBed = BuildBed(cozy: false);
+            _lullaby = BuildLullaby(major: false);
+            _resolution = BuildLullaby(major: true);
+            _reveal = BuildDrone();
 
             SettingsService.OnChanged += ApplyVolumes;
             ApplyVolumes();
@@ -88,12 +93,30 @@ namespace AlchemistsArsenal.Audio
             if (forest != _forest) PlayBed(forest);
         }
 
+        /// <summary>
+        /// Music under a cutscene, or null to go back to the day's own bed. The
+        /// lullaby is the kettle-charm, the tune Grandmother hummed; the ending plays
+        /// it again in a major key.
+        /// </summary>
+        public static void PlayStory(AlchemistsArsenal.Story.StoryMusic? music)
+        {
+            if (Instance == null || Instance._story == music) return;
+            Instance._story = music;
+            Instance.PlayBed(Instance._forest);
+        }
+
         private void PlayBed(bool forest)
         {
             _forest = forest;
             AudioSource from = _activeMusic;
             AudioSource to = _activeMusic == _musicA ? _musicB : _musicA;
-            to.clip = forest ? _forestBed : _shopBed;
+            to.clip = _story switch
+            {
+                AlchemistsArsenal.Story.StoryMusic.Lullaby => _lullaby,
+                AlchemistsArsenal.Story.StoryMusic.Reveal => _reveal,
+                AlchemistsArsenal.Story.StoryMusic.Resolution => _resolution,
+                _ => forest ? _forestBed : _shopBed,
+            };
             to.time = 0f;
             to.Play();
             _activeMusic = to;
@@ -260,6 +283,50 @@ namespace AlchemistsArsenal.Audio
             }
             var clip = FromData(cozy ? "shop_bed" : "forest_bed", data);
             return clip;
+        }
+
+        /// <summary>
+        /// The kettle-charm lullaby on a music box: a plucked note that rings and dies,
+        /// with its octave, over a soft root. Minor while Tam sleeps; major once they wake.
+        /// </summary>
+        private static AudioClip BuildLullaby(bool major)
+        {
+            float C = major ? 554.4f : 523.3f, F = major ? 740f : 698.5f, G = major ? 830.6f : 784f;
+            float[] melody = { 440f, C, 659.3f, 587.3f, C, 493.9f, 440f, 329.6f, 440f, C, 659.3f, G, F, 659.3f, 587.3f, 659.3f };
+            float[] roots = { 110f, 110f, 146.8f, 164.8f };
+            const float noteLen = 0.55f;
+            int nPer = Mathf.CeilToInt(noteLen * SampleRate);
+            var data = new float[melody.Length * nPer];
+            for (int k = 0; k < melody.Length; k++)
+            {
+                float f = melody[k], root = roots[(k / 4) % roots.Length];
+                for (int i = 0; i < nPer; i++)
+                {
+                    float t = i / (float)SampleRate;
+                    float pluck = Mathf.Exp(-3.2f * t) * (Mathf.Sin(2f * Mathf.PI * f * t) + 0.3f * Mathf.Exp(-4f * t) * Mathf.Sin(4f * Mathf.PI * f * t));
+                    float pad = 0.1f * Mathf.Sin(2f * Mathf.PI * root * (k * noteLen + t));
+                    data[k * nPer + i] = (pluck * 0.22f + pad) * 0.8f;
+                }
+            }
+            return FromData(major ? "story_resolution" : "story_lullaby", data);
+        }
+
+        /// <summary>The reveal: a low fifth with a tritone rubbing against it, breathing slowly, and a far bell.</summary>
+        private static AudioClip BuildDrone()
+        {
+            const float seconds = 8f;
+            int n = Mathf.CeilToInt(seconds * SampleRate);
+            var data = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)SampleRate;
+                float breathe = 0.6f + 0.4f * Mathf.Sin(2f * Mathf.PI * t / seconds);
+                float s = Mathf.Sin(2f * Mathf.PI * 55f * t) + 0.7f * Mathf.Sin(2f * Mathf.PI * 82.4f * t) + 0.35f * Mathf.Sin(2f * Mathf.PI * 77.8f * t);
+                float bellT = t % 4f;
+                float bell = Mathf.Exp(-2.5f * bellT) * Mathf.Sin(2f * Mathf.PI * 1244.5f * bellT) * 0.18f;
+                data[i] = s * 0.09f * breathe + bell;
+            }
+            return FromData("story_reveal", data);
         }
 
         private static AudioClip FromData(string name, float[] data)

@@ -50,7 +50,8 @@ namespace AlchemistsArsenal.UI
     public class MainMenuScreen : GameScreen
     {
         private Button _continue;
-        private TextMeshProUGUI _warn;
+        private TextMeshProUGUI _warn, _sub;
+        private StoryStage _keyArt;
 
         protected override void Build()
         {
@@ -58,9 +59,14 @@ namespace AlchemistsArsenal.UI
 
             var title = UIFactory.Title(transform, "Alchemist's Arsenal", UITheme.SizeDisplay, UITheme.Candle);
             UIFactory.Place(title.rectTransform, 0.06f, 0.74f, 0.66f, 0.88f);
-            var sub = UIFactory.Heading(transform, "brew in the morning · fight in the afternoon · pay the rent at night",
+            _sub = UIFactory.Heading(transform, "brew in the morning · fight in the afternoon · pay the rent at night",
                 UITheme.TextLow);
-            UIFactory.Place(sub.rectTransform, 0.062f, 0.69f, 0.70f, 0.74f);
+            UIFactory.Place(_sub.rectTransform, 0.062f, 0.69f, 0.70f, 0.74f);
+
+            // Key art: the shop at night, from the story's own illustrations.
+            var art = UIFactory.Root(transform, "KeyArt");
+            UIFactory.Place(art, 0.38f, 0.12f, 0.97f, 0.66f);
+            _keyArt = StoryStage.Create(art);
 
             var col = UIFactory.VStack(transform, 12f);
             var rt = (RectTransform)col.transform;
@@ -90,7 +96,35 @@ namespace AlchemistsArsenal.UI
                 _warn.text = corrupt
                     ? "Save file unreadable. NEW GAME will overwrite it."
                     : "";
+
+            // Once the story is over, the picture and the line say so.
+            RunState saved = exists && !corrupt ? SaveSystem.Instance.Peek(0) : null;
+            bool after = saved != null && saved.endingSeen;
+            if (_sub != null) _sub.text = Story.StoryDirector.MenuSubtitle(saved);
+            if (_keyArt != null) _keyArt.Play(after ? KeyArtAfter : KeyArtBefore, seed: 5);
         }
+
+        private static readonly Story.Shot KeyArtBefore = new Story.Shot
+        {
+            Scene = "shop_night", Fx = Story.ShotFx.Rain, ZoomFrom = 1f, ZoomTo = 1.06f,
+            Actors = new[]
+            {
+                new Story.CutsceneActor { Id = "kettle_glow", At = new Vector2(0.26f, 0.26f), Motion = Story.ActorMotion.Still },
+                new Story.CutsceneActor { Id = "nell", At = new Vector2(0.42f, 0.111f) },
+                new Story.CutsceneActor { Id = "tam_asleep", At = new Vector2(0.66f, 0.333f) },
+            },
+        };
+
+        private static readonly Story.Shot KeyArtAfter = new Story.Shot
+        {
+            Scene = "shop_dawn", ZoomFrom = 1f, ZoomTo = 1.06f,
+            Actors = new[]
+            {
+                new Story.CutsceneActor { Id = "kettle", At = new Vector2(0.26f, 0.26f), Motion = Story.ActorMotion.Still },
+                new Story.CutsceneActor { Id = "nell", At = new Vector2(0.42f, 0.111f) },
+                new Story.CutsceneActor { Id = "tam", At = new Vector2(0.62f, 0.111f), Flip = true, Motion = Story.ActorMotion.Bob },
+            },
+        };
 
         private static void Fix(Button b, float h) => b.gameObject.AddComponent<LayoutElement>().minHeight = h;
 
@@ -197,10 +231,14 @@ namespace AlchemistsArsenal.UI
     {
         private TextMeshProUGUI _title;
         private TextMeshProUGUI _flavour;
+        private TextMeshProUGUI _whisper;
 
         protected override void Build()
         {
             UIFactory.Box(transform, UITheme.Ground, Rt);
+            _whisper = UIFactory.Label(transform, "", UITheme.SizeBody, UITheme.TextLow, TextAlignmentOptions.Center);
+            _whisper.fontStyle = FontStyles.Italic;
+            UIFactory.Place(_whisper.rectTransform, 0.15f, 0.32f, 0.85f, 0.39f);
             _title = UIFactory.Title(transform, "Day 1", UITheme.SizeDisplay + 10, UITheme.Candle,
                 TextAlignmentOptions.Center);
             var trt = _title.rectTransform;
@@ -219,6 +257,7 @@ namespace AlchemistsArsenal.UI
             _title.text = $"Day {(s != null ? s.day : 1)} — {BiomeLibrary.Name(biome)}";
             _flavour.text = s != null && s.IsReplayDay ? "A road you have walked before. Half the pay, but pay all the same."
                 : BiomeFlavour(biome);
+            _whisper.text = Story.StoryDirector.DayWhisper(s);
             StartCoroutine(Advance());
         }
 
@@ -226,15 +265,16 @@ namespace AlchemistsArsenal.UI
         {
             yield return UnscaledWait.Seconds(1.8f);
 
-            // Opening cinematic plays once, right after the first Day Intro.
+            // The story's overlay: the opening, once, between the first Day Intro and
+            // the first morning; and anything a fight earned that was never watched
+            // (the game closed mid-scene), before today begins.
             var s = SaveSystem.Instance.State;
-            if (s != null && s.HasDiary("diary_00") && !s.openingCinematicSeen)
+            var due = new System.Collections.Generic.List<Story.Cutscene>();
+            if (s != null && !s.openingCinematicSeen) due.Add(Story.StoryScript.Opening);
+            due.AddRange(Story.StoryDirector.Due(s));
+            if (due.Count > 0)
             {
-                s.openingCinematicSeen = true;
-                SaveSystem.Instance.MarkDirty();
-                DiaryScreen.FromOpeningCinematic = true;
-                DiaryScreen.OpenEntryId = "diary_00";
-                UIManager.Instance.Show(ScreenId.Diary);
+                CutsceneScreen.Play(due, () => GameLoopManager.Instance.BeginMorning());
                 yield break;
             }
             GameLoopManager.Instance.BeginMorning();
