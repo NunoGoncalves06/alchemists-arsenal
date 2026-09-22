@@ -107,6 +107,8 @@ namespace AlchemistsArsenal.Core
                 SettingsService.ExpeditionSpeedOverride = 1;
                 CutsceneScreen.AutoAdvance = true;
                 StoryStage.SkipIntro = true;
+                // The procedural art, pixel for pixel, for the design document.
+                Art.PixelCanvas.ExportDir = Path.Combine(Directory.GetCurrentDirectory(), "headless-screens", "art");
                 Time.captureDeltaTime = FrameStep;
                 Log($"=== HEADLESS PLAYTEST START (runtime driver, post-reload, suite={_suite}) ===");
                 Log($"Save slot pinned to slot_{HarnessSlot}.json, fight speed pinned to 1x, fixed step {FrameStep:F4}s.");
@@ -1411,6 +1413,7 @@ namespace AlchemistsArsenal.Core
                 SettingsService.ExpeditionSpeedOverride = null;
                 CutsceneScreen.AutoAdvance = false;
                 StoryStage.SkipIntro = false;
+                Art.PixelCanvas.ExportDir = null;
 
                 string verdict = _errorCount == 0 ? "PASS" : $"FAIL ({_errorCount} error(s))";
                 _log.AppendLine($"FINGERPRINT: {string.Join(" ", _fingerprint)}");

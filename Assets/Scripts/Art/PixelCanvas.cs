@@ -115,6 +115,7 @@ namespace AlchemistsArsenal.Art
         public Sprite Bake(string key, float ppu, Vector2 pivot01, bool silhouette = false)
         {
             if (TryGet(key, out Sprite cached)) return cached;
+            Export(key);
             var s = Upload(key, _px, ppu, pivot01);
             _baked[key] = s;
             if (silhouette)
@@ -125,6 +126,31 @@ namespace AlchemistsArsenal.Art
                 _silhouettes[s] = Upload(key + "_white", white, ppu, pivot01);
             }
             return s;
+        }
+
+        /// <summary>
+        /// When set (the headless harness does, for the design document), every
+        /// sprite is also written here as "&lt;key&gt;.png" the moment it is baked:
+        /// the procedural art has no source image, so this is the only way to get
+        /// the exact in-game pixels out.
+        /// </summary>
+        public static string ExportDir;
+
+        private void Export(string key)
+        {
+            if (string.IsNullOrEmpty(ExportDir)) return;
+            try
+            {
+                var tex = new Texture2D(W, H, TextureFormat.RGBA32, false);
+                var flipped = new Color32[W * H];
+                for (int y = 0; y < H; y++) Array.Copy(_px, y * W, flipped, (H - 1 - y) * W, W);
+                tex.SetPixels32(flipped);
+                tex.Apply(false, false);
+                System.IO.Directory.CreateDirectory(ExportDir);
+                System.IO.File.WriteAllBytes(System.IO.Path.Combine(ExportDir, key + ".png"), tex.EncodeToPNG());
+                UnityEngine.Object.Destroy(tex);
+            }
+            catch (Exception e) { Debug.LogWarning($"[PixelCanvas] export of '{key}' failed: {e.Message}"); }
         }
 
         /// <summary>The white silhouette baked alongside <paramref name="sprite"/>, or null.</summary>
