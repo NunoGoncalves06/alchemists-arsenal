@@ -85,6 +85,18 @@ namespace AlchemistsArsenal.UI.Stations
                     () => { if (Bench != null) Bench.ApplyLabel(captured); }, primary: false);
                 UIFactory.Flex(b.gameObject, 1f, 1f, minHeight: 40f);
                 UIFactory.TintButton(b, UITheme.Alpha(UITheme.Element(e), 0.55f), UITheme.Alpha(UITheme.Element(e), 0.85f), UITheme.TextHi);
+                // Five buttons share one strip: at the default size and letter-spacing
+                // the longer names broke mid-word ("NATU / RE", "POISO / N"). One line,
+                // shrunk to fit.
+                var text = b.GetComponentInChildren<TextMeshProUGUI>();
+                if (text != null)
+                {
+                    text.textWrappingMode = TextWrappingModes.NoWrap;
+                    text.characterSpacing = 1f;
+                    text.enableAutoSizing = true;
+                    text.fontSizeMin = UITheme.SizeTiny;
+                    text.fontSizeMax = UITheme.SizeBody;
+                }
             }
         }
 

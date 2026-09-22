@@ -73,7 +73,7 @@ namespace AlchemistsArsenal.UI
             nrt.offsetMin = nrt.offsetMax = Vector2.zero;
             Btn(nav.transform, "◄ PREV", () => Step(-1));
             _pageOf = UIFactory.Label(nav.transform, "", 16, UITheme.ParchmentDim, TextAlignmentOptions.Center);
-            _pageOf.gameObject.AddComponent<LayoutElement>().minWidth = 80;
+            _pageOf.gameObject.AddComponent<LayoutElement>().minWidth = 190;
             Btn(nav.transform, "NEXT ►", () => Step(1));
             Btn(nav.transform, "CLOSE", Close);
         }
@@ -124,7 +124,9 @@ namespace AlchemistsArsenal.UI
             }
             var entry = DiaryManager.Get(_ids[_index]);
             _title.text = entry.entryTitle;
-            _pageOf.text = $"{_index + 1}/{_ids.Count}";
+            // How far the story has come: the pages still blank are the ones not yet earned.
+            int blank = DiaryManager.All.Count - _ids.Count;
+            _pageOf.text = blank > 0 ? $"{_index + 1}/{_ids.Count} · {blank} still blank" : $"{_index + 1}/{_ids.Count}";
             if (_typing != null) StopCoroutine(_typing);
             _typing = StartCoroutine(TypeOut(entry.entryText));
 

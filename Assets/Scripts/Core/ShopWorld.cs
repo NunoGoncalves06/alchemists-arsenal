@@ -108,11 +108,69 @@ namespace AlchemistsArsenal.Core
                     sr.sortingOrder = -20;
                 }
 
+            // The shop behind each bench: shelves of jars, a candle at the end of each
+            // shelf, and herbs hung up to dry, swinging on real joints in the draught.
+            for (int i = 1; i < BenchCentres.Length; i++)
+            {
+                Vector2 c = BenchCentres[i];
+                foreach (float side in new[] { -1f, 1f })
+                {
+                    int v = i + (side > 0f ? 1 : 0);
+                    // Beside the bench's work, below the banner line at the top of the view.
+                    Vector2 shelfAt = new Vector2(c.x + side * 4.9f, 0.55f);
+                    Prop("Shelf", ShopProps.Shelf(v), shelfAt, -15);
+                    Vector2 candleAt = shelfAt + new Vector2(1.8f, 1f / ShopProps.PPU);
+                    Prop("Candle", ShopProps.Candle(), candleAt, -14);
+                    var glow = Prop("CandleGlow", ShopProps.CandleGlow(), candleAt + new Vector2(0f, 0.7f), -13, additive: true);
+                    glow.transform.localScale = Vector3.one * 1.1f;
+                    glow.color = new Color(1f, 1f, 1f, 0.4f);
+                    Vfx.CandleFlicker.Attach(glow, i * 7 + v);
+                    HangHerbs(new Vector2(c.x + side * 3.6f, 3.45f), v, i * 13 + v);
+                }
+            }
+
             // Floorboards under the cauldron, where there is no bench.
             var floor = new GameObject("Floor");
             floor.transform.SetParent(transform, false);
             floor.transform.position = new Vector3(BenchCentres[2].x, -2.7f, 1f);
             PixelArt.AddSprite(floor, ShopArt.Plank(), -5, 12f).color = new Color(0.62f, 0.55f, 0.52f);
+        }
+
+        private SpriteRenderer Prop(string name, Sprite sprite, Vector2 at, int order, bool additive = false)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(transform, false);
+            go.transform.position = new Vector3(at.x, at.y, 1.5f);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = sprite;
+            sr.sharedMaterial = additive
+                ? SpriteMaterials.Particle(SpriteMaterials.ParticleBlend.Additive, sprite.texture)
+                : SpriteMaterials.For(sprite);
+            sr.sortingOrder = order;
+            return sr;
+        }
+
+        /// <summary>A bundle of herbs on a hinge at <paramref name="knot"/>: a pendulum the draught keeps moving.</summary>
+        private void HangHerbs(Vector2 knot, int variant, int seed)
+        {
+            var sr = Prop("Herbs", ShopProps.HerbBundle(variant), knot, -12);
+            GameObject go = sr.gameObject;
+            var rb = go.AddComponent<Rigidbody2D>();
+            rb.gravityScale = 1f;
+            rb.mass = 0.3f;
+            rb.angularDamping = 0.35f;
+            rb.linearDamping = 0.5f;
+            // Its weight hangs below the knot, so it swings about it.
+            var bob = go.AddComponent<CircleCollider2D>();
+            bob.radius = 0.25f;
+            bob.offset = new Vector2(0f, -1.1f);
+            var hinge = go.AddComponent<HingeJoint2D>();
+            hinge.anchor = Vector2.zero;
+            hinge.autoConfigureConnectedAnchor = true;
+            // Nothing else in the shop is on the Debris layer: it touches nothing.
+            PhysicsKit.GameLayers.Assign(go, PhysicsKit.GameLayers.Debris);
+            PhysicsKit.Draft2D.Attach(go, seed);
+            rb.AddTorque((seed % 2 == 0 ? 1f : -1f) * 0.01f, ForceMode2D.Impulse);
         }
 
         private void BuildCauldron(Vector2 centre)

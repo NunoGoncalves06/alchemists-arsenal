@@ -74,11 +74,10 @@ namespace AlchemistsArsenal.Core
             Vfx.DamagePopups.Create(transform);
             BombProjectile2D.OnDetonatedGlobal += OnDetonated;
 
-            var ground = new GameObject("Ground");
-            ground.transform.SetParent(transform, false);
-            ground.transform.position = new Vector3(0f, -0.5f, 1f);
-            ground.transform.localScale = new Vector3(biome.ArenaWidth + 8f, 14f, 1f);
-            PixelArt.AddDisc(ground, biome.GroundTint, -10); // diameter 0 = keep the scale set above
+            // The region itself: its floor, its scenery, the air over it. This was one
+            // tinted ellipse on black for all five roads.
+            Vfx.BiomeBackdrop.Create(transform, biome.Theme);
+            if (biome.Theme == ElementType.Poison) ArenaSurface.BuildBogs(transform);
 
             // Invisible arena bounds so nobody (adventurer especially) walks off camera.
             float halfW = biome.ArenaWidth * 0.5f + 1.5f;
@@ -109,6 +108,8 @@ namespace AlchemistsArsenal.Core
             int biomeIndex = run != null ? run.TargetBiomeIndex : 0;
             spawner.Configure(matrix, biome.ArenaWidth * 0.5f, 7919 * day + 31 * biomeIndex);
             spawner.PartySize = adventurerCount;
+            ElementType ground = biome.Theme;
+            spawner.Spawned += body => ArenaSurface.Apply(body, ground);
 
             Expedition = new GameObject("ExpeditionManager").AddComponent<ExpeditionManager>();
             Expedition.transform.SetParent(transform, false);
@@ -248,6 +249,7 @@ namespace AlchemistsArsenal.Core
             // bottom of the screen, so they never end up standing behind a button.
             move.ConfigureArena(new Vector2(_biome.ArenaWidth * 0.5f + 1f, 5.2f));
             move.Configure(archetype);
+            ArenaSurface.Apply(go, _biome.Theme);
 
             // Fresh axes per hero. These used to be built once and the same
             // ScriptableObject instances handed to every party member, so any

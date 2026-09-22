@@ -453,16 +453,18 @@ namespace AlchemistsArsenal.Crafting
             float speed = Mathf.Max(7.2f, Mathf.Sqrt(g.magnitude * d) * 1.2f);
             Vector2 v = BallisticSolver.TrySolveArc(from, to, speed, g, true, out Vector2 arc)
                 ? arc : BallisticSolver.SolveLob(from, to, speed, g);
-            leaf.Body.linearVelocity = Vector2.zero;
-            leaf.Body.AddForce(v * leaf.Body.mass, ForceMode2D.Impulse);
-            leaf.Body.AddTorque(-0.05f * leaf.Body.mass, ForceMode2D.Impulse);
+            // Thrown on the next physics step, not from the click's frame.
+            _impulses.Add(leaf.Body, v * leaf.Body.mass, -0.05f * leaf.Body.mass, resetVelocity: true);
             AudioManager.Play(Sfx.Tab);
         }
 
         // --------------------------------------------------------------- physics
 
+        private readonly ImpulseQueue _impulses = new ImpulseQueue();
+
         private void FixedUpdate()
         {
+            _impulses.Flush();
             float dt = Time.fixedDeltaTime;
             Vector2 bowl = MortarWorld;
             foreach (var l in _leaves)
@@ -615,7 +617,7 @@ namespace AlchemistsArsenal.Crafting
             foreach (var l in _leaves)
             {
                 if (!l.InBowl || l.Body == null) continue;
-                l.Body.AddForce(new Vector2(-1.2f, 4.6f) * l.Body.mass, ForceMode2D.Impulse);
+                _impulses.Add(l.Body, new Vector2(-1.2f, 4.6f) * l.Body.mass);
                 break;
             }
         }

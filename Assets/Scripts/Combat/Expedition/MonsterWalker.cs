@@ -33,6 +33,9 @@ namespace AlchemistsArsenal.Combat
         /// <summary>Scales <see cref="moveSpeed"/>: a boss slows to plant itself before a blow.</summary>
         public float SpeedMultiplier { get; set; } = 1f;
 
+        /// <summary>Grip on the ground (1 = normal; ice is less): scales the steering force.</summary>
+        public float Traction { get; set; } = 1f;
+
         public void Configure(float speed)
         {
             moveSpeed = speed;
@@ -70,7 +73,7 @@ namespace AlchemistsArsenal.Combat
             Vector2 desired = d > stopDistance ? dir * (moveSpeed * Mathf.Max(0f, SpeedMultiplier)) : Vector2.zero;
             // Steering is an acceleration: scaled by mass, a heavier monster walks at the
             // same speed but is harder to knock around.
-            Vector2 steer = Vector2.ClampMagnitude((desired - _rb.linearVelocity) * steerAccel, maxSteerForce);
+            Vector2 steer = Vector2.ClampMagnitude((desired - _rb.linearVelocity) * (steerAccel * Traction), maxSteerForce * Traction);
             _rb.AddForce(steer * _rb.mass, ForceMode2D.Force);
 
             if (dealsContactDamage && d <= stopDistance + 0.2f && Time.time >= _nextContactTime)
@@ -83,7 +86,7 @@ namespace AlchemistsArsenal.Combat
 
         private void Brake()
         {
-            Vector2 steer = Vector2.ClampMagnitude(-_rb.linearVelocity * steerAccel, maxSteerForce);
+            Vector2 steer = Vector2.ClampMagnitude(-_rb.linearVelocity * (steerAccel * Traction), maxSteerForce * Traction);
             _rb.AddForce(steer * _rb.mass, ForceMode2D.Force);
         }
 
