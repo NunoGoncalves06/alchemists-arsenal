@@ -1,5 +1,7 @@
+using System;
 using UnityEngine;
 using AlchemistsArsenal.Data;
+using AlchemistsArsenal.PhysicsKit;
 
 namespace AlchemistsArsenal.Combat
 {
@@ -19,6 +21,11 @@ namespace AlchemistsArsenal.Combat
             elementalMatrix = matrix;
             if (mask.value != 0) targetMask = mask;
         }
+
+        private readonly Collider2D[] _hits = new Collider2D[16];
+
+        /// <summary>A strike landed: pattern, where, and how many adventurers it caught.</summary>
+        public event Action<BossAttackPattern, Vector2, int> OnStrike;
 
         private bool _pending;
         private BossAttackPattern _pattern;
@@ -48,11 +55,13 @@ namespace AlchemistsArsenal.Combat
             BossAttackPattern pattern = _pattern;
             Vector2 epicenter = _impact;
 
-            Collider2D[] hits = Physics2D.OverlapCircleAll(
-                epicenter, pattern.AreaRadius, CombatLayers.Effective(targetMask));
-            for (int i = 0; i < hits.Length; i++)
+            int n = Physics2D.OverlapCircle(epicenter, pattern.AreaRadius,
+                PhysicsQuery.Solid(CombatLayers.Effective(targetMask)), _hits);
+            int caught = 0;
+            Vector2 fromBoss = _source != null ? epicenter - _source.Position : Vector2.left;
+            for (int i = 0; i < n; i++)
             {
-                Collider2D hit = hits[i];
+                Collider2D hit = _hits[i];
                 if (hit == null) continue;
 
                 IDamageable damageable = hit.GetComponentInParent<IDamageable>();
@@ -64,17 +73,13 @@ namespace AlchemistsArsenal.Combat
                     : 1f;
                 int finalDamage = Mathf.Max(0, Mathf.RoundToInt(pattern.Damage * mult));
                 damageable.ApplyDamage(new DamageInfo(finalDamage, pattern.Element, epicenter, _source));
+                caught++;
 
                 Rigidbody2D rb = hit.attachedRigidbody;
                 if (rb != null)
-                {
-                    Vector2 toHit = rb.position - epicenter;
-                    float dist = toHit.magnitude;
-                    float falloff = Mathf.Clamp01(1f - dist / Mathf.Max(pattern.AreaRadius, 0.01f));
-                    Vector2 kdir = dist > 0.001f ? toHit / dist : Random.insideUnitCircle.normalized;
-                    rb.AddForceAtPosition(kdir * (pattern.Knockback * falloff), epicenter, ForceMode2D.Impulse);
-                }
+                    RadialImpulse.Apply(rb, epicenter, pattern.AreaRadius, pattern.Knockback, fromBoss);
             }
+            OnStrike?.Invoke(pattern, epicenter, caught);
         }
 
         private void OnDrawGizmosSelected()

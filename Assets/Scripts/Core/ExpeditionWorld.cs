@@ -66,6 +66,12 @@ namespace AlchemistsArsenal.Core
             ArenaCamera.clearFlags = CameraClearFlags.SolidColor;
             ArenaCamera.backgroundColor = new Color(0.06f, 0.05f, 0.07f);
             ArenaCamera.depth = -1;
+            camGo.AddComponent<Vfx.CameraRig>().Configure(new Vector3(0f, 0f, -10f));
+
+            // Presentation that lives and dies with the arena.
+            Vfx.VfxWorld.Create(transform, seed: 4242);
+            Vfx.DamagePopups.Create(transform);
+            BombProjectile2D.OnDetonatedGlobal += OnDetonated;
 
             var ground = new GameObject("Ground");
             ground.transform.SetParent(transform, false);
@@ -132,6 +138,7 @@ namespace AlchemistsArsenal.Core
             wall.transform.SetParent(transform, false);
             wall.transform.position = pos;
             wall.AddComponent<BoxCollider2D>().size = size;
+            PhysicsKit.GameLayers.Assign(wall, PhysicsKit.GameLayers.ArenaBounds);
         }
 
         private void HandleFinished(bool won)
@@ -139,8 +146,17 @@ namespace AlchemistsArsenal.Core
             OnFinished?.Invoke(Telemetry != null ? Telemetry.Report : new ExpeditionReport { won = won });
         }
 
+        /// <summary>Every flask that bursts gets a flash, sparks the size of its blast, and a kick.</summary>
+        private void OnDetonated(DetonationInfo d)
+        {
+            if (Vfx.VfxWorld.Active != null)
+                Vfx.VfxWorld.Active.Explosion(d.Position, PixelArt.Element(d.Element), d.Radius);
+            Vfx.CameraRig.Shake(Mathf.Clamp(0.16f + 0.05f * d.HitCount, 0.16f, 0.4f));
+        }
+
         private void OnDestroy()
         {
+            BombProjectile2D.OnDetonatedGlobal -= OnDetonated;
             // Belt-and-braces: the static registries must not carry this run's
             // corpses into tomorrow (reviewer P1). Monsters/adventurers are parented
             // under this root and die with it; stray projectiles get swept here.
@@ -196,6 +212,7 @@ namespace AlchemistsArsenal.Core
             rb.gravityScale = 0f;
             rb.linearDamping = 2.5f;
             rb.freezeRotation = true;
+            rb.mass = 1.2f;
             go.AddComponent<CircleCollider2D>().radius = 0.4f;
 
             RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
@@ -261,6 +278,7 @@ namespace AlchemistsArsenal.Core
             var art = new GameObject("Art");
             art.transform.SetParent(go.transform, false);
             PixelArt.AddSprite(art, Art.PixelSprites.Fighter(fighterId), 6, 1.9f);
+            Vfx.BodyVisuals.Attach(go, art.transform);
             go.SetActive(true);
 
             // Everyone in the arena carries a health bar now, the party included —

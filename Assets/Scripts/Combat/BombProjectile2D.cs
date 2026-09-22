@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using AlchemistsArsenal.Data;
+using AlchemistsArsenal.PhysicsKit;
 
 namespace AlchemistsArsenal.Combat
 {
@@ -17,14 +18,18 @@ namespace AlchemistsArsenal.Combat
         public readonly ICombatant Thrower;
         /// <summary>The flask's own name ("Fireblood"), so reports name what was brewed.</summary>
         public readonly string BombName;
+        /// <summary>How big the blast actually was, after the grade (for the explosion visual).</summary>
+        public readonly float Radius;
 
         public DetonationInfo(Vector2 pos, ElementType element, PotionGrade grade,
-            int hitCount, int totalDamage, bool advantage, ICombatant thrower, string bombName = null)
+            int hitCount, int totalDamage, bool advantage, ICombatant thrower, string bombName = null,
+            float radius = 2.5f)
         {
             Position = pos; Element = element; Grade = grade;
             HitCount = hitCount; TotalDamage = totalDamage;
             HadElementalAdvantage = advantage; Thrower = thrower;
             BombName = string.IsNullOrWhiteSpace(bombName) ? $"{element} Flask" : bombName;
+            Radius = radius;
         }
     }
 
@@ -50,7 +55,10 @@ namespace AlchemistsArsenal.Combat
         [SerializeField] private LayerMask detonationMask = 0;
 
         [Header("Knockback")]
-        [SerializeField] private float knockbackImpulse = 9f;
+        [Tooltip("Impulse at the epicentre; RadialImpulse falls it off to 0 at the blast edge.")]
+        [SerializeField] private float knockbackImpulse = 10f;
+
+        private readonly Collider2D[] _hits = new Collider2D[32];
 
         private Rigidbody2D _rb;
         private BombData _bomb;
@@ -72,7 +80,17 @@ namespace AlchemistsArsenal.Combat
         {
             _rb = GetComponent<Rigidbody2D>();
             _rb.bodyType = RigidbodyType2D.Dynamic;
+            // Projectiles only ever touch combatants: not walls, not each other.
+            GameLayers.Assign(gameObject, GameLayers.Projectile);
         }
+
+        /// <summary>The flask being thrown (for the flight visuals).</summary>
+        public BombData Bomb => _bomb;
+
+        /// <summary>The blast radius this flask actually has, after its grade.</summary>
+        public float EffectiveBlastRadius =>
+            (_bomb != null ? _bomb.BlastRadius : 2f)
+            * CombatQuality.BlastRadiusMultiplier(CombatQuality.GradeFor01(_quality01));
 
         /// <summary>Arm the bomb: sets gravity + the ballistic launch velocity.</summary>
         public void Configure(in BombThrowRequest request, ElementalMatrix matrix, LayerMask mask)
@@ -111,7 +129,7 @@ namespace AlchemistsArsenal.Combat
                 float airTime = Time.time - _spawnTime;
 
                 bool reachedTarget = Vector2.Distance(pos, _targetPos) <= arriveRadius;
-                float blastReach = _bomb != null ? _bomb.BlastRadius : arriveRadius;
+                float blastReach = _bomb != null ? EffectiveBlastRadius : arriveRadius;
                 bool fellToTarget =
                     airTime > 0.12f &&
                     _rb.linearVelocity.y <= 0f &&
@@ -160,9 +178,12 @@ namespace AlchemistsArsenal.Combat
             _detonated = true;
 
             Vector2 epicenter = _rb.position;
-            float radius = _bomb != null ? _bomb.BlastRadius : 2f;
+            float radius = EffectiveBlastRadius;
 
             PotionGrade grade = CombatQuality.GradeFor01(_quality01);
+            // Deterministic push for a body sitting exactly on the epicentre: along
+            // the throw, never a random direction.
+            Vector2 throwDir = _thrower != null ? epicenter - _thrower.Position : Vector2.right;
             float damageMultiplier = CombatQuality.DamageMultiplier(grade);
             bool elementalEnabled = CombatQuality.ElementalBonusEnabled(grade);
 
@@ -170,10 +191,10 @@ namespace AlchemistsArsenal.Combat
             int totalDamage = 0;
             bool hadAdvantage = false;
 
-            Collider2D[] hits = Physics2D.OverlapCircleAll(epicenter, radius, detonationMask);
-            for (int i = 0; i < hits.Length; i++)
+            int n = Physics2D.OverlapCircle(epicenter, radius, PhysicsQuery.Solid(detonationMask), _hits);
+            for (int i = 0; i < n; i++)
             {
-                Collider2D hit = hits[i];
+                Collider2D hit = _hits[i];
                 if (hit == null) continue;
 
                 Rigidbody2D hitRb = hit.attachedRigidbody;
@@ -194,15 +215,7 @@ namespace AlchemistsArsenal.Combat
                 if (combatant != null && combatant.Team == Team.Adventurer) continue;
 
                 if (hitRb != null)
-                {
-                    // Radial impulse, linear inverse-distance falloff to the blast edge.
-                    Vector2 toHit = hitRb.position - epicenter;
-                    float dist = toHit.magnitude;
-                    float falloff = Mathf.Clamp01(1f - dist / Mathf.Max(radius, 0.01f));
-                    Vector2 dir = dist > 0.001f ? toHit / dist : UnityEngine.Random.insideUnitCircle.normalized;
-
-                    hitRb.AddForceAtPosition(dir * (knockbackImpulse * falloff), epicenter, ForceMode2D.Impulse);
-                }
+                    RadialImpulse.Apply(hitRb, epicenter, radius, knockbackImpulse, throwDir);
 
                 if (damageable == null || combatant == null || _bomb == null) continue;
 
@@ -220,9 +233,18 @@ namespace AlchemistsArsenal.Combat
                 totalDamage += finalDamage;
             }
 
+            // Bodies already out of the fight (tumbling corpses on the Debris layer)
+            // get thrown by the blast too: no damage, just physics.
+            int nd = Physics2D.OverlapCircle(epicenter, radius,
+                PhysicsQuery.Solid(GameLayers.MaskOf(GameLayers.Debris)), _hits);
+            for (int i = 0; i < nd; i++)
+                if (_hits[i] != null && _hits[i].attachedRigidbody != null)
+                    RadialImpulse.Apply(_hits[i].attachedRigidbody, epicenter, radius, knockbackImpulse * 0.7f, throwDir);
+
             if (_bomb != null)
                 OnDetonatedGlobal?.Invoke(new DetonationInfo(
-                    epicenter, _bomb.Element, grade, hitCount, totalDamage, hadAdvantage, _thrower, _bomb.DisplayName));
+                    epicenter, _bomb.Element, grade, hitCount, totalDamage, hadAdvantage, _thrower, _bomb.DisplayName,
+                    radius));
 
             Destroy(gameObject);
         }
@@ -230,7 +252,7 @@ namespace AlchemistsArsenal.Combat
         private void OnDrawGizmosSelected()
         {
             Gizmos.color = new Color(1f, 0.5f, 0.1f, 0.7f);
-            Gizmos.DrawWireSphere(transform.position, _bomb != null ? _bomb.BlastRadius : 2f);
+            Gizmos.DrawWireSphere(transform.position, EffectiveBlastRadius);
         }
     }
 }

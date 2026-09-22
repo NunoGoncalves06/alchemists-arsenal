@@ -44,13 +44,19 @@ namespace AlchemistsArsenal.Combat
             Vector2 pos = new Vector2(spawnEdgeX, SpawnY());
             var go = NewBody($"Monster_{data.DisplayName}", pos, Team.Monster, data.Element, data.MaxHealth, 0.45f);
             go.transform.SetParent(transform, worldPositionStays: true); // under ExpeditionWorld — torn down with it
+            // Tougher monsters are heavier: a blast shoves a Warded Effigy less than a
+            // Thornling. Steering scales by mass, so their walking speed is unchanged.
+            go.GetComponent<Rigidbody2D>().mass = MassFor(data.MaxHealth);
 
             var walker = go.AddComponent<MonsterWalker>();
             walker.Configure(data.MoveSpeed);
 
             go.AddComponent<MonsterTag>().Data = data; // instance -> archetype, for loot / telemetry
 
-            AddSprite(go, data.Sprite != null ? data.Sprite : PixelSprites.Monster(data.DisplayName, data.Element), 5);
+            var art = new GameObject("Art");
+            art.transform.SetParent(go.transform, false);
+            AddSprite(art, data.Sprite != null ? data.Sprite : PixelSprites.Monster(data.DisplayName, data.Element), 5);
+            Vfx.BodyVisuals.Attach(go, art.transform);
             go.SetActive(true);
             HealthBar2D.Attach(go.GetComponent<CombatantBody>(), width: 0.9f, lift: 0.62f);
             return go;
@@ -81,6 +87,9 @@ namespace AlchemistsArsenal.Combat
         }
 
         // ---------------------------------------------------------------- helpers
+
+        /// <summary>0.8 for a 20 HP pest up to 2.4 for a 170 HP brute.</summary>
+        public static float MassFor(int maxHp) => Mathf.Clamp(0.65f + maxHp / 100f, 0.8f, 2.4f);
 
         private static GameObject NewBody(string name, Vector2 pos, Team team, ElementType element,
             int hp, float radius)

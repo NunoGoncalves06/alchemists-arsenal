@@ -57,8 +57,10 @@ namespace AlchemistsArsenal.Combat
             Vector2 dir = d > 0.001f ? toTarget / d : Vector2.zero;
 
             Vector2 desired = d > stopDistance ? dir * moveSpeed : Vector2.zero;
+            // Steering is an acceleration: scaled by mass, a heavier monster walks at the
+            // same speed but is harder to knock around.
             Vector2 steer = Vector2.ClampMagnitude((desired - _rb.linearVelocity) * steerAccel, maxSteerForce);
-            _rb.AddForce(steer, ForceMode2D.Force);
+            _rb.AddForce(steer * _rb.mass, ForceMode2D.Force);
 
             if (dealsContactDamage && d <= stopDistance + 0.2f && Time.time >= _nextContactTime)
             {
@@ -71,7 +73,7 @@ namespace AlchemistsArsenal.Combat
         private void Brake()
         {
             Vector2 steer = Vector2.ClampMagnitude(-_rb.linearVelocity * steerAccel, maxSteerForce);
-            _rb.AddForce(steer, ForceMode2D.Force);
+            _rb.AddForce(steer * _rb.mass, ForceMode2D.Force);
         }
 
         private static ICombatant Nearest(IReadOnlyList<ICombatant> list, Vector2 from)

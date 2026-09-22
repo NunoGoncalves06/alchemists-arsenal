@@ -15,32 +15,8 @@ namespace AlchemistsArsenal.Combat
         private const int Size = 32;
         private const float PixelsPerUnit = 32f;
 
-        private static readonly System.Collections.Generic.Dictionary<Texture, Material> _materials =
-            new System.Collections.Generic.Dictionary<Texture, Material>();
-
-        /// <summary>
-        /// Unlit sprite material so placeholder art renders correctly under the URP
-        /// 2D renderer without needing a Light2D in the scene.
-        ///
-        /// ONE material PER TEXTURE, never a single shared one for everything: with
-        /// one shared material the batcher draws a whole batch with a single bound
-        /// texture, so differently-coloured shapes (and the ground, bombs and the
-        /// player marker, which all come through here) can render as each other.
-        /// See PixelSprites.MaterialFor — same bug, same fix.
-        /// </summary>
-        public static Material MaterialFor(Sprite sprite)
-        {
-            if (sprite == null || sprite.texture == null) return null;
-            if (_materials.TryGetValue(sprite.texture, out Material cached) && cached != null) return cached;
-
-            Shader shader = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default")
-                            ?? Shader.Find("Sprites/Default");
-            if (shader == null) return null;
-
-            var material = new Material(shader) { name = "PlaceholderUnlit", mainTexture = sprite.texture };
-            _materials[sprite.texture] = material;
-            return material;
-        }
+        /// <summary>The per-texture unlit material (see <see cref="Art.SpriteMaterials"/>).</summary>
+        public static Material MaterialFor(Sprite sprite) => Art.SpriteMaterials.For(sprite);
 
         /// <summary>Add a SpriteRenderer with a placeholder sprite + unlit material.</summary>
         /// <param name="outlined">False for glows, rings and ground: an opaque dark

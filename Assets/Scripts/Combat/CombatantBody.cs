@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using AlchemistsArsenal.Data;
+using AlchemistsArsenal.PhysicsKit;
 
 namespace AlchemistsArsenal.Combat
 {
@@ -56,6 +57,11 @@ namespace AlchemistsArsenal.Combat
 
         private void OnEnable()
         {
+            // Every combatant lives on the Combatant layer, wherever it was built
+            // (spawner, arena, test scene), so detonations and strikes can query
+            // exactly them.
+            if (gameObject.layer != GameLayers.Combatant) GameLayers.Assign(gameObject, GameLayers.Combatant);
+
             if (team == Team.Monster) MonsterRegistry.Register(this);
             else AdventurerRegistry.Register(this);
         }
