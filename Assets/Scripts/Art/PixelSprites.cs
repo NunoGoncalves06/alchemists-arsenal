@@ -41,6 +41,9 @@ namespace AlchemistsArsenal.Art
             ['p'] = new Color32(0x5a, 0x2f, 0x74, 0xff), // arcane/witch dark
             ['P'] = new Color32(0x7b, 0x4d, 0x9e, 0xff), // witch purple
             ['M'] = new Color32(0xc4, 0x51, 0xa8, 0xff), // arcane bright
+            ['v'] = new Color32(0x6b, 0x76, 0x1f, 0xff), // poison dark
+            ['V'] = new Color32(0xb6, 0xc3, 0x3f, 0xff), // poison (UITheme.Poison)
+            ['u'] = new Color32(0xe0, 0xea, 0x7c, 0xff), // poison bright
             ['n'] = new Color32(0x4f, 0x7a, 0x3a, 0xff), // treant/leaf mid
             ['N'] = new Color32(0x6c, 0xa2, 0x4f, 0xff), // leaf light
             ['w'] = new Color32(0x3f, 0x2c, 0x1c, 0xff), // wood dark
@@ -145,16 +148,53 @@ namespace AlchemistsArsenal.Art
             }
         }
 
+        /// <summary>
+        /// A monster's sprite, recoloured to its actual element. Families share a
+        /// silhouette, so a Water "Mossback" drawn with the green Treant grid, or a
+        /// Poison "Warded Effigy" drawn with the purple Acolyte grid, used to read as
+        /// the wrong element entirely. Each grid's body ramp is swapped onto the
+        /// element's ramp instead.
+        /// </summary>
+        public static Sprite Monster(string name, ElementType element)
+        {
+            var (key, rows, ramp, authored) = MonsterFamily(name);
+            if (element == authored) return Bake(key, rows);
+            char[] to = ElementRamp(element);
+            var swap = new Dictionary<char, char> { [ramp[0]] = to[0], [ramp[1]] = to[1], [ramp[2]] = to[2] };
+            return BakeTinted($"{key}_{element}", rows, swap);
+        }
+
+        /// <summary>A monster in its family's authored colours.</summary>
         public static Sprite Monster(string name)
         {
-            string key = (name ?? "").ToLowerInvariant();
-            if (key.Contains("ember") || key.Contains("cinder") || key.Contains("hound")) return Bake("m_ember", EMBERLING);
-            if (key.Contains("frost") || key.Contains("rime")) return Bake("m_frost", FROSTKIN);
-            if (key.Contains("treant") || key.Contains("thorn") || key.Contains("moss") || key.Contains("bog")) return Bake("m_treant", TREANT);
-            if (key.Contains("acolyte") || key.Contains("effigy") || key.Contains("coven")) return Bake("m_acolyte", ACOLYTE);
-            if (key.Contains("mire") || key.Contains("maw")) return Bake("m_mire", MIREMAW);
-            return Bake("m_treant", TREANT);
+            var (key, rows, _, _) = MonsterFamily(name);
+            return Bake(key, rows);
         }
+
+        /// <summary>Grid, its (dark, mid, bright) body glyphs, and the element those glyphs are drawn in.</summary>
+        private static (string key, string[] rows, char[] ramp, ElementType authored) MonsterFamily(string name)
+        {
+            string k = (name ?? "").ToLowerInvariant();
+            if (k.Contains("ember") || k.Contains("cinder") || k.Contains("hound"))
+                return ("m_ember", EMBERLING, new[] { 'r', 'R', 'Y' }, ElementType.Fire);
+            if (k.Contains("frost") || k.Contains("rime"))
+                return ("m_frost", FROSTKIN, new[] { 'b', 'B', 'C' }, ElementType.Water);
+            if (k.Contains("acolyte") || k.Contains("effigy") || k.Contains("coven"))
+                return ("m_acolyte", ACOLYTE, new[] { 'p', 'P', 'M' }, ElementType.Arcane);
+            if (k.Contains("mire") || k.Contains("maw"))
+                return ("m_mire", MIREMAW, new[] { 'p', 'M', 'H' }, ElementType.Arcane);
+            return ("m_treant", TREANT, new[] { 'n', 'N', 'G' }, ElementType.Nature);
+        }
+
+        /// <summary>An element's (dark, mid, bright) palette glyphs.</summary>
+        private static char[] ElementRamp(ElementType e) => e switch
+        {
+            ElementType.Fire => new[] { 'r', 'R', 'Y' },
+            ElementType.Water => new[] { 'b', 'B', 'C' },
+            ElementType.Poison => new[] { 'v', 'V', 'u' },
+            ElementType.Arcane => new[] { 'p', 'P', 'M' },
+            _ => new[] { 'g', 'G', 'H' },
+        };
 
         /// <summary>Herb jar / leaf tinted to an element (uses the element's greens/blues/oranges swap).</summary>
         public static Sprite Herb(ElementType e) => BakeTinted("herb_" + e, HERB, ElementSwap(e));
@@ -243,7 +283,9 @@ namespace AlchemistsArsenal.Art
             {
                 ElementType.Fire   => new Dictionary<char, char> { ['g'] = 'r', ['G'] = 'R', ['H'] = 'Y', ['n'] = 'r', ['N'] = 'Y' },
                 ElementType.Water  => new Dictionary<char, char> { ['g'] = 'b', ['G'] = 'B', ['H'] = 'C', ['n'] = 'b', ['N'] = 'C' },
-                ElementType.Poison => new Dictionary<char, char> { ['g'] = 'p', ['G'] = 'M', ['H'] = 'H', ['n'] = 'p', ['N'] = 'M' },
+                // Poison is yellow-green (#b6c33f) everywhere else in the game. It used
+                // to swap to purple here, which made it read as Arcane in the world.
+                ElementType.Poison => new Dictionary<char, char> { ['g'] = 'v', ['G'] = 'V', ['H'] = 'u', ['n'] = 'v', ['N'] = 'V' },
                 ElementType.Arcane => new Dictionary<char, char> { ['g'] = 'p', ['G'] = 'P', ['H'] = 'M', ['n'] = 'p', ['N'] = 'M' },
                 _ => new Dictionary<char, char>(), // Nature = the default greens
             };

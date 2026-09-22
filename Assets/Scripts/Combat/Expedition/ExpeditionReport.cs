@@ -38,6 +38,13 @@ namespace AlchemistsArsenal.Combat
         public bool contractMet = true;
         public PotionGrade contractRequired = PotionGrade.Poor;
 
+        /// <summary>
+        /// A replay of a cleared road, which pays half. Recorded at Evening because
+        /// the run state forgets it the moment the day resolves; the report used to
+        /// read it back from the run state and so never showed the halving.
+        /// </summary>
+        public bool replayDay;
+
         public readonly Dictionary<string, int> herbDrops = new Dictionary<string, int>();
         public readonly List<BombLine> bombs = new List<BombLine>();
 

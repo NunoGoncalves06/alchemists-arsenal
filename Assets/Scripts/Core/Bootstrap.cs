@@ -1,3 +1,4 @@
+using System.Globalization;
 using UnityEngine;
 using AlchemistsArsenal.Systems;
 using AlchemistsArsenal.Audio;
@@ -25,6 +26,12 @@ namespace AlchemistsArsenal.Core
             if (_done || GameLoopManager.Instance != null) { Destroy(gameObject); return; }
             _done = true;
             DontDestroyOnLoad(gameObject);
+
+            // The UI is written in English, so its numbers are too. Under the OS
+            // culture a Portuguese machine showed "x1,00" and "1,2s" beside English
+            // labels. Every interpolated number in the UI goes through this.
+            CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 
             // A persistent fallback camera so the game view always has something
             // clearing the screen — the shop / arena cameras (depth -1) draw over

@@ -35,7 +35,7 @@ namespace AlchemistsArsenal.Core
         /// <summary>Add a tinted disc SpriteRenderer. <paramref name="diameter"/> ≤ 0 leaves the transform scale alone.</summary>
         public static SpriteRenderer AddDisc(GameObject go, Color color, int sortingOrder, float diameter = 0f)
         {
-            var sr = PlaceholderArt.AddRenderer(go, PlaceholderArt.Shape.Disc, color, sortingOrder);
+            var sr = PlaceholderArt.AddRenderer(go, PlaceholderArt.Shape.Disc, color, sortingOrder, outlined: false);
             if (diameter > 0f) go.transform.localScale = Vector3.one * diameter;
             return sr;
         }

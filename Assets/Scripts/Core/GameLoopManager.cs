@@ -194,7 +194,6 @@ namespace AlchemistsArsenal.Core
             // frame and both worlds sit around the origin, so the shop's cauldron was
             // drawing into the arena's first frame (and its camera was a second
             // MainCamera). Deactivating takes effect immediately.
-            if (_shopRoot != null) _shopRoot.SetActive(false);
             DestroyWorld(ref _shopRoot);
             _expeditionRoot = new GameObject("~ExpeditionWorld");
             _expeditionWorld = _expeditionRoot.AddComponent<ExpeditionWorld>();
@@ -222,6 +221,12 @@ namespace AlchemistsArsenal.Core
             RunState s = SaveSystem.Instance.State;
             ExpeditionReport r = LatestReport;
 
+            // The road that was actually walked today. Captured before anything below
+            // runs, because clearing the current node advances currentBiomeIndex, and
+            // TargetBiomeIndex reads it: the diary used to be evaluated against the
+            // NEXT biome, so a first clear never unlocked its entry.
+            int played = TargetBiomeIndex;
+
             // Resolve the day exactly once — a mid-Evening quit + Continue must not
             // run this twice (reviewer P7). The day always advances here (even if
             // the report is somehow missing) so the loop can never stall on a day
@@ -236,6 +241,7 @@ namespace AlchemistsArsenal.Core
                     r.contractFee = job.accepted ? job.fee : Economy.BaseFee;
                     r.contractBonus = job.accepted ? job.bonus : 0;
                     r.contractRequired = job.RequiredGrade;
+                    r.replayDay = s.IsReplayDay;
 
                     int fee = 0; bool tip = false, met = false;
                     // No fee at all for a lost job (P11) — the customer got nothing.
@@ -247,9 +253,9 @@ namespace AlchemistsArsenal.Core
 
                     if (r.won)
                     {
-                        s.RecordGrade(TargetBiomeIndex, r.Stars);
+                        s.RecordGrade(played, r.Stars);
                         // Clearing your current node advances the road; a replay does not.
-                        if (!s.IsReplayDay && s.currentBiomeIndex == TargetBiomeIndex
+                        if (!s.IsReplayDay && s.currentBiomeIndex == played
                             && s.currentBiomeIndex < BiomeLibrary.Count - 1)
                             s.currentBiomeIndex++;
                     }
@@ -257,7 +263,7 @@ namespace AlchemistsArsenal.Core
                     foreach (var kv in r.herbDrops)
                         if (!s.ownedHerbs.Contains(kv.Key)) s.ownedHerbs.Add(kv.Key);
 
-                    DiaryManager.EvaluateAfterExpedition(s, TargetBiomeIndex, r);
+                    DiaryManager.EvaluateAfterExpedition(s, played, r);
                 }
 
                 s.lastResolvedDay = s.day;
@@ -301,9 +307,19 @@ namespace AlchemistsArsenal.Core
             _shopRoot.AddComponent<ShopWorld>().Build();
         }
 
+        /// <summary>
+        /// Deactivate, then destroy. Destroy() only lands at the end of the frame, and
+        /// every world is rebuilt in the same frame it is torn down: an old world left
+        /// active drew into the new one's first frame and its singletons (the pot, the
+        /// arena camera) were still live while the new ones woke up.
+        /// </summary>
         private static void DestroyWorld(ref GameObject root)
         {
-            if (root != null) Destroy(root);
+            if (root != null)
+            {
+                root.SetActive(false);
+                Destroy(root);
+            }
             root = null;
         }
     }

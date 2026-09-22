@@ -121,7 +121,7 @@ namespace AlchemistsArsenal.UI.Stations
                 row.childAlignment = TextAnchor.MiddleLeft;
                 UIFactory.Flex(row.gameObject, 1f, 0f, minHeight: 40f);
 
-                var art = UIFactory.Icon(row.transform, PixelSprites.Monster(wave.monster.DisplayName), 34f);
+                var art = UIFactory.Icon(row.transform, PixelSprites.Monster(wave.monster.DisplayName, wave.monster.Element), 34f);
                 UIFactory.Flex(art.gameObject, 0f, 0f, minWidth: 34f, minHeight: 34f);
 
                 var count = UIFactory.MonoLabel(row.transform, $"x{Mathf.Max(1, wave.count)}",

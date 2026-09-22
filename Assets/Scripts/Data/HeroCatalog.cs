@@ -102,7 +102,12 @@ namespace AlchemistsArsenal.Data
             int count = roster != null ? roster.Count : 0;
             var rng = new System.Random(day * 6151 + count * 97);
 
-            var pool = CustomerCatalog.All;
+            // Nobody already on the roster: two "Ser Halden"s side by side read as a
+            // bug, and the notice board is meant to be filling a set.
+            var pool = new List<CustomerDefinition>();
+            foreach (CustomerDefinition c in CustomerCatalog.All)
+                if (!OnRoster(roster, c.DisplayName)) pool.Add(c);
+            if (pool.Count == 0) pool.AddRange(CustomerCatalog.All);
             CustomerDefinition who = pool[rng.Next(0, pool.Count)];
 
             var arch = HeroPerks.Archetypes[rng.Next(0, HeroPerks.Archetypes.Length)];
@@ -132,6 +137,14 @@ namespace AlchemistsArsenal.Data
             return free.Count > 0
                 ? (ElementType)free[rng.Next(0, free.Count)]
                 : (ElementType)rng.Next(0, 5);
+        }
+
+        private static bool OnRoster(IReadOnlyList<HeroRecord> roster, string displayName)
+        {
+            if (roster == null) return false;
+            foreach (HeroRecord h in roster)
+                if (h != null && h.displayName == displayName) return true;
+            return false;
         }
 
         private static int Clamp(int level) => Mathf.Clamp(level, 1, MaxLevel);

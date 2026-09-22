@@ -101,7 +101,7 @@ namespace AlchemistsArsenal.Crafting
                 return mix == null || mix.Ready;
             }
         }
-        public Action<float> OnHeatChanged;
+        public event Action<float> OnHeatChanged;
 
         /// <summary>0..1 brew completion — climbs only while stirring correctly in the band.</summary>
         public float BrewProgress01 { get; private set; }
@@ -154,7 +154,7 @@ namespace AlchemistsArsenal.Crafting
         public long PhysicsStepCount { get; private set; }
 
         /// <summary>Raised when an ingredient lands in the pot, with its element.</summary>
-        public Action<ElementType> OnIngredientAdded;
+        public event Action<ElementType> OnIngredientAdded;
 
         /// <summary>
         /// Directly set the brew heat (0..1). Intended for biome ambient modifiers,
@@ -168,8 +168,11 @@ namespace AlchemistsArsenal.Crafting
 
         private void Awake()
         {
-            if (Instance == null) Instance = this;
-            else Destroy(gameObject);
+            // The newest pot wins. The shop world is destroyed and rebuilt in the same
+            // frame at the start of every day, and Destroy() is deferred, so the old
+            // pot is still Instance when the new one wakes: "keep the first one" made
+            // the NEW pot destroy itself and left the UI bound to a dying one.
+            Instance = this;
         }
 
         // Scene-scoped singleton: null Instance on destroy so the UI can't stay bound
@@ -212,6 +215,7 @@ namespace AlchemistsArsenal.Crafting
             wasInGreen = true;
             smoothedSpinDegPerSec = 0f;
             hasLastAngle = false;
+            IngredientCount = 0;
             OnHeatChanged?.Invoke(currentHeat);
         }
 
@@ -272,7 +276,7 @@ namespace AlchemistsArsenal.Crafting
             if (!mouseOverPot || rel.sqrMagnitude < 0.04f)
             {
                 hasLastAngle = false;
-                smoothedSpinDegPerSec = Mathf.Lerp(smoothedSpinDegPerSec, 0f, Time.deltaTime * 6f);
+                smoothedSpinDegPerSec = Mathf.Lerp(smoothedSpinDegPerSec, 0f, Damp(6f));
                 return;
             }
 
@@ -284,8 +288,12 @@ namespace AlchemistsArsenal.Crafting
             hasLastAngle = true;
 
             raw = Mathf.Clamp(raw, -spinForFullPower * 2f, spinForFullPower * 2f);
-            smoothedSpinDegPerSec = Mathf.Lerp(smoothedSpinDegPerSec, raw, Time.deltaTime * 8f);
+            smoothedSpinDegPerSec = Mathf.Lerp(smoothedSpinDegPerSec, raw, Damp(8f));
         }
+
+        /// <summary>Frame-rate independent smoothing factor for a Lerp toward a target.
+        /// <c>Lerp(a, b, dt * k)</c> converges at a different speed at 30 and 144 fps.</summary>
+        private static float Damp(float rate) => 1f - Mathf.Exp(-rate * Time.deltaTime);
 
         private void FixedUpdate()
         {
@@ -293,29 +301,40 @@ namespace AlchemistsArsenal.Crafting
             ApplyStirringForces();
         }
 
+        private readonly Collider2D[] _stirHits = new Collider2D[32];
+
         private void ApplyStirringForces()
         {
-            if (!mouseOverPot || mouseVelocity.sqrMagnitude < 0.1f) return;
+            float power = StirPower01;
+            if (!mouseOverPot || power < 0.02f) return;
 
-            Collider2D[] colliders = Physics2D.OverlapCircleAll(transform.position, stirringRadius, herbLayerMask);
+            var filter = new ContactFilter2D { useTriggers = false };
+            filter.SetLayerMask(herbLayerMask);
+            int n = Physics2D.OverlapCircle(transform.position, stirringRadius, filter, _stirHits);
 
-            foreach (var col in colliders)
+            // The swirl follows the spoon: anticlockwise for a positive spin, clockwise
+            // for a negative one. It used to be anticlockwise always, so on a clockwise
+            // day the herbs turned against the spoon. Power comes from the smoothed
+            // spin, not raw mouse speed, so a flick across the rim does not fling them.
+            float turn = Mathf.Sign(smoothedSpinDegPerSec);
+            for (int i = 0; i < n; i++)
             {
-                Rigidbody2D rb = col.GetComponent<Rigidbody2D>();
+                Rigidbody2D rb = _stirHits[i].attachedRigidbody;
                 if (rb == null) continue;
 
-                Vector2 offset = (Vector2)rb.transform.position - (Vector2)transform.position;
+                Vector2 offset = rb.position - (Vector2)transform.position;
                 float distance = offset.magnitude;
                 if (distance <= 0.05f) continue;
 
-                // Tangential swirl, strongest near the spoon, plus torque so each
-                // body visibly spins with the stir.
-                Vector2 tangent = new Vector2(-offset.y, offset.x).normalized;
+                Vector2 tangent = new Vector2(-offset.y, offset.x) / distance * turn;
                 float forceScale = (1f / (distance + 0.5f)) * stirForceMultiplier;
-                rb.AddForce(tangent * mouseVelocity.magnitude * forceScale, ForceMode2D.Force);
-
-                float stirDirection = Vector3.Cross(offset.normalized, mouseVelocity.normalized).z;
-                rb.AddTorque(stirDirection * mouseVelocity.magnitude * torqueMultiplier, ForceMode2D.Force);
+                rb.AddForce(tangent * power * 6f * forceScale, ForceMode2D.Force);
+                // Pull toward the middle so the vortex holds them in rather than
+                // throwing them out past the rim.
+                rb.AddForce(-offset / distance * power * forceScale * 1.5f, ForceMode2D.Force);
+                // Spin with the stir, kept well under the solver's 360°/step cap.
+                if (Mathf.Abs(rb.angularVelocity) < 540f)
+                    rb.AddTorque(turn * power * torqueMultiplier * rb.inertia * 60f, ForceMode2D.Force);
             }
         }
 

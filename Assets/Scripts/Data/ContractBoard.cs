@@ -106,7 +106,7 @@ namespace AlchemistsArsenal.Data
                 {
                     buyerId = buyer.Id, buyerName = buyer.DisplayName,
                     title = "Guild commission",
-                    note = "Pays double — but a sloppy flask pays half.",
+                    note = "Nearly double the pay — but a sloppy flask pays half.",
                     element = best,
                     requiredGrade = Req(PotionGrade.Great),
                     fee = Fee(66, 6), bonus = 34,
@@ -114,7 +114,7 @@ namespace AlchemistsArsenal.Data
             };
 
             // Something they want for themselves — often the wrong call for today's
-            // road, which is the actual decision: their gold against Rookie's odds.
+            // road, which is the actual decision: their gold against your party's odds.
             ElementType personal = buyer.Favourite != best ? buyer.Favourite : Counter(SecondThreat(counts, dominant));
             if (personal == best) personal = ElementType.Arcane;
             offers.Add(new ContractRecord
@@ -123,7 +123,7 @@ namespace AlchemistsArsenal.Data
                 title = "Personal request",
                 note = personal == best
                     ? "Happens to match the road as well."
-                    : $"They want {personal}, whatever's out there — and they carry it themselves.",
+                    : $"They want {personal}, whatever's out there — and it's what your party will carry.",
                 element = personal,
                 requiredGrade = Req(PotionGrade.Okay),
                 fee = Fee(58, 5), bonus = 22,

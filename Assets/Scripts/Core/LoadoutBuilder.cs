@@ -63,8 +63,12 @@ namespace AlchemistsArsenal.Core
         {
             ElementType element = order?.element ?? ElementType.Fire;
             PotionGrade grade = order != null ? order.GetGrade() : PotionGrade.Poor;
-            string name = order != null && !string.IsNullOrWhiteSpace(order.potionName)
-                ? order.potionName : "Raw Sludge";
+            // The recipe's own name ("Fireblood"), which is what the Prep bench showed
+            // the player brewing. The order carries the contract's generic "Fire
+            // Flask", so the Evening report used to name a different potion.
+            string name = order == null ? "Raw Sludge"
+                : RecipeBook.For(order.element)?.Name
+                  ?? (string.IsNullOrWhiteSpace(order.potionName) ? "Raw Sludge" : order.potionName);
 
             RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
             float dmgMult = s != null && s.HasUpgrade(UpgradeCatalog.HeavierFlasks) ? 1.25f : 1f;

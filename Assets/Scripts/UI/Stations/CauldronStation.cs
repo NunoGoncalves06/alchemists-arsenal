@@ -162,9 +162,9 @@ namespace AlchemistsArsenal.UI.Stations
             if (pot == null) return;
 
             float heat = pot.Heat01;
-            _heat.Set(heat, $"{heat:P0}");
+            _heat.Set(heat, PercentText.Of(heat));
             _heat.SetBand(pot.MinOptimalHeat, pot.MaxOptimalHeat);
-            _brew.Set(pot.BrewProgress01, $"{pot.BrewProgress01:P0}");
+            _brew.Set(pot.BrewProgress01, PercentText.Of(pot.BrewProgress01));
 
             if (_spinNeedle != null)
             {
