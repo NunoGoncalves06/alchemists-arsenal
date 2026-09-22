@@ -21,7 +21,18 @@ namespace AlchemistsArsenal.Core
         public static bool ScreenShake   { get => GetB("a11y.screenShake", true); set => SetB("a11y.screenShake", value); }
         public static float TextScale    { get => Get("a11y.textScale", 1f); set => Set("a11y.textScale", value); }
         public static bool ShowAiThinking { get => GetB("hud.aiThinking"); set => SetB("hud.aiThinking", value); }
-        public static int DefaultExpeditionSpeed { get => Mathf.Clamp(PlayerPrefs.GetInt("hud.expSpeed", 1), 1, 2); set { PlayerPrefs.SetInt("hud.expSpeed", Mathf.Clamp(value, 1, 2)); Raise(); } }
+        public static int DefaultExpeditionSpeed
+        {
+            get => ExpeditionSpeedOverride ?? Mathf.Clamp(PlayerPrefs.GetInt("hud.expSpeed", 1), 1, 2);
+            set { PlayerPrefs.SetInt("hud.expSpeed", Mathf.Clamp(value, 1, 2)); Raise(); }
+        }
+
+        /// <summary>
+        /// In-memory only, never written to PlayerPrefs. The headless playtest pins
+        /// the fight speed with it: PlayerPrefs are shared with the developer's
+        /// Editor, and whatever speed they last picked used to leak into test runs.
+        /// </summary>
+        public static int? ExpeditionSpeedOverride;
 
         private static float Get(string k, float d) => PlayerPrefs.GetFloat(k, d);
         private static void Set(string k, float v) { PlayerPrefs.SetFloat(k, Mathf.Clamp01(v)); Raise(); }

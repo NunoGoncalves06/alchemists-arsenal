@@ -14,8 +14,10 @@ namespace AlchemistsArsenal.DebugTools
     /// play mode + a scene); it covers the pure logic those transitions rely on.
     /// Attach to a GameObject in an empty scene and press Play.
     /// </summary>
-    public class GameLoopSimulationTest : MonoBehaviour
+    public class GameLoopSimulationTest : MonoBehaviour, ISimulationSuite
     {
+        public bool Done { get; private set; }
+
         private int _pass, _fail;
 
         private void Start()
@@ -32,6 +34,7 @@ namespace AlchemistsArsenal.DebugTools
             TestRosterMigration();
             TestPerkSymmetry();
             TestCostCurve();
+            Done = true;
             Debug.Log($"<color=cyan><b>=== DONE — {_pass} pass, {_fail} fail ===</b></color>");
         }
 

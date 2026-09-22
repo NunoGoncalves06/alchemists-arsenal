@@ -12,8 +12,10 @@ namespace AlchemistsArsenal.DebugTools
     /// and data, runs <see cref="CombatDecisionEngine"/>, prints the full score table,
     /// and asserts the expected bomb wins. Fails loudly.
     /// </summary>
-    public class UtilityAiSimulationTest : MonoBehaviour
+    public class UtilityAiSimulationTest : MonoBehaviour, ISimulationSuite
     {
+        public bool Done { get; private set; }
+
         // --- balance assumptions under test ---------------------------------
         private const float StrongMult = 2f;
         private const float WeakMult = 0.5f;
@@ -131,6 +133,7 @@ namespace AlchemistsArsenal.DebugTools
                 Report("S3: point-blank target scores below threshold (no throw)", !ok);
             }
 
+            Done = true;
             Debug.Log("<color=cyan><b>=== SIMULATION COMPLETE ===</b></color>");
         }
 

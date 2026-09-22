@@ -9,8 +9,10 @@ namespace AlchemistsArsenal.DebugTools
     /// born at 25 (Poor), raised by clean brewing, lowered by heat penalties, and
     /// graded on the 4-band <see cref="PotionGrade"/> (reviewer X4).
     /// </summary>
-    public class CauldronSimulationTest : MonoBehaviour
+    public class CauldronSimulationTest : MonoBehaviour, ISimulationSuite
     {
+        public bool Done { get; private set; }
+
         [SerializeField] private float simStepTime = 0.1f;
 
         private void Start() => RunFullSimulationSuite();
@@ -21,6 +23,7 @@ namespace AlchemistsArsenal.DebugTools
             Scenario_CleanBrewClimbs();
             Scenario_OverheatingPenalises();
             Scenario_UntouchedStaysPoor();
+            Done = true;
             Debug.Log("<color=cyan><b>=== SIMULATION SUITE COMPLETE ===</b></color>");
         }
 
@@ -31,8 +34,11 @@ namespace AlchemistsArsenal.DebugTools
             int raises = 0;
             order.OnQualityChanged += _ => raises++;
 
+            // 7 a step: from the starting 25 that reaches 95 (Perfect) on the tenth
+            // step without clamping. At 9 a step the tenth bonus hit the 100 cap, a
+            // clamped no-op fires no change event, and this check could never pass.
             for (int step = 1; step <= 10; step++)
-                order.ApplyBonus(9, "Cauldron Brewing", "held green zone step " + step, step * simStepTime);
+                order.ApplyBonus(7, "Cauldron Brewing", "held green zone step " + step, step * simStepTime);
 
             Debug.Log($"Result: quality {order.qualityScore}/100 | grade {order.GetGrade()} | events {raises}");
             bool ok = order.qualityScore > ActiveOrder.StartingQuality

@@ -14,8 +14,10 @@ namespace AlchemistsArsenal.DebugTools
     /// drives a real tab transition, waits several physics steps, and checks the
     /// simulation kept advancing.
     /// </summary>
-    public class StationTabPhysicsSimulationTest : MonoBehaviour
+    public class StationTabPhysicsSimulationTest : MonoBehaviour, ISimulationSuite
     {
+        public bool Done { get; private set; }
+
         [SerializeField] private float observeSeconds = 1.5f;
         [SerializeField] private float startingHeat = 0.90f;
 
@@ -77,6 +79,7 @@ namespace AlchemistsArsenal.DebugTools
             Report("Station change events dispatched cleanly", _stationChangeEvents >= 2);
 
             Destroy(cauldronPanel);
+            Done = true;
             Debug.Log("<color=cyan><b>=== SIMULATION COMPLETE ===</b></color>");
         }
 

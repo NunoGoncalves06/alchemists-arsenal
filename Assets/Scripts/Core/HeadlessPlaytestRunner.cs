@@ -69,7 +69,27 @@ namespace AlchemistsArsenal.Core
             private StringBuilder _log;
             private int _errorCount;
             private Stopwatch _wall;
-            private TimeControl.Handle _fastForward;
+            /// <summary>"quick" (the day loop + one fight per boss) or "full" (also a
+            /// seed sweep across all five biomes). From <c>-playtestSuite</c>.</summary>
+            private string _suite = "quick";
+            private bool FullSuite => _suite == "full";
+
+            /// <summary>One entry per resolved fight, joined into the report's
+            /// FINGERPRINT line so two runs can be diffed.</summary>
+            private readonly List<string> _fingerprint = new List<string>();
+
+            /// <summary>The harness's own save file. See <see cref="SaveSystem.SlotOverride"/>.</summary>
+            private const int HarnessSlot = 7;
+
+            /// <summary>
+            /// Every frame advances game time by exactly this much. Fights used to run
+            /// on real, variable frame deltas, so drawing one sprite fewer on one frame
+            /// could flip a seeded fight's outcome. With a fixed step the same build
+            /// gives the same fight, and a changed outcome means a real change.
+            /// Time scale stays 1: the harness gets its speed from batchmode rendering
+            /// frames as fast as it can, not from coarser steps.
+            /// </summary>
+            private const float FrameStep = 1f / 60f;
 
             public void Begin()
             {
@@ -77,8 +97,21 @@ namespace AlchemistsArsenal.Core
                 _errorCount = 0;
                 _wall = Stopwatch.StartNew();
                 Application.logMessageReceived += OnUnityLog;
-                Log("=== HEADLESS PLAYTEST START (runtime driver, post-reload) ===");
+                _suite = ReadSuiteArg();
+                SaveSystem.SlotOverride = HarnessSlot;
+                SettingsService.ExpeditionSpeedOverride = 1;
+                Time.captureDeltaTime = FrameStep;
+                Log($"=== HEADLESS PLAYTEST START (runtime driver, post-reload, suite={_suite}) ===");
+                Log($"Save slot pinned to slot_{HarnessSlot}.json, fight speed pinned to 1x, fixed step {FrameStep:F4}s.");
                 StartCoroutine(DriveThenFinish());
+            }
+
+            private static string ReadSuiteArg()
+            {
+                string[] args = Environment.GetCommandLineArgs();
+                for (int i = 0; i < args.Length - 1; i++)
+                    if (args[i] == "-playtestSuite") return args[i + 1].ToLowerInvariant();
+                return "quick";
             }
 
             // ------------------------------------------------------------ script
@@ -136,6 +169,7 @@ namespace AlchemistsArsenal.Core
                 foreach (var step in WaitForPhase(GamePhase.MainMenu, 10f)) { if (_errorCount > 0) yield break; yield return step; }
                 if (_errorCount > 0) yield break;
                 foreach (var step in Settle("boot_main_menu")) yield return step;
+                foreach (var step in ProbeClocks()) yield return step;
 
                 // Run the pure meta-layer checks (save round-trip, migration
                 // clamping, perk symmetry, cost curves, the quality budget) inside
@@ -148,10 +182,9 @@ namespace AlchemistsArsenal.Core
                 foreach (var step in RunSimulationChecks()) yield return step;
                 if (_errorCount > 0) yield break;
 
-                // Speed the whole run up — TimeControl is the sole owner of Time.timeScale
-                // (DESIGN.md), so we ask through it rather than writing Time.timeScale.
-                if (TimeControl.Instance != null)
-                    _fastForward = TimeControl.Instance.Push(4f, "headless-playtest");
+                // No 4x time-scale push any more. It never actually applied to the
+                // fights (the HUD pushes its own 1x/2x request on top of it), and a
+                // coarser step would make the harness fight differently from a player.
 
                 for (int day = 1; day <= DaysToRun && _errorCount == 0; day++)
                 {
@@ -356,6 +389,16 @@ namespace AlchemistsArsenal.Core
                 // after the day loop is done - never alongside a live party.
                 foreach (var step in RunExpeditionScenarios()) yield return step;
 
+                // The physics and AI suites that never used to run anywhere.
+                foreach (var step in RunSuite<DebugTools.BallisticLauncherSimulationTest>(30f)) yield return step;
+                foreach (var step in RunSuite<DebugTools.BossAndMovementSimulationTest>(40f)) yield return step;
+                foreach (var step in RunSuite<DebugTools.CauldronSimulationTest>(10f)) yield return step;
+                foreach (var step in RunSuite<DebugTools.StationTabPhysicsSimulationTest>(20f)) yield return step;
+
+                foreach (var step in RunBossScenarios()) yield return step;
+                if (FullSuite)
+                    foreach (var step in RunBiomeSweep()) yield return step;
+
                 if (_errorCount == 0) Log("=== FULL LOOP COMPLETED — all days resolved cleanly ===");
             }
 
@@ -439,6 +482,7 @@ namespace AlchemistsArsenal.Core
             private IEnumerable WaitForExpeditionEndWithCaptures(float timeoutSeconds, string namePrefix, float captureEvery = 1f)
             {
                 float start = Time.unscaledTime;
+                float gameStart = Time.time;
                 float nextCapture = start;
                 ExpeditionWorld world = GameLoopManager.Instance.CurrentExpedition;
                 if (world == null || world.Expedition == null)
@@ -511,6 +555,7 @@ namespace AlchemistsArsenal.Core
                     : "";
                 Log($"Expedition resolved: {world.Expedition.Phase} " +
                     $"({Time.unscaledTime - start:F1}s{detail})");
+                _fingerprint.Add($"{namePrefix}={FightSummary(world, Time.time - gameStart)}");
                 Log($"Ticker: {throwLines} throw line(s) seen, all credited to the party " +
                     $"({string.Join(", ", partyNames)}).");
             }
@@ -734,6 +779,142 @@ namespace AlchemistsArsenal.Core
                     : $"Meta-layer simulation checks reported {_errorCount} failure(s).");
             }
 
+            /// <summary>
+            /// Log how the three clocks move for a few frames, so a reader of the
+            /// report can see whether unscaled time follows the fixed step (the
+            /// harness's own timeouts are measured in it).
+            /// </summary>
+            private IEnumerable ProbeClocks()
+            {
+                float rt0 = Time.realtimeSinceStartup, ut0 = Time.unscaledTime, t0 = Time.time;
+                for (int i = 0; i < 10; i++) yield return null;
+                Log($"Clock probe over 10 frames: time +{Time.time - t0:F3}s, unscaled +{Time.unscaledTime - ut0:F3}s, " +
+                    $"wall +{Time.realtimeSinceStartup - rt0:F3}s.");
+            }
+
+            /// <summary>"Won/23.3s/w3of3/hp412/fl19" — outcome, game seconds, waves,
+            /// party HP left, flasks left. Compact so the fingerprint line diffs well.</summary>
+            private static string FightSummary(ExpeditionWorld world, float gameSeconds)
+            {
+                int hp = 0, flasks = 0;
+                foreach (var b in world.Party)
+                {
+                    if (b == null) continue;
+                    if (b.IsAlive) hp += b.CurrentHP;
+                    var c = b.GetComponent<UtilityAI_CombatController>();
+                    if (c != null) flasks += c.FlasksLeft;
+                }
+                var exp = world.Expedition;
+                string boss = "";
+                if (exp.BossInstance != null)
+                {
+                    var bb = exp.BossInstance.GetComponent<CombatantBody>();
+                    if (bb != null) boss = $"/boss{bb.CurrentHP}";
+                }
+                return $"{exp.Phase}/{gameSeconds:F1}s/w{exp.WavesCleared}of{exp.TotalWaves}/hp{hp}/fl{flasks}{boss}";
+            }
+
+            /// <summary>Add one self-checking suite, wait for it to report, tear it down.</summary>
+            private IEnumerable RunSuite<T>(float timeoutSeconds) where T : MonoBehaviour, DebugTools.ISimulationSuite
+            {
+                var go = new GameObject($"~Suite_{typeof(T).Name}");
+                T suite = go.AddComponent<T>();
+                float t = 0f;
+                while (!suite.Done && t < timeoutSeconds)
+                {
+                    t += Time.unscaledDeltaTime;
+                    yield return null;
+                }
+                if (!suite.Done) Fail($"{typeof(T).Name} did not finish within {timeoutSeconds}s.");
+                else Log($"{typeof(T).Name} finished ({t:F1}s).");
+                Destroy(go);
+                yield return null;
+                MonsterRegistry.Clear();
+                AdventurerRegistry.Clear();
+            }
+
+            /// <summary>
+            /// Each guardian, fought once on a fixed seed. The day loop never reaches the
+            /// Coven Matriarch and only meets the Woodwose on the day-3 replay, so without
+            /// this the bosses were barely exercised at all.
+            /// </summary>
+            private IEnumerable RunBossScenarios()
+            {
+                foreach (var step in RunScenario(0, 5, "boss_woodwose", capture: true)) yield return step;
+                foreach (var step in RunScenario(BiomeLibrary.Count - 1, 5, "boss_matriarch", capture: true)) yield return step;
+            }
+
+            /// <summary>Full suite only: every biome on five seeds, for win rates and HP margins.</summary>
+            private IEnumerable RunBiomeSweep()
+            {
+                for (int biome = 0; biome < BiomeLibrary.Count; biome++)
+                    for (int seed = 11; seed <= 15; seed++)
+                        foreach (var step in RunScenario(biome, seed, $"sweep_b{biome}_s{seed}", capture: false))
+                            yield return step;
+            }
+
+            /// <summary>
+            /// A real arena for <paramref name="biome"/> with its boss enabled, fought by
+            /// whatever party the run has deployed (three heroes after day 2) carrying a
+            /// Great flask of the element the Counter recommends for that road. The day
+            /// seeds the monster spawner, so the fight is reproducible.
+            /// </summary>
+            private IEnumerable RunScenario(int biome, int seedDay, string label, bool capture)
+            {
+                RunState st = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+                if (st == null) { Fail($"Scenario {label}: no run state."); yield break; }
+
+                int savedDay = st.day, savedReplay = st.replayBiomeIndex;
+                st.day = seedDay;
+                st.replayBiomeIndex = biome;
+
+                var canvases = new List<Canvas>();
+                foreach (var c in FindObjectsByType<Canvas>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                    if (c.enabled) { c.enabled = false; canvases.Add(c); }
+
+                BiomeData data = BiomeLibrary.Get(biome);
+                ElementType element = ContractBoard.Counter(ContractBoard.Dominant(ContractBoard.ThreatCounts(data)));
+                var order = new ActiveOrder("scenario", $"{element} Flask", element);
+                order.AdjustQuality(60, "HeadlessPlaytest", "scenario flask (Great)");
+                var party = st.DeployedParty();
+                var loadouts = LoadoutBuilder.BuildAll(new[] { order }, party);
+
+                var root = new GameObject($"~Scenario_{label}");
+                var world = root.AddComponent<ExpeditionWorld>();
+                world.Build(data, loadouts, party, enableBoss: true);
+
+                float start = Time.time, nextCapture = 0f;
+                const float Timeout = 240f;
+                while (world.Expedition.Phase != ExpeditionPhase.Won && world.Expedition.Phase != ExpeditionPhase.Lost
+                       && Time.time - start < Timeout)
+                {
+                    if (capture && world.Expedition.Phase == ExpeditionPhase.BossFight && Time.time >= nextCapture)
+                    {
+                        Capture($"{label}_t{Mathf.RoundToInt(Time.time - start):000}s");
+                        nextCapture = Time.time + 3f;
+                    }
+                    yield return null;
+                }
+                if (world.Expedition.Phase != ExpeditionPhase.Won && world.Expedition.Phase != ExpeditionPhase.Lost)
+                    Fail($"Scenario {label} did not resolve within {Timeout}s of game time.");
+                else if (world.Expedition.Phase == ExpeditionPhase.Won
+                         && world.Expedition.WavesCleared < world.Expedition.TotalWaves)
+                    Fail($"Scenario {label} reported a WIN with only {world.Expedition.WavesCleared}/{world.Expedition.TotalWaves} waves.");
+
+                string summary = FightSummary(world, Time.time - start);
+                Log($"Scenario {label} ({BiomeLibrary.Name(biome)}, party x{party.Count}): {summary} — {world.Expedition.OutcomeReason}");
+                _fingerprint.Add($"{label}={summary}");
+                if (capture) Capture($"{label}_end");
+
+                Destroy(root);
+                yield return null;
+                MonsterRegistry.Clear();
+                AdventurerRegistry.Clear();
+                foreach (var c in canvases) if (c != null) c.enabled = true;
+                st.day = savedDay;
+                st.replayBiomeIndex = savedReplay;
+            }
+
             // ---------------------------------------------------------- plumbing
 
             private void OnUnityLog(string condition, string stackTrace, LogType type)
@@ -770,10 +951,13 @@ namespace AlchemistsArsenal.Core
                 if (_finished) return;   // the wrapper always calls this; be idempotent
                 _finished = true;
 
-                _fastForward.Dispose();
                 Application.logMessageReceived -= OnUnityLog;
+                Time.captureDeltaTime = 0f;
+                SaveSystem.SlotOverride = -1;
+                SettingsService.ExpeditionSpeedOverride = null;
 
                 string verdict = _errorCount == 0 ? "PASS" : $"FAIL ({_errorCount} error(s))";
+                _log.AppendLine($"FINGERPRINT: {string.Join(" ", _fingerprint)}");
                 _log.AppendLine($"=== RESULT: {verdict} ===");
 
                 string path = Path.Combine(Directory.GetCurrentDirectory(), ReportPath);

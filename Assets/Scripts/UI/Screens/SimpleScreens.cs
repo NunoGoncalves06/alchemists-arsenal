@@ -40,7 +40,7 @@ namespace AlchemistsArsenal.UI
 
         private IEnumerator Advance()
         {
-            yield return new WaitForSecondsRealtime(1.2f);
+            yield return UnscaledWait.Seconds(1.2f);
             if (GameLoopManager.Instance != null) GameLoopManager.Instance.GoToMainMenu();
         }
     }
@@ -224,7 +224,7 @@ namespace AlchemistsArsenal.UI
 
         private IEnumerator Advance()
         {
-            yield return new WaitForSecondsRealtime(1.8f);
+            yield return UnscaledWait.Seconds(1.8f);
 
             // Opening cinematic plays once, right after the first Day Intro.
             var s = SaveSystem.Instance.State;

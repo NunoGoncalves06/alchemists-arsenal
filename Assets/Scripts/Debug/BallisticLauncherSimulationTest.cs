@@ -11,8 +11,10 @@ namespace AlchemistsArsenal.DebugTools
     /// Confirms the projectile flies under physics (no transform writes), detonates
     /// in FixedUpdate, applies radial knockback and rubric-scaled damage.
     /// </summary>
-    public class BallisticLauncherSimulationTest : MonoBehaviour
+    public class BallisticLauncherSimulationTest : MonoBehaviour, ISimulationSuite
     {
+        public bool Done { get; private set; }
+
         // --- balance assumptions under test --------------------------------
         private const int BombBaseDamage = 20;
         private const float BombBlastRadius = 2.5f;
@@ -107,6 +109,7 @@ namespace AlchemistsArsenal.DebugTools
 
             if (projGo != null) Destroy(projGo);
             Destroy(targetGo);
+            Done = true;
             Debug.Log("<color=cyan><b>=== SIMULATION COMPLETE ===</b></color>");
         }
 

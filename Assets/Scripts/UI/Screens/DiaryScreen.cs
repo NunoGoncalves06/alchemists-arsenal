@@ -172,14 +172,13 @@ namespace AlchemistsArsenal.UI
 
         private IEnumerator PlayFrames(Sprite[] frames, float fps)
         {
-            var wait = new WaitForSecondsRealtime(1f / fps);
             int i = 0;
             while (true)
             {
                 _frameImg.sprite = frames[i % frames.Length];
                 i++;
                 if (i >= frames.Length && SettingsService.ReduceMotion) yield break; // hold the last frame
-                yield return wait;
+                yield return UnscaledWait.Seconds(1f / fps);
             }
         }
 
@@ -199,11 +198,10 @@ namespace AlchemistsArsenal.UI
             _fullText = full;
             if (SettingsService.ReduceMotion) { _text.text = full; _typing = null; yield break; }
             _text.text = "";
-            var wait = new WaitForSecondsRealtime(0.012f);
             for (int i = 0; i < full.Length; i++)
             {
                 _text.text += full[i];
-                if (i % 2 == 0) yield return wait;
+                if (i % 2 == 0) yield return UnscaledWait.Seconds(0.012f);
             }
             _typing = null;
         }

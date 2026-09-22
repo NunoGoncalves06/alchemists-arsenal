@@ -43,8 +43,17 @@ namespace AlchemistsArsenal.Core
 
         // --------------------------------------------------------------- slot IO
 
+        /// <summary>
+        /// When >= 0, every slot maps to this file instead. The headless playtest
+        /// sets it: a batchmode run of a copy of this project shares
+        /// <see cref="Application.persistentDataPath"/> with the developer's own
+        /// Editor (same company + product name), so without it every test run
+        /// overwrote the real <c>slot_0.json</c>.
+        /// </summary>
+        public static int SlotOverride = -1;
+
         private static string PathFor(int slot) =>
-            Path.Combine(Application.persistentDataPath, $"slot_{slot}.json");
+            Path.Combine(Application.persistentDataPath, $"slot_{(SlotOverride >= 0 ? SlotOverride : slot)}.json");
 
         public bool SlotExists(int slot) => File.Exists(PathFor(slot));
 

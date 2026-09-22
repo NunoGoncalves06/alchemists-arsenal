@@ -12,8 +12,9 @@ namespace AlchemistsArsenal.DebugTools
     /// (spawner + wave director + one real adventurer) and asserts it reaches a
     /// terminal Won / Lost state for the right reason.
     /// </summary>
-    public class ExpeditionSimulationTest : MonoBehaviour
+    public class ExpeditionSimulationTest : MonoBehaviour, ISimulationSuite
     {
+        public bool Done => Finished;
         /// <summary>Set when every scenario has resolved, so a harness can wait on it.</summary>
         public static bool Finished { get; private set; }
 
