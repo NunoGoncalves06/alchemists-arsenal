@@ -16,9 +16,9 @@ namespace AlchemistsArsenal.PhysicsKit
     /// physics: bodies with colliders and mass, a ring they bounce off, a kinematic
     /// spoon that shoves them, forces and torque in FixedUpdate.</para>
     ///
-    /// <para>What the physics decides: how fast each herb is riding the vortex
-    /// (which is how fast it dissolves into the brew), and whether an over-hard stir
-    /// flings one clean out of the pot.</para>
+    /// <para>What the physics decides: how fast each herb is riding the vortex (which
+    /// is how fast it dissolves into the brew), and which herb goes over the lip when
+    /// the vessel slops (<see cref="SlopOutermost"/> — the vessel decides when).</para>
     /// </summary>
     public class LiquidBody2D : MonoBehaviour
     {
@@ -38,8 +38,6 @@ namespace AlchemistsArsenal.PhysicsKit
         [SerializeField] private float radius = 1.8f;
         [Tooltip("How much of the spoon's angular speed the liquid picks up.")]
         [SerializeField] private float drag = 0.55f;
-        [Tooltip("Stir rate (deg/s) above which the pot starts slopping herbs out.")]
-        [SerializeField] private float splashSpin = 640f;
         [SerializeField] private float dissolvePerSecond = 0.28f;
 
         public float Radius => radius;
@@ -59,7 +57,6 @@ namespace AlchemistsArsenal.PhysicsKit
         public event Action<Floater> OnDissolved;
 
         private Rigidbody2D _spoon;
-        private float _overstir, _splashCooldown;
 
         /// <summary>
         /// Of every herb put in, how much has dissolved (0..1). Splashed herbs count
@@ -148,13 +145,6 @@ namespace AlchemistsArsenal.PhysicsKit
 
             float omega = SpinDegPerSec * Mathf.Deg2Rad * drag;
 
-            // Over-stirring: sustained, far past a full-power stir, the surface heaves
-            // and the outermost herb goes over the lip.
-            bool frantic = Mathf.Abs(SpinDegPerSec) > splashSpin;
-            _overstir = frantic ? _overstir + dt : Mathf.Max(0f, _overstir - dt * 2f);
-            _splashCooldown -= dt;
-            if (_overstir > 0.35f && _splashCooldown <= 0f) FlingOutermost(centre);
-
             for (int i = 0; i < Floaters.Count; i++)
             {
                 Floater f = Floaters[i];
@@ -212,9 +202,14 @@ namespace AlchemistsArsenal.PhysicsKit
             }
         }
 
-        /// <summary>Heave the outermost herb up and over the lip (its ring contact is dropped).</summary>
-        private void FlingOutermost(Vector2 centre)
+        /// <summary>
+        /// The vessel has slopped over: heave the outermost herb up and over the lip
+        /// (its ring contact is dropped). Returns the herb that went, or null if there
+        /// was nothing left floating.
+        /// </summary>
+        public Floater SlopOutermost()
         {
+            Vector2 centre = transform.position;
             Floater pick = null;
             float best = -1f;
             foreach (var f in Floaters)
@@ -223,14 +218,13 @@ namespace AlchemistsArsenal.PhysicsKit
                 float r = (f.Body.position - centre).magnitude;
                 if (r > best) { best = r; pick = f; }
             }
-            if (pick == null) return;
+            if (pick == null) return null;
 
-            _splashCooldown = 0.7f;
-            _overstir = 0.15f;
             Vector2 rel = pick.Body.position - centre;
             Vector2 dir = rel.sqrMagnitude > 0.0001f ? rel.normalized : Vector2.up;
             pick.Collider.excludeLayers |= GameLayers.MaskOf(GameLayers.ShopStatic);
             pick.Body.AddForce(dir * (5.5f * pick.Body.mass), ForceMode2D.Impulse);
+            return pick;
         }
     }
 }

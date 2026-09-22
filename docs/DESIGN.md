@@ -920,12 +920,24 @@ Scoring caps live in `Data/QualityBudget` (a flawless morning is 113 points, and
 the harness asserts it).
 - **Prep:** leaves are thrown into the mortar on ballistic arcs (click, or drag
   them in). A strike is the pestle's measured impact speed (ideal 6.5 m/s). Too
-  hard throws a leaf out.
-- **Cauldron:** a surface-space vortex dissolves the floating herbs, and brew
-  progress scales with how much has dissolved. Stirring too hard slops a herb over
-  the rim (a named penalty).
+  hard throws a leaf out. The bowl is drawn in three-quarter view, so its inside
+  is foreshortened (`PrepBench.ToView`): a leaf on the floor of the physical bowl
+  is drawn inside the mouth, with the near lip over its lower half.
+- **Cauldron:** the band is the **stir speed** itself, and it drifts. Too slow (or
+  stopped) and the brew sticks to the bottom and then burns there — it darkens,
+  smokes, and costs points every second until the spoon scrapes it clean. Too fast
+  and the surface heaves and slops over the rim: one named penalty per spill, and
+  it takes the outermost undissolved herb with it. In the band, the vortex
+  dissolves the herbs and brew progress scales with how much has dissolved. (This
+  replaced a heat meter that the stir only fed indirectly, so "too cold" and
+  "overheating" were two names for the same hand.)
 - **Bottling:** a ladle on a `HingeJoint2D` pours real droplets; the fill is the
-  droplets counted in the flask. A cork on a `SliderJoint2D` seats on the beat.
+  droplets counted in the flask, and the glass draws that as a liquid level that
+  rises with them, hiding each droplet once it is under the surface. Poured past
+  the brim, what still comes runs over the lip and down the outside of the glass.
+  A cork on a `SliderJoint2D` seats on the beat — the joint holds it on the neck's
+  axis and a world-space drive presses it home, because a slider auto-configures
+  its own angle and will not take the one you set.
 
 ### 12.3 Guardians
 - **Rig:** `BossVisual` builds the rig from `BossArt` parts on an unscaled physics

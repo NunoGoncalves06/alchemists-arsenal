@@ -501,6 +501,15 @@ namespace AlchemistsArsenal.Core
                 if (_errorCount > 0) { PhysicsKit.Pointer.Scripted = null; yield break; }
                 foreach (var step in Settle($"day{day}_morning_prep_mortar")) yield return step;
 
+                // The bowl is drawn in three-quarter view: a leaf that has settled must
+                // be drawn inside its mouth, not hanging over the front of the mortar.
+                foreach (var l in bench.Leaves)
+                {
+                    if (l.Body == null || !l.InBowl) continue;
+                    if (!bench.ShowsInBowl(l))
+                        Fail($"A settled {l.Data.DisplayName} is drawn at {l.Art.transform.position} — outside the mortar's mouth (bowl {bench.MortarWorld}).");
+                }
+
                 // Strikes: hold on the mortar until the pestle would land at the ideal
                 // speed, then let go and let gravity do it.
                 for (int s = 0; s < QualityBudget.GrindStrikes && !mix.Ground; s++)
@@ -545,7 +554,8 @@ namespace AlchemistsArsenal.Core
                 float dir = pot.RequiredClockwise ? -1f : 1f;
                 float angle = 0f;
 
-                // Day 2 also checks the fumble: a frantic stir must slop a herb out.
+                // Day 2 also checks both fumbles: stirred too fast the pot slops over
+                // the rim, and left too slow the brew catches and then burns on it.
                 if (day == 2)
                 {
                     int splashes = pot.SplashCount;
@@ -555,20 +565,36 @@ namespace AlchemistsArsenal.Core
                         _pointer.World = pot.ToWorld(new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * R * 0.6f);
                         yield return null;
                     }
-                    if (pot.SplashCount == splashes) Fail("A frantic stir (820 deg/s) never slopped a herb out of the pot.");
-                    else Log("Cauldron fumble: a frantic stir slopped a herb out, as it should.");
+                    if (pot.SplashCount == splashes) Fail("A frantic stir (820 deg/s) never slopped the pot over its rim.");
+                    else Log($"Cauldron fumble: a frantic stir slopped the pot over its rim (slosh {pot.Slosh01:0.00}), as it should.");
+                    Capture($"day{day}_morning_cauldron_spill");
                     foreach (var f in Frames(40)) yield return f;
+
+                    // Now stop, with the spoon still over the brew: the bottom catches.
+                    int before = order.deductions.Count;
+                    for (float t = 0f; t < 6f && !pot.Burning; t += Time.deltaTime) yield return null;
+                    if (!pot.Burning)
+                        Fail($"Six seconds of not stirring never got the bottom burning (scorch {pot.Scorch01:0.00}).");
+                    else
+                    {
+                        bool charged = false;
+                        for (int i = before; i < order.deductions.Count; i++)
+                            if (order.deductions[i].reason.Contains("bottom")) charged = true;
+                        if (!charged) Fail("The bottom burned but nothing was charged for it.");
+                        else Log($"Cauldron fumble: the bottom caught and burned (scorch {pot.Scorch01:0.00}), as it should.");
+                    }
+                    Capture($"day{day}_morning_cauldron_burning");
                 }
 
                 float elapsed = 0f;
                 bool captured = false;
                 while (!pot.IsBrewComplete && elapsed < 60f)
                 {
-                    // Aim the stir speed at the heat the band wants; come up to it quickly.
-                    float target = pot.BandCentre;
-                    float power = pot.Heat01 < pot.MinOptimalHeat ? 0.85f
-                        : pot.Heat01 > pot.MaxOptimalHeat ? 0.2f
-                        : Mathf.Clamp((target - 0.15f) / 0.85f, 0.15f, 0.9f);
+                    // Aim the stir at the middle of the band and correct toward it: too
+                    // slow and it sticks, too fast and it slops.
+                    float power = pot.TooSlow ? pot.MaxOptimalStir
+                        : pot.TooFast ? pot.MinOptimalStir
+                        : pot.StirBandCentre;
                     angle += dir * power * 420f * Time.deltaTime * Mathf.Deg2Rad;
                     _pointer.World = pot.ToWorld(new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * R * 0.6f);
                     elapsed += Time.deltaTime;
@@ -604,13 +630,28 @@ namespace AlchemistsArsenal.Core
                 t = 0f;
                 while (bench.Current == Crafting.BottlingBench.Step.Pour && t < 8f) { t += Time.deltaTime; yield return null; }
                 if (bench.Current == Crafting.BottlingBench.Step.Pour) { Fail("The pour was never scored (droplets never settled)."); yield break; }
-                Log($"Bottling: poured to {bench.Fill01:P0} ({bench.Spilled} spilled)");
+                Log($"Bottling: poured to {bench.Fill01:P0} ({bench.Spilled} spilled), brew drawn up to row {bench.LiquidLevelRow}");
+
+                // What is in the flask has to be visible in it: the glass draws the brew
+                // as a level, and a flask poured to the line is most of the way up the
+                // bulb. It used to be droplets alone, and the flask looked empty.
+                int expectedRow = Art.ShopArt.FlaskLevelRow(bench.Fill01 * Art.ShopArt.FlaskBulbVolumePx);
+                if (bench.LiquidLevelRow != expectedRow)
+                    Fail($"The flask is {bench.Fill01:P0} full but the brew is drawn to row {bench.LiquidLevelRow}, not {expectedRow}.");
+                if (bench.LiquidLevelRow > Art.ShopArt.FlaskBodyCY)
+                    Fail($"A flask at {bench.Fill01:P0} draws no brew above the middle of its bulb (row {bench.LiquidLevelRow}).");
 
                 // Seal on the beat (the needle runs on real time).
                 for (int guard = 0; guard < 200000 && Mathf.Abs(Crafting.BottlingBench.SealNeedle01() - 0.5f) > 0.02f; guard++)
                     yield return null;
                 bench.Seal();
-                foreach (var f in Frames(30)) yield return f;
+                t = 0f;
+                while (!bench.CorkSeated && t < 3f) { t += Time.deltaTime; yield return null; }
+                float off = Vector2.Distance(bench.CorkWorld, bench.CorkSeatWorld);
+                if (!bench.CorkSeated || off > 0.03f)
+                    Fail($"A clean seal left the cork at {bench.CorkWorld}, {off:0.000} from its seat at {bench.CorkSeatWorld} (seated={bench.CorkSeated}).");
+                else Log($"Bottling: the cork went home into the neck, {off:0.000} off its seat.");
+                foreach (var f in Frames(10)) yield return f;
                 bench.ApplyLabel(order.element);
                 if (bench.Current != Crafting.BottlingBench.Step.Done) Fail($"Bottling ended at step {bench.Current}, not Done.");
                 Log($"Bottling: sealed and labelled, quality {order.qualityScore}");

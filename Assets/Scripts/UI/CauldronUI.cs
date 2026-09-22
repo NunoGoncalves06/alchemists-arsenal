@@ -9,11 +9,11 @@ namespace AlchemistsArsenal.UI
 {
     public class CauldronUI : MonoBehaviour
     {
-        [Header("Heat UI References")]
-        [SerializeField] private Slider heatSlider;
-        [SerializeField] private Image heatSliderFill;
-        [SerializeField] private RectTransform optimalRangeIndicator; // Visual overlay for optimal heat zone
-        [SerializeField] private TextMeshProUGUI temperatureStatusText;
+        [Header("Stir UI References")]
+        [SerializeField] private Slider stirSlider;
+        [SerializeField] private Image stirSliderFill;
+        [SerializeField] private RectTransform optimalRangeIndicator; // Visual overlay for the optimal stir band
+        [SerializeField] private TextMeshProUGUI stirStatusText;
 
         [Header("Order Info References")]
         [SerializeField] private TextMeshProUGUI orderNameText;
@@ -22,9 +22,9 @@ namespace AlchemistsArsenal.UI
         [SerializeField] private Image qualityPanelBg;
 
         [Header("Visual Colors")]
-        [SerializeField] private Color coldColor = new Color(0.2f, 0.6f, 1f);
+        [SerializeField] private Color spillColor = new Color(0.2f, 0.6f, 1f);
         [SerializeField] private Color optimalColor = new Color(0.2f, 0.8f, 0.2f);
-        [SerializeField] private Color hotColor = new Color(1f, 0.2f, 0.2f);
+        [SerializeField] private Color scorchColor = new Color(1f, 0.2f, 0.2f);
         [SerializeField] private Color perfectQualityColor = new Color(0f, 0.8f, 0.4f);
         [SerializeField] private Color goodQualityColor = new Color(0.9f, 0.7f, 0f);
         [SerializeField] private Color poorQualityColor = new Color(0.8f, 0.1f, 0.1f);
@@ -36,7 +36,7 @@ namespace AlchemistsArsenal.UI
             // Subscribe to the PhysicsCauldronManager changes
             if (PhysicsCauldronManager.Instance != null)
             {
-                PhysicsCauldronManager.Instance.OnHeatChanged += HandleHeatChanged;
+                PhysicsCauldronManager.Instance.OnStirChanged += HandleStirChanged;
                 SetupOptimalVisualRange();
             }
 
@@ -57,7 +57,7 @@ namespace AlchemistsArsenal.UI
         {
             if (PhysicsCauldronManager.Instance != null)
             {
-                PhysicsCauldronManager.Instance.OnHeatChanged -= HandleHeatChanged;
+                PhysicsCauldronManager.Instance.OnStirChanged -= HandleStirChanged;
             }
 
             if (CraftingManager.Instance != null)
@@ -98,13 +98,13 @@ namespace AlchemistsArsenal.UI
 
         private void SetupOptimalVisualRange()
         {
-            if (PhysicsCauldronManager.Instance == null || optimalRangeIndicator == null || heatSlider == null) return;
+            if (PhysicsCauldronManager.Instance == null || optimalRangeIndicator == null || stirSlider == null) return;
 
-            float min = PhysicsCauldronManager.Instance.MinOptimalHeat;
-            float max = PhysicsCauldronManager.Instance.MaxOptimalHeat;
+            float min = PhysicsCauldronManager.Instance.MinOptimalStir;
+            float max = PhysicsCauldronManager.Instance.MaxOptimalStir;
 
             // Anchor/Size adjustment of optimal indicator relative to slider width
-            RectTransform sliderRect = heatSlider.GetComponent<RectTransform>();
+            RectTransform sliderRect = stirSlider.GetComponent<RectTransform>();
             if (sliderRect != null)
             {
                 float sliderWidth = sliderRect.rect.width;
@@ -118,46 +118,46 @@ namespace AlchemistsArsenal.UI
             }
         }
 
-        private void HandleHeatChanged(float currentHeat)
+        private void HandleStirChanged(float stir)
         {
-            if (heatSlider != null)
+            if (stirSlider != null)
             {
-                heatSlider.value = currentHeat;
+                stirSlider.value = stir;
             }
 
             if (PhysicsCauldronManager.Instance == null) return;
 
-            float minOpt = PhysicsCauldronManager.Instance.MinOptimalHeat;
-            float maxOpt = PhysicsCauldronManager.Instance.MaxOptimalHeat;
+            float minOpt = PhysicsCauldronManager.Instance.MinOptimalStir;
+            float maxOpt = PhysicsCauldronManager.Instance.MaxOptimalStir;
 
-            if (currentHeat < minOpt)
+            if (stir < minOpt)
             {
-                // Underheated (Too cold)
-                if (heatSliderFill != null) heatSliderFill.color = coldColor;
-                if (temperatureStatusText != null)
+                // Too slow: the brew catches on the bottom
+                if (stirSliderFill != null) stirSliderFill.color = scorchColor;
+                if (stirStatusText != null)
                 {
-                    temperatureStatusText.text = "TOO COLD - STIR FASTER!";
-                    temperatureStatusText.color = coldColor;
+                    stirStatusText.text = "STICKING TO THE BOTTOM - STIR FASTER!";
+                    stirStatusText.color = scorchColor;
                 }
             }
-            else if (currentHeat > maxOpt)
+            else if (stir > maxOpt)
             {
-                // Overheated (Too hot)
-                if (heatSliderFill != null) heatSliderFill.color = hotColor;
-                if (temperatureStatusText != null)
+                // Too fast: the surface goes over the rim
+                if (stirSliderFill != null) stirSliderFill.color = spillColor;
+                if (stirStatusText != null)
                 {
-                    temperatureStatusText.text = "OVERHEATING - STOP STIRRING!";
-                    temperatureStatusText.color = hotColor;
+                    stirStatusText.text = "TOO FAST - IT WILL SLOP OUT!";
+                    stirStatusText.color = spillColor;
                 }
             }
             else
             {
                 // Optimal range (Brewing perfectly)
-                if (heatSliderFill != null) heatSliderFill.color = optimalColor;
-                if (temperatureStatusText != null)
+                if (stirSliderFill != null) stirSliderFill.color = optimalColor;
+                if (stirStatusText != null)
                 {
-                    temperatureStatusText.text = "BREWING PERFECTLY";
-                    temperatureStatusText.color = optimalColor;
+                    stirStatusText.text = "BREWING PERFECTLY";
+                    stirStatusText.color = optimalColor;
                 }
             }
         }

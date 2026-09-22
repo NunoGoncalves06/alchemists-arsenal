@@ -55,8 +55,8 @@ namespace AlchemistsArsenal.DebugTools
             int events = 0; o.OnQualityChanged += _ => events++;
             o.ApplyBonus(60, "Cauldron", "clean");   // 85
             Check(o.qualityScore == 85 && o.GetGrade() == PotionGrade.Great, "clean brewing raises to Great");
-            o.ApplyDeduction(40, "Cauldron", "hot"); // 45
-            Check(o.qualityScore == 45 && o.GetGrade() == PotionGrade.Poor, "overheating drops back to Poor");
+            o.ApplyDeduction(40, "Cauldron", "burnt"); // 45
+            Check(o.qualityScore == 45 && o.GetGrade() == PotionGrade.Poor, "a burnt bottom drops it back to Poor");
             o.ApplyBonus(200, "x", "clamp");
             Check(o.qualityScore == 100 && events == 3, "quality clamps at 100 and every change fired an event");
         }

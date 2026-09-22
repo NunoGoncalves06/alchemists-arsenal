@@ -119,7 +119,7 @@ namespace AlchemistsArsenal.UI
             }
 
             _step = Step.Done;
-            Show("A clean mix widens the heat band, so good prep makes the stirring easier. BOTTLING pours, seals and labels it after. When you're happy, SEND TO EXPEDITION.\nTime runs at normal speed from tomorrow.\n\n<size=75%>(click to continue)</size>",
+            Show("A clean mix widens the stirring band, so good prep makes the stirring easier. BOTTLING pours, seals and labels it after. When you're happy, SEND TO EXPEDITION.\nTime runs at normal speed from tomorrow.\n\n<size=75%>(click to continue)</size>",
                 "done", new Vector2(0.85f, 0.10f));
             AudioManager.Play(Sfx.Chime);
             yield return WaitForClickOr(8f);

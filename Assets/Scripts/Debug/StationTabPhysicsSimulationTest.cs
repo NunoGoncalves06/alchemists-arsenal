@@ -8,7 +8,8 @@ namespace AlchemistsArsenal.DebugTools
     /// <summary>
     /// Runtime verification for Task 2, step 3: switching the crafting tab away
     /// from the Cauldron must NOT interrupt the background FixedUpdate physics or
-    /// the heat-decay logic on <see cref="PhysicsCauldronManager"/>.
+    /// the brew's own simulation on <see cref="PhysicsCauldronManager"/> — here, a
+    /// surface left heaving settling back down while the tab is hidden.
     ///
     /// Unlike a scripted "assume it works" log, this actually spins up the managers,
     /// drives a real tab transition, waits several physics steps, and checks the
@@ -19,7 +20,7 @@ namespace AlchemistsArsenal.DebugTools
         public bool Done { get; private set; }
 
         [SerializeField] private float observeSeconds = 1.5f;
-        [SerializeField] private float startingHeat = 0.90f;
+        [SerializeField] private float startingSlosh = 0.90f;
 
         private int _stationChangeEvents;
 
@@ -43,14 +44,14 @@ namespace AlchemistsArsenal.DebugTools
             // Start from a known non-Cauldron station so the hop below always transitions.
             station.TrySwitchStation(CraftingStation.Prep);
 
-            // Sit on the Cauldron with a hot brew.
+            // Sit on the Cauldron with the surface heaving.
             station.TrySwitchStation(CraftingStation.Cauldron);
-            cauldron.SetHeat(startingHeat);
+            cauldron.SetSlosh(startingSlosh);
             yield return new WaitForFixedUpdate();
 
             long stepsBefore = cauldron.PhysicsStepCount;
-            float heatBefore = cauldron.Heat01;
-            Debug.Log($"[Sim] On Cauldron. heat={heatBefore:F3}, physicsSteps={stepsBefore}");
+            float sloshBefore = cauldron.Slosh01;
+            Debug.Log($"[Sim] On Cauldron. slosh={sloshBefore:F3}, physicsSteps={stepsBefore}");
 
             // Switch away + hide the panel, exactly as StationUIManager would.
             bool switched = station.TrySwitchStation(CraftingStation.Counter);
@@ -67,15 +68,15 @@ namespace AlchemistsArsenal.DebugTools
             }
 
             long stepsAfter = cauldron.PhysicsStepCount;
-            float heatAfter = cauldron.Heat01;
-            Debug.Log($"[Sim] {observeSeconds}s after switch: heat={heatAfter:F3}, physicsSteps={stepsAfter}");
+            float sloshAfter = cauldron.Slosh01;
+            Debug.Log($"[Sim] {observeSeconds}s after switch: slosh={sloshAfter:F3}, physicsSteps={stepsAfter}");
 
             Report("PhysicsCauldronManager instance still alive", PhysicsCauldronManager.Instance == cauldron);
             Report("PhysicsCauldronManager still enabled", cauldron.isActiveAndEnabled);
             Report($"FixedUpdate kept running (+{stepsAfter - stepsBefore} steps while Cauldron tab hidden)",
                 stepsAfter - stepsBefore >= 10);
-            Report($"Heat decay kept running while hidden ({heatBefore:F3} -> {heatAfter:F3})",
-                heatAfter < heatBefore - 0.01f);
+            Report($"The brew kept simulating while hidden: the surface settled ({sloshBefore:F3} -> {sloshAfter:F3})",
+                sloshAfter < sloshBefore - 0.01f);
             Report("Station change events dispatched cleanly", _stationChangeEvents >= 2);
 
             Destroy(cauldronPanel);

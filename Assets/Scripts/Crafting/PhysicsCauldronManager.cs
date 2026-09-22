@@ -14,39 +14,59 @@ namespace AlchemistsArsenal.Crafting
     /// centre of the surface, so circles work and flicks do nothing.
     ///
     /// <para>Three things are held at once, which is what makes it a minigame rather
-    /// than a button: the heat has to stay inside a band that slowly drifts, the
-    /// recipe wants a direction, and the brew only advances while both are true.</para>
+    /// than a button: the stir has to stay inside a band of speeds that slowly drifts,
+    /// the recipe wants a direction, and the brew only advances while both are
+    /// true.</para>
     ///
-    /// <para><b>Heat.</b> Turning the spoon faster runs the pot hotter and easing off
-    /// lets it settle: while you stir the right way, heat eases toward a level set by
-    /// how hard you turn. It used to only ever climb while stirring, so "OVERHEATING —
-    /// EASE OFF" could not be obeyed (easing off still heated it) and holding the band
-    /// meant stopping, which was charged as a mistake.</para>
+    /// <para><b>Too slow and it catches.</b> The pot is over the fire the whole time.
+    /// Stir slower than the band — or stop — once the brew is going, and it starts
+    /// sticking to the bottom and then burning there: smoke, a darkening brew, and
+    /// points off every second, until the spoon is moving fast enough to scrape it
+    /// clean again.</para>
+    ///
+    /// <para><b>Too fast and it slops.</b> Faster than the band and the surface starts
+    /// to heave; hold it there and a wave goes over the rim. That costs points, and
+    /// takes the outermost undissolved herb with it.</para>
+    ///
+    /// <para>The band is the stir itself. It used to be a heat meter that the stir only
+    /// fed indirectly, so "too cold" and "overheating" were two names for the same
+    /// hand, one step removed from what the player was actually doing.</para>
     ///
     /// <para><b>Physics feeds quality.</b> The leaves from Prep float on the surface as
     /// real bodies (<see cref="LiquidBody2D"/>). They dissolve only while the vortex
-    /// carries them, the brew advances faster the more of them have dissolved, and an
-    /// over-hard stir flings one over the lip, which costs points and leaves the brew
-    /// slower for the rest of the morning.</para>
+    /// carries them, the brew advances faster the more of them have dissolved, and a
+    /// herb thrown over the lip by a spill is out of the mix for good.</para>
     /// </summary>
     public class PhysicsCauldronManager : MonoBehaviour
     {
         public static PhysicsCauldronManager Instance { get; private set; }
 
         [Header("Stirring")]
-        [Tooltip("Pointer rotation about the surface centre (deg/sec) that counts as a full-power stir.")]
+        [Tooltip("Pointer rotation about the surface centre (deg/sec) that reads as a full stir.")]
         [SerializeField] private float spinForFullPower = 420f;
         [Tooltip("Below this (deg/sec) the spoon is considered still, in either direction.")]
         [SerializeField] private float spinDeadZone = 45f;
 
-        [Header("Heat")]
-        [Tooltip("How quickly the heat eases toward the level the stir is setting.")]
-        [SerializeField] private float heatFollowRate = 0.9f;
-        [SerializeField] private float heatDecayRate = 0.28f;
-        [Tooltip("How far the optimal band slides either side of centre over a brew.")]
-        [Range(0f, 0.3f)] [SerializeField] private float bandDrift = 0.10f;
-        [Range(0.05f, 0.4f)] [SerializeField] private float bandHalfWidth = 0.13f;
+        [Header("The band of stir speeds")]
+        [Tooltip("Middle of the band, as a fraction of a full stir.")]
+        [Range(0.2f, 0.8f)] [SerializeField] private float bandMid = 0.47f;
+        [Tooltip("How far the band slides either side of that over a brew.")]
+        [Range(0f, 0.2f)] [SerializeField] private float bandDrift = 0.08f;
+        [Range(0.05f, 0.3f)] [SerializeField] private float bandHalfWidth = 0.15f;
         [SerializeField] private float bandDriftSpeed = 0.18f;
+
+        [Header("Sticking and sloshing")]
+        [Tooltip("Seconds of stirring too slowly before the bottom starts to catch.")]
+        [SerializeField] private float slowGraceSeconds = 0.6f;
+        [Tooltip("How fast the bottom catches while the spoon is too slow (per second).")]
+        [SerializeField] private float scorchRate = 0.34f;
+        [Tooltip("How fast a stir inside the band scrapes the bottom clean again.")]
+        [SerializeField] private float scorchClearRate = 0.4f;
+        [Tooltip("How fast the surface builds toward going over the rim while the stir is too fast.")]
+        [SerializeField] private float sloshRate = 0.9f;
+        [SerializeField] private float sloshSettleRate = 1.2f;
+        [Tooltip("Seconds after a spill before the pot can slop again.")]
+        [SerializeField] private float spillCooldown = 0.8f;
 
         [Header("Brew")]
         [Tooltip("Seconds of correct stirring in the band to finish, once everything has dissolved.")]
@@ -54,14 +74,16 @@ namespace AlchemistsArsenal.Crafting
         [Tooltip("Brew speed while nothing has dissolved yet, as a fraction of full speed.")]
         [Range(0.1f, 1f)] [SerializeField] private float undissolvedPace = 0.55f;
         [SerializeField] private float deductionInterval = 1f;
-        [Tooltip("Breathing room after the heat crosses a band edge, so a player who is already correcting is not charged mid-correction.")]
+        [Tooltip("Breathing room after the stir crosses a band edge, so a player who is already correcting is not charged mid-correction.")]
         [SerializeField] private float bandChangeGraceSeconds = 0.5f;
 
         /// <summary>The brew pays <see cref="QualityBudget.BrewTotal"/> in this many equal instalments.</summary>
         private const int BonusChunks = 11;
 
-        private float currentHeat = 0.2f;       // starts at room temperature, below the band by design
-        private float bandCenter = 0.55f;
+        /// <summary>Where the bottom counts as sticking, and where that has become a burn.</summary>
+        public const float StickAt = 0.2f, BurnAt = 0.6f;
+
+        private float bandCenter = 0.47f;
         private float bandPhase;
 
         private float lastPointerAngleDeg;
@@ -69,10 +91,11 @@ namespace AlchemistsArsenal.Crafting
         private float smoothedSpinDegPerSec;
 
         private float nextDeductionTime;
-        private bool wasInGreen = true;
+        private bool wasInBand = true;
         private bool mouseOverPot;
         private bool everStirred;
         private int _paidChunks;
+        private float _scorch, _slosh, _slowFor, _spillCooldownLeft;
 
         // --- surface geometry (set by the shop world when it builds the pot) ---
         private Camera _cam;
@@ -80,10 +103,26 @@ namespace AlchemistsArsenal.Crafting
         private Vector2 _mouthCentre;
         private float _rx = 1.9f, _ry = 0.45f;
 
-        public float Heat01 => currentHeat;
-        public float MinOptimalHeat => Mathf.Clamp01(bandCenter - EffectiveBandHalfWidth);
-        public float MaxOptimalHeat => Mathf.Clamp01(bandCenter + EffectiveBandHalfWidth);
-        public float BandCentre => bandCenter;
+        /// <summary>How fast the spoon is going, as a fraction of a full stir. Past 1 is faster than the band can ever ask for.</summary>
+        public float StirRate => Mathf.Abs(smoothedSpinDegPerSec) / Mathf.Max(1f, spinForFullPower);
+
+        public float MinOptimalStir => Mathf.Clamp(bandCenter - EffectiveBandHalfWidth, 0.15f, 0.9f);
+        public float MaxOptimalStir => Mathf.Clamp(bandCenter + EffectiveBandHalfWidth, 0.25f, 0.98f);
+        public float StirBandCentre => bandCenter;
+
+        /// <summary>The stir is inside the band: this is where the brew advances.</summary>
+        public bool InBand => StirRate >= MinOptimalStir && StirRate <= MaxOptimalStir;
+        public bool TooSlow => StirRate < MinOptimalStir;
+        public bool TooFast => StirRate > MaxOptimalStir;
+
+        /// <summary>0..1: how badly the brew has caught on the bottom of the pot.</summary>
+        public float Scorch01 => _scorch;
+
+        /// <summary>0..1: how close the heaving surface is to going over the rim.</summary>
+        public float Slosh01 => _slosh;
+
+        public bool Sticking => _scorch >= StickAt;
+        public bool Burning => _scorch >= BurnAt;
 
         private float EffectiveBandHalfWidth => bandHalfWidth * _bandScale;
         private float _bandScale = 1f;
@@ -102,7 +141,8 @@ namespace AlchemistsArsenal.Crafting
             }
         }
 
-        public event Action<float> OnHeatChanged;
+        /// <summary>Raised with the stir meter's reading (0..1) every frame it is recomputed.</summary>
+        public event Action<float> OnStirChanged;
 
         /// <summary>0..1 brew completion — climbs only while stirring correctly in the band.</summary>
         public float BrewProgress01 { get; private set; }
@@ -115,8 +155,9 @@ namespace AlchemistsArsenal.Crafting
 
         /// <summary>
         /// True while the player is standing at the Cauldron (the tab is open). The
-        /// simulation runs either way — the pot really does cool while you are at
-        /// another bench — but nothing is SCORED off it. Set by the Cauldron station.
+        /// simulation runs either way — the pot really does sit over the fire while you
+        /// are at another bench — but nothing is SCORED off it, and the bottom only
+        /// catches under the player's own hand. Set by the Cauldron station.
         /// </summary>
         public bool Attended { get; set; }
 
@@ -127,7 +168,7 @@ namespace AlchemistsArsenal.Crafting
         public float Spin01 => Mathf.Clamp(smoothedSpinDegPerSec / Mathf.Max(1f, spinForFullPower), -1f, 1f);
         public float SpinDegPerSec => smoothedSpinDegPerSec;
 
-        /// <summary>Unsigned stir power, 0..1 — how hard the spoon is being turned.</summary>
+        /// <summary>Unsigned stir reading, 0..1 — what the meter shows.</summary>
         public float StirPower01 => Mathf.Abs(Spin01);
 
         public bool StirringCorrectly =>
@@ -141,7 +182,7 @@ namespace AlchemistsArsenal.Crafting
         /// <summary>How many Prep ingredients have gone into the pot today.</summary>
         public int IngredientCount { get; private set; }
 
-        /// <summary>How many herbs over-stirring has thrown out today.</summary>
+        /// <summary>How many times over-stirring has slopped the pot over its rim today.</summary>
         public int SplashCount { get; private set; }
 
         /// <summary>Of everything put in, how much has dissolved (see <see cref="LiquidBody2D.DissolvedFraction"/>).</summary>
@@ -158,18 +199,20 @@ namespace AlchemistsArsenal.Crafting
         /// <summary>Raised when an ingredient is dropped toward the pot, with its element.</summary>
         public event Action<ElementType> OnIngredientAdded;
 
-        /// <summary>Raised when over-stirring throws a herb out, with the floater that went.</summary>
+        /// <summary>Raised when a spill throws a herb over the lip, with the floater that went.</summary>
         public event Action<LiquidBody2D.Floater> OnSplash;
+
+        /// <summary>Raised when the pot slops over its rim (the view throws brew out of it).</summary>
+        public event Action Spilled;
 
         /// <summary>A leaf hit the surface (the view splashes and plops).</summary>
         public event Action<ElementType, Vector2> Landed;
 
-        /// <summary>Directly set the brew heat (0..1). For scripted events and simulation tests.</summary>
-        public void SetHeat(float value01)
-        {
-            currentHeat = Mathf.Clamp01(value01);
-            OnHeatChanged?.Invoke(currentHeat);
-        }
+        /// <summary>Directly set how much the surface is heaving (0..1). For scripted events and simulation tests.</summary>
+        public void SetSlosh(float value01) => _slosh = Mathf.Clamp01(value01);
+
+        /// <summary>Directly set how badly the bottom has caught (0..1). For scripted events and simulation tests.</summary>
+        public void SetScorch(float value01) => _scorch = Mathf.Clamp01(value01);
 
         private void Awake()
         {
@@ -222,27 +265,28 @@ namespace AlchemistsArsenal.Crafting
         public void ApplyMix(MixOutcome outcome)
         {
             _bandScale = RecipeBook.BandScale(outcome);
-            OnHeatChanged?.Invoke(currentHeat);
+            OnStirChanged?.Invoke(StirPower01);
         }
 
-        /// <summary>A fresh brew: cold pot, empty progress, and the day's stir direction.</summary>
+        /// <summary>A fresh brew: a clean pot, empty progress, and the day's stir direction.</summary>
         public void BeginBrew(int day)
         {
             RequiredClockwise = day % 2 == 1;
             _bandScale = 1f;
             BrewProgress01 = 0f;
-            currentHeat = 0.2f;
             bandPhase = 0f;
-            bandCenter = 0.55f;
+            bandCenter = bandMid;
             everStirred = false;
-            wasInGreen = true;
+            wasInBand = true;
             smoothedSpinDegPerSec = 0f;
             hasLastAngle = false;
             IngredientCount = 0;
             SplashCount = 0;
             _paidChunks = 0;
+            _scorch = _slosh = _slowFor = 0f;
+            _spillCooldownLeft = 0f;
             if (_liquid != null) _liquid.ClearAll();
-            OnHeatChanged?.Invoke(currentHeat);
+            OnStirChanged?.Invoke(0f);
         }
 
         private void Start() => RequiredClockwise = true;
@@ -268,26 +312,68 @@ namespace AlchemistsArsenal.Crafting
             if (everStirred && !IsBrewComplete)
             {
                 bandPhase += Time.deltaTime * bandDriftSpeed;
-                bandCenter = 0.55f + Mathf.Sin(bandPhase * Mathf.PI * 2f) * bandDrift;
+                bandCenter = bandMid + Mathf.Sin(bandPhase * Mathf.PI * 2f) * bandDrift;
             }
 
-            float power = StirPower01;
-            if (power > 0.05f && mouseOverPot) everStirred = true;
+            if (StirPower01 > 0.05f && mouseOverPot) everStirred = true;
 
-            // Stirring the right way sets the heat: faster runs hotter, slower cools.
-            // Idle it drifts down; dragged the wrong way it drops faster.
-            float dt = Time.deltaTime;
-            if (StirringCorrectly)
+            UpdateBottomAndSurface(Time.deltaTime);
+            OnStirChanged?.Invoke(StirPower01);
+            CheckStirQualityImpact();
+        }
+
+        /// <summary>
+        /// What the stir is doing to the pot itself: a bottom that catches while the
+        /// spoon is too slow, and a surface that heaves toward the rim while it is too
+        /// fast.
+        /// </summary>
+        private void UpdateBottomAndSurface(float dt)
+        {
+            bool live = everStirred && !IsBrewComplete && MixtureReady;
+            float rate = StirRate;
+
+            // The bottom only catches under the player's own hand: a pot left while you
+            // work another bench is not charged for, nor is one nobody has stirred yet.
+            if (live && Attended && rate < MinOptimalStir)
             {
-                float target = 0.15f + 0.85f * power;
-                currentHeat = Mathf.Lerp(currentHeat, target, 1f - Mathf.Exp(-heatFollowRate * dt));
+                _slowFor += dt;
+                if (_slowFor > slowGraceSeconds)
+                {
+                    float deficit = Mathf.Clamp01((MinOptimalStir - rate) / Mathf.Max(0.01f, MinOptimalStir));
+                    _scorch = Mathf.Min(1f, _scorch + dt * scorchRate * (0.55f + 0.45f * deficit));
+                }
             }
-            else if (StirringBackwards) currentHeat -= heatDecayRate * 1.6f * dt;
-            else currentHeat -= heatDecayRate * dt;
-            currentHeat = Mathf.Clamp01(currentHeat);
-            OnHeatChanged?.Invoke(currentHeat);
+            else
+            {
+                _slowFor = 0f;
+                if (!live || rate >= MinOptimalStir) _scorch = Mathf.Max(0f, _scorch - dt * scorchClearRate);
+            }
 
-            CheckHeatQualityImpact();
+            _spillCooldownLeft -= dt;
+            if (mouseOverPot && !IsBrewComplete && rate > MaxOptimalStir)
+            {
+                float over = Mathf.Clamp((rate - MaxOptimalStir) / Mathf.Max(0.05f, EffectiveBandHalfWidth), 0f, 3f);
+                _slosh = Mathf.Min(1f, _slosh + dt * sloshRate * (1f + 2.2f * over));
+                if (_slosh >= 1f && _spillCooldownLeft <= 0f) Spill();
+            }
+            else _slosh = Mathf.Max(0f, _slosh - dt * sloshSettleRate);
+        }
+
+        /// <summary>A wave goes over the rim: brew on the floor, and whatever was riding the outside of the vortex with it.</summary>
+        private void Spill()
+        {
+            _spillCooldownLeft = spillCooldown;
+            _slosh = 0.45f;
+            SplashCount++;
+
+            LiquidBody2D.Floater went = _liquid != null ? _liquid.SlopOutermost() : null;
+            string with = went != null && went.Tag is ElementType e ? $", and a {e} leaf with it" : "";
+            ActiveOrder order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
+            if (order != null && !IsBrewComplete)
+                order.ApplyDeduction(QualityBudget.Splash, "Cauldron",
+                    $"Stirred too fast — the brew slopped over the rim{with}", Time.time);
+
+            Spilled?.Invoke();
         }
 
         /// <summary>Signed angular velocity of the pointer about the surface centre, smoothed.</summary>
@@ -315,23 +401,23 @@ namespace AlchemistsArsenal.Crafting
 
         private void FixedUpdate() => PhysicsStepCount++;
 
-        private void CheckHeatQualityImpact()
+        private void CheckStirQualityImpact()
         {
             ActiveOrder activeOrder = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
             if (activeOrder == null) return;
             if (!Attended) return;        // not at this bench
             if (!MixtureReady) return;    // nothing in the pot yet
             if (IsBrewComplete) return;   // quality is locked
-            if (!everStirred) return;     // a cold pot nobody has touched isn't a mistake
+            if (!everStirred) return;     // a pot nobody has touched isn't a mistake
 
-            bool inGreen = currentHeat >= MinOptimalHeat && currentHeat <= MaxOptimalHeat;
-            if (inGreen != wasInGreen)
+            bool inBand = InBand;
+            if (inBand != wasInBand)
             {
-                wasInGreen = inGreen;
+                wasInBand = inBand;
                 nextDeductionTime = Mathf.Max(nextDeductionTime, Time.time + bandChangeGraceSeconds);
             }
 
-            if (inGreen && StirringCorrectly)
+            if (inBand && StirringCorrectly)
             {
                 float pace = Mathf.Lerp(undissolvedPace, 1f, DissolvedFraction);
                 BrewProgress01 = Mathf.Clamp01(BrewProgress01 + Time.deltaTime / Mathf.Max(1f, brewSeconds) * pace);
@@ -344,43 +430,34 @@ namespace AlchemistsArsenal.Crafting
                     _paidChunks++;
                     int chunk = QualityBudget.BrewTotal / BonusChunks
                                 + (_paidChunks <= QualityBudget.BrewTotal % BonusChunks ? 1 : 0);
-                    activeOrder.ApplyBonus(chunk, "Cauldron", $"Held the band at {Mathf.RoundToInt(currentHeat * 100)}%", Time.time);
+                    activeOrder.ApplyBonus(chunk, "Cauldron", $"Held the band at {Mathf.RoundToInt(StirRate * 100)}%", Time.time);
                 }
                 return;
             }
 
-            // In the band but not turning: the brew just waits. It is not a mistake.
-            if (inGreen && !StirringBackwards) return;
             if (Time.time < nextDeductionTime) return;
 
             int penalty = QualityBudget.BrewPenalty;
             string reason;
             if (StirringBackwards)
                 reason = $"Stirred {(RequiredClockwise ? "anticlockwise" : "clockwise")} — the recipe says otherwise";
-            else if (currentHeat < MinOptimalHeat)
+            else if (TooSlow && Sticking)
             {
-                reason = $"Too cold ({Mathf.RoundToInt(currentHeat * 100)}%) — stir faster";
-                penalty += Mathf.RoundToInt((MinOptimalHeat - currentHeat) / Mathf.Max(0.01f, MinOptimalHeat) * 4f);
+                reason = Burning
+                    ? $"Burning on the bottom ({Mathf.RoundToInt(_scorch * 100)}%) — stir faster"
+                    : $"Sticking to the bottom ({Mathf.RoundToInt(_scorch * 100)}%) — stir faster";
+                penalty += Mathf.RoundToInt(_scorch * 4f);
             }
-            else
-            {
-                reason = $"Overheating ({Mathf.RoundToInt(currentHeat * 100)}%) — ease off";
-                penalty += Mathf.RoundToInt((currentHeat - MaxOptimalHeat) / Mathf.Max(0.01f, 1f - MaxOptimalHeat) * 6f);
-            }
+            // Stirring too fast is paid for by the spills it causes, not by the second,
+            // and a stir that has only just dropped below the band has not caught yet.
+            else return;
 
             activeOrder.ApplyDeduction(penalty, "Cauldron", reason, Time.time);
             nextDeductionTime = Time.time + deductionInterval;
         }
 
-        private void HandleSplash(LiquidBody2D.Floater f)
-        {
-            SplashCount++;
-            ActiveOrder order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
-            string what = f.Tag is ElementType e ? $"a {e} leaf" : "a leaf";
-            if (order != null && !IsBrewComplete)
-                order.ApplyDeduction(QualityBudget.Splash, "Cauldron", $"Stirred too hard — {what} slopped out of the pot", Time.time);
-            OnSplash?.Invoke(f);
-        }
+        /// <summary>A herb a spill threw is clear of the pot: the view flies it out. The spill itself is already scored.</summary>
+        private void HandleSplash(LiquidBody2D.Floater f) => OnSplash?.Invoke(f);
 
         // ------------------------------------------------------------ ingredients
 

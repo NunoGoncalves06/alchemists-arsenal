@@ -13,8 +13,11 @@ namespace AlchemistsArsenal.Crafting
     /// the far wall and upper rim, the brew's surface, a swirl that turns with the
     /// spoon, the floating herbs (projected from the surface simulation), then the
     /// lower rim and belly, which hide the part of each herb that is below the lip.
-    /// Under it: fire and a warm glow that grow with the heat. Above it: steam and
-    /// bubbles that come faster as it gets hotter.
+    /// Under it: the fire it sits over. Above it: steam and bubbles while it brews.
+    ///
+    /// What the stir is doing to it is all here to see: stirred too slowly the brew
+    /// darkens and smokes as it catches on the bottom, and stirred too fast the
+    /// surface heaves and then throws itself over the rim.
     ///
     /// Presentation only: it reads the pot and the liquid, it never changes them.
     /// </summary>
@@ -30,7 +33,7 @@ namespace AlchemistsArsenal.Crafting
         private SpriteRenderer _liquid, _swirl, _fire, _glow, _spoon;
         private Transform _surface, _swirlT, _spoonT;
         private ElementType _liquidElement = (ElementType)(-1);
-        private float _swirlAngle, _fireClock, _steamClock, _bubbleClock, _spoonTilt;
+        private float _swirlAngle, _fireClock, _steamClock, _bubbleClock, _smokeClock, _sprayClock, _spoonTilt;
         private int _fireFrame;
         private readonly Dictionary<LiquidBody2D.Floater, SpriteRenderer> _herbs = new Dictionary<LiquidBody2D.Floater, SpriteRenderer>();
         private readonly List<LiquidBody2D.Floater> _gone = new List<LiquidBody2D.Floater>();
@@ -89,12 +92,13 @@ namespace AlchemistsArsenal.Crafting
 
             pot.Landed += OnLanded;
             pot.OnSplash += OnSplash;
+            pot.Spilled += OnSpilled;
             FallingIngredient.OnSpawned += OnFalling;
         }
 
         private void OnDestroy()
         {
-            if (_pot != null) { _pot.Landed -= OnLanded; _pot.OnSplash -= OnSplash; }
+            if (_pot != null) { _pot.Landed -= OnLanded; _pot.OnSplash -= OnSplash; _pot.Spilled -= OnSpilled; }
             FallingIngredient.OnSpawned -= OnFalling;
         }
 
@@ -128,6 +132,25 @@ namespace AlchemistsArsenal.Crafting
             Color c = PixelArt.Element(BrewElement());
             vfx.Burst(at + Vector2.up * 0.05f, Color.Lerp(c, Color.white, 0.4f), 10, 2.2f, 0.09f, 0.45f);
             vfx.Flash(at, new Color(c.r, c.g, c.b, 0.6f), 0.7f, 0.18f);
+        }
+
+        /// <summary>The pot slopped over: brew goes over both sides of the rim, runs down the belly, and the shop shakes.</summary>
+        private void OnSpilled()
+        {
+            var vfx = VfxWorld.Active;
+            Color c = PixelArt.Element(BrewElement());
+            if (vfx != null)
+                for (int s = -1; s <= 1; s += 2)
+                {
+                    Vector2 lip = MouthCentre + new Vector2(SurfaceRX * 0.92f * s, 0.05f);
+                    vfx.Burst(lip, Color.Lerp(c, Color.white, 0.45f), 18, 4.2f, 0.17f, 0.8f);
+                    // and a wave of it running down the outside of the pot
+                    for (int i = 0; i < 4; i++)
+                        vfx.Mote(lip + new Vector2(0.1f * s, -0.1f * i), new Vector2(0.5f * s, -1.4f - 0.4f * i),
+                            Color.Lerp(c, Color.white, 0.2f), 0.16f, 0.9f, glow: false);
+                    vfx.Flash(lip, new Color(c.r, c.g, c.b, 0.55f), 0.7f, 0.22f);
+                }
+            CameraRig.Shake(0.12f);
         }
 
         /// <summary>A herb over the lip: it flies out of the pot as a real body and lands on the floor.</summary>
@@ -170,8 +193,9 @@ namespace AlchemistsArsenal.Crafting
         {
             if (_pot == null) return;
             float dt = Time.deltaTime;
-            float heat = _pot.Heat01;
             float power = _pot.StirPower01;
+            float scorch = _pot.Scorch01, slosh = _pot.Slosh01;
+            bool brewing = _pot.InBand && _pot.StirringCorrectly;
 
             ElementType e = BrewElement();
             if (e != _liquidElement)
@@ -180,8 +204,14 @@ namespace AlchemistsArsenal.Crafting
                 _liquid.sprite = ShopArt.Liquid(e);
                 _liquid.sharedMaterial = SpriteMaterials.For(_liquid.sprite);
             }
-            float warm = Mathf.Lerp(0.78f, 1f, heat);
-            _liquid.color = new Color(warm, warm, warm, 1f);
+            // Catching on the bottom drags the whole brew dark and brown.
+            _liquid.color = Color.Lerp(Color.white, new Color(0.42f, 0.33f, 0.28f), scorch);
+
+            // A surface stirred past the band heaves up and down; over the top of that
+            // it throws itself over the rim (see OnSpilled).
+            _bob = Mathf.Sin(Time.time * 13f) * 0.05f * slosh;
+            _liquid.transform.localPosition = new Vector3(0f, _bob / PotScale, 0f);
+            _surface.position = MouthCentre + new Vector2(0f, _bob);
 
             // The swirl turns with the liquid (which lags the spoon).
             _swirlAngle += _pot.SpinDegPerSec * 0.55f * dt;
@@ -190,23 +220,25 @@ namespace AlchemistsArsenal.Crafting
             _swirl.color = new Color(Mathf.Lerp(sc.r, 1f, 0.5f), Mathf.Lerp(sc.g, 1f, 0.5f), Mathf.Lerp(sc.b, 1f, 0.5f),
                 0.06f + 0.34f * power);
 
-            // Fire: three frames, bigger and faster the hotter it runs.
-            _fireClock += dt * (6f + heat * 8f);
+            // The fire is just the fire now: the pot sits over it all morning.
+            _fireClock += dt * 9f;
             int frame = (int)_fireClock % 3;
             if (frame != _fireFrame)
             {
                 _fireFrame = frame;
                 _fire.sprite = ShopArt.Fire(frame);
             }
-            float fs = 0.55f + heat * 0.75f;
-            _fire.transform.localScale = new Vector3(0.95f, fs, 1f);
-            _glow.transform.localScale = new Vector3(2.4f + heat * 1.6f, 0.55f + heat * 0.35f, 1f);
-            _glow.color = new Color(1f, 0.55f, 0.2f, 0.12f + heat * 0.25f);
+            float flicker = 0.88f + 0.08f * Mathf.Sin(Time.time * 3.3f);
+            _fire.transform.localScale = new Vector3(0.95f, flicker, 1f);
+            _glow.transform.localScale = new Vector3(3.2f, 0.72f, 1f);
+            _glow.color = new Color(1f, 0.55f, 0.2f, 0.22f + 0.03f * Mathf.Sin(Time.time * 2.1f));
 
             SyncHerbs();
-            Emit(dt, heat, e);
+            Emit(dt, e, brewing, scorch, slosh);
             MoveSpoon(dt);
         }
+
+        private float _bob;
 
         private void SyncHerbs()
         {
@@ -238,7 +270,7 @@ namespace AlchemistsArsenal.Crafting
                 }
 
                 Vector2 s = f.Local;
-                sr.transform.position = _pot.ToWorld(s);
+                sr.transform.position = _pot.ToWorld(s) + Vector2.up * _bob;   // ride the heaving surface
                 sr.transform.rotation = Quaternion.Euler(0f, 0f, f.Spin);
                 float k = 1f - 0.65f * f.Dissolve01;
                 sr.transform.localScale = Vector3.one * (0.5f / sr.sprite.bounds.size.x) * k;
@@ -255,31 +287,52 @@ namespace AlchemistsArsenal.Crafting
             _gone.Clear();
         }
 
-        private void Emit(float dt, float heat, ElementType e)
+        private void Emit(float dt, ElementType e, bool brewing, float scorch, float slosh)
         {
             var vfx = VfxWorld.Active;
             if (vfx == null) return;
 
-            // Steam off the surface.
-            _steamClock += dt * (0.8f + heat * 7f);
+            // Steam off the surface: more of it while the brew is actually working.
+            _steamClock += dt * (1.6f + (brewing ? 4.5f : 0f));
             while (_steamClock >= 1f)
             {
                 _steamClock -= 1f;
-                Vector2 p = MouthCentre + new Vector2((vfx.Random01() * 2f - 1f) * SurfaceRX * 0.8f, 0.1f);
-                vfx.Mote(p, new Vector2((vfx.Random01() - 0.5f) * 0.3f, 0.5f + heat * 0.7f),
-                    new Color(0.85f, 0.82f, 0.9f, 0.10f + heat * 0.14f), 0.1f + heat * 0.1f, 1.6f, glow: false);
+                Vector2 p = MouthCentre + new Vector2((vfx.Random01() * 2f - 1f) * SurfaceRX * 0.8f, 0.1f + _bob);
+                vfx.Mote(p, new Vector2((vfx.Random01() - 0.5f) * 0.3f, 0.6f + (brewing ? 0.5f : 0f)),
+                    new Color(0.85f, 0.82f, 0.9f, brewing ? 0.2f : 0.12f), 0.12f, 1.6f, glow: false);
             }
 
-            // Bubbles popping on the surface, faster as it heats.
-            _bubbleClock += dt * heat * heat * 14f;
+            // Bubbles popping on the surface while it brews.
+            _bubbleClock += dt * (brewing ? 9f : 1.5f);
             Color c = PixelArt.Element(e);
             while (_bubbleClock >= 1f)
             {
                 _bubbleClock -= 1f;
                 float a = vfx.Random01() * Mathf.PI * 2f, r = Mathf.Sqrt(vfx.Random01()) * 0.85f;
-                Vector2 p = MouthCentre + new Vector2(Mathf.Cos(a) * r * SurfaceRX, Mathf.Sin(a) * r * SurfaceRY);
+                Vector2 p = MouthCentre + new Vector2(Mathf.Cos(a) * r * SurfaceRX, Mathf.Sin(a) * r * SurfaceRY + _bob);
                 vfx.Flash(p, new Color(Mathf.Lerp(c.r, 1f, 0.6f), Mathf.Lerp(c.g, 1f, 0.6f), Mathf.Lerp(c.b, 1f, 0.6f), 0.7f),
                     0.1f + vfx.Random01() * 0.08f, 0.22f);
+            }
+
+            // Catching on the bottom: dirty smoke off the surface, thicker as it burns.
+            // It is a pale ash grey on purpose — real soot-black is invisible against
+            // the shop's dark wall, which is where this has to read from.
+            _smokeClock += dt * scorch * 11f;
+            while (_smokeClock >= 1f)
+            {
+                _smokeClock -= 1f;
+                Vector2 p = MouthCentre + new Vector2((vfx.Random01() * 2f - 1f) * SurfaceRX * 0.7f, 0.05f + _bob);
+                vfx.Puff(p, new Color(0.42f, 0.37f, 0.34f, 0.35f + 0.35f * scorch), 1, 0.3f, 0.7f + 0.6f * scorch);
+            }
+
+            // A surface close to going over throws spray off the rim.
+            _sprayClock += dt * Mathf.Max(0f, slosh - 0.45f) * 14f;
+            while (_sprayClock >= 1f)
+            {
+                _sprayClock -= 1f;
+                float side = vfx.Random01() < 0.5f ? -1f : 1f;
+                Vector2 p = MouthCentre + new Vector2(side * SurfaceRX * 0.9f, _bob);
+                vfx.Mote(p, new Vector2(side * 1.1f, 1.3f), Color.Lerp(c, Color.white, 0.35f), 0.09f, 0.5f, glow: false);
             }
         }
 
