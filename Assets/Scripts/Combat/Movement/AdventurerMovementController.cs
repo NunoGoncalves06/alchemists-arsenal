@@ -169,6 +169,13 @@ namespace AlchemistsArsenal.Combat
 
             Vector2 desired = dir * radial + tangent * (moveSpeed * orbit);
 
+            // A boss has marked the ground under us: get off the mark first, fight
+            // second. Blended in by how deep inside we stand, so the edge of a ring
+            // is a sidestep and its middle is a sprint.
+            Vector2 escape = DangerZones.EscapeFrom(_rb.position);
+            if (escape.sqrMagnitude > 0.0001f)
+                desired = Vector2.Lerp(desired, escape.normalized * moveSpeed, Mathf.Clamp01(escape.magnitude));
+
             // Sliding, not shoving. Adding a push away from the wall is not enough:
             // while a monster crowds you from the open side, "back away" still points
             // into the wall and the two mostly cancel, so you grind along it at a

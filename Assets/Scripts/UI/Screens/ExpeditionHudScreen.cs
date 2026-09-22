@@ -99,6 +99,24 @@ namespace AlchemistsArsenal.UI
             _dock.anchorMin = new Vector2(0f, 0f); _dock.anchorMax = new Vector2(1f, 0.16f);
             _dock.offsetMin = _dock.offsetMax = Vector2.zero;
 
+            // The guardian's title card: its name and what it is, as it arrives.
+            _title = UIFactory.Root(transform, "BossTitle");
+            // The lower third: the boss is arriving in the middle of the arena, not behind a card.
+            UIFactory.Place(_title, 0.2f, 0.235f, 0.8f, 0.4f);
+            _titleGroup = _title.gameObject.AddComponent<CanvasGroup>();
+            _titleGroup.blocksRaycasts = false;
+            _titleGroup.interactable = false;
+            var titleBack = UIFactory.Panel(_title, UITheme.Alpha(UITheme.Ground, 0.5f), "Back");
+            UIFactory.Place(titleBack.rectTransform, 0f, 0f, 1f, 1f);
+            _titleName = UIFactory.Title(_title, "", UITheme.SizeDisplay + 8, UITheme.Candle, TextAlignmentOptions.Center);
+            UIFactory.Place(_titleName.rectTransform, 0.02f, 0.40f, 0.98f, 0.96f);
+            var rule = UIFactory.Panel(_title, UITheme.Alpha(UITheme.Danger, 0.9f), "Rule");
+            UIFactory.Place(rule.rectTransform, 0.3f, 0.36f, 0.7f, 0.375f);
+            _titleEpithet = UIFactory.Label(_title, "", UITheme.SizeHeading, UITheme.TextMid, TextAlignmentOptions.Center, true);
+            _titleEpithet.characterSpacing = 6f;
+            UIFactory.Place(_titleEpithet.rectTransform, 0.02f, 0.06f, 0.98f, 0.34f);
+            _title.gameObject.SetActive(false);
+
             _slabPanel = UIFactory.Root(transform, "Slab");
             var scrim = UIFactory.Box(_slabPanel, new Color(0f, 0f, 0f, 0.6f), _slabPanel);
             _slab = UIFactory.Title(_slabPanel, "", UITheme.SizeDisplay + 14, UITheme.Candle, TextAlignmentOptions.Center);
@@ -112,6 +130,14 @@ namespace AlchemistsArsenal.UI
 
         private Image _bossBar;
         private TextMeshProUGUI _bossPhaseText;
+        private RectTransform _title;
+        private CanvasGroup _titleGroup;
+        private TextMeshProUGUI _titleName, _titleEpithet;
+        private GameObject _titleFor;
+        private float _titleT;
+
+        /// <summary>Seconds the title card stays up (fade in, hold, fade out).</summary>
+        public const float TitleSeconds = 3.2f;
         private readonly List<TextMeshProUGUI> _pipLabels = new List<TextMeshProUGUI>();
 
         private Button MiniBtn(Transform p, string t, System.Action a)
@@ -125,6 +151,8 @@ namespace AlchemistsArsenal.UI
         {
             _world = GameLoopManager.Instance != null ? GameLoopManager.Instance.CurrentExpedition : null;
             _slabPanel.gameObject.SetActive(false);
+            _title.gameObject.SetActive(false);
+            _titleFor = null;
             _lastBanner = ""; _lastBossFill = -1f; _lastPip = -1;
             _paused = false; _fast = false;
             SetFast(SettingsService.DefaultExpeditionSpeed == 2);
@@ -245,6 +273,7 @@ namespace AlchemistsArsenal.UI
                     _lastPip = pip;
                 }
                 banner = BossName();
+                ShowTitle(exp.BossInstance);
             }
             else
             {
@@ -254,6 +283,31 @@ namespace AlchemistsArsenal.UI
             }
 
             if (banner != _lastBanner) { _banner.text = banner; _lastBanner = banner; }
+        }
+
+        /// <summary>Put the guardian's name up when it arrives, then let it go.</summary>
+        private void ShowTitle(GameObject boss)
+        {
+            if (boss != _titleFor)
+            {
+                _titleFor = boss;
+                _titleT = 0f;
+                var manager = boss.GetComponent<BossPhaseManager>();
+                var def = manager != null ? manager.Definition : null;
+                _titleName.text = def != null ? def.DisplayName.ToUpperInvariant() : BossName();
+                _titleEpithet.text = def != null ? def.Epithet.ToUpperInvariant() : "";
+                _title.gameObject.SetActive(true);
+            }
+            if (!_title.gameObject.activeSelf) return;
+
+            _titleT += Time.deltaTime;
+            float a = Mathf.Min(Mathf.Clamp01(_titleT / 0.35f), Mathf.Clamp01((TitleSeconds - _titleT) / 0.6f));
+            _titleGroup.alpha = a;
+            // The name settles into place as it fades in.
+            float s = Mathf.Lerp(1.12f, 1f, Mathf.Clamp01(_titleT / 0.5f));
+            _titleName.rectTransform.localScale = new Vector3(s, s, 1f);
+            _titleName.characterSpacing = Mathf.Lerp(2f, 10f, Mathf.Clamp01(_titleT / TitleSeconds));
+            if (_titleT >= TitleSeconds) _title.gameObject.SetActive(false);
         }
 
         private string BiomeName() => GameLoopManager.Instance != null

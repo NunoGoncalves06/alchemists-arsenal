@@ -30,9 +30,20 @@ namespace AlchemistsArsenal.Combat
         private CombatantBody _body;
         private float _nextContactTime;
 
+        /// <summary>Scales <see cref="moveSpeed"/>: a boss slows to plant itself before a blow.</summary>
+        public float SpeedMultiplier { get; set; } = 1f;
+
         public void Configure(float speed)
         {
             moveSpeed = speed;
+        }
+
+        /// <summary>A walker that stops further out (a big body) and may or may not bite on contact.</summary>
+        public void Configure(float speed, float stopAt, bool contact)
+        {
+            moveSpeed = speed;
+            stopDistance = stopAt;
+            dealsContactDamage = contact;
         }
 
         private void Awake()
@@ -56,7 +67,7 @@ namespace AlchemistsArsenal.Combat
             float d = toTarget.magnitude;
             Vector2 dir = d > 0.001f ? toTarget / d : Vector2.zero;
 
-            Vector2 desired = d > stopDistance ? dir * moveSpeed : Vector2.zero;
+            Vector2 desired = d > stopDistance ? dir * (moveSpeed * Mathf.Max(0f, SpeedMultiplier)) : Vector2.zero;
             // Steering is an acceleration: scaled by mass, a heavier monster walks at the
             // same speed but is harder to knock around.
             Vector2 steer = Vector2.ClampMagnitude((desired - _rb.linearVelocity) * steerAccel, maxSteerForce);

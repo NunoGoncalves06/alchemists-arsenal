@@ -22,6 +22,7 @@ namespace AlchemistsArsenal.Art
         private readonly Color32[] _px;
 
         private static readonly Dictionary<string, Sprite> _baked = new Dictionary<string, Sprite>();
+        private static readonly Dictionary<Sprite, Sprite> _silhouettes = new Dictionary<Sprite, Sprite>();
         public static readonly Color32 Clear = new Color32(0, 0, 0, 0);
         public static readonly Color32 Ink = new Color32(0x17, 0x11, 0x1c, 0xff);
 
@@ -104,20 +105,114 @@ namespace AlchemistsArsenal.Art
             return Mathf.Clamp01(ambient + (1f - ambient) * lambert);
         }
 
-        /// <summary>Bake to a point-filtered sprite and cache it under <paramref name="key"/>.</summary>
-        public Sprite Bake(string key, float ppu, Vector2 pivot01)
+        /// <summary>
+        /// Bake to a point-filtered sprite and cache it under <paramref name="key"/>.
+        /// With <paramref name="silhouette"/>, also bake a flat white copy of its shape
+        /// (see <see cref="SilhouetteOf"/>): the hit flash. A tint can only darken a
+        /// sprite, so flashing white needs a white sprite drawn over it. The texture
+        /// is made unreadable on upload, so this is the only moment to make one.
+        /// </summary>
+        public Sprite Bake(string key, float ppu, Vector2 pivot01, bool silhouette = false)
         {
             if (TryGet(key, out Sprite cached)) return cached;
+            var s = Upload(key, _px, ppu, pivot01);
+            _baked[key] = s;
+            if (silhouette)
+            {
+                var white = new Color32[_px.Length];
+                for (int i = 0; i < _px.Length; i++)
+                    white[i] = _px[i].a > 0 ? new Color32(255, 255, 255, _px[i].a) : Clear;
+                _silhouettes[s] = Upload(key + "_white", white, ppu, pivot01);
+            }
+            return s;
+        }
+
+        /// <summary>The white silhouette baked alongside <paramref name="sprite"/>, or null.</summary>
+        public static Sprite SilhouetteOf(Sprite sprite) =>
+            sprite != null && _silhouettes.TryGetValue(sprite, out Sprite s) ? s : null;
+
+        private Sprite Upload(string key, Color32[] px, float ppu, Vector2 pivot01)
+        {
             var tex = new Texture2D(W, H, TextureFormat.RGBA32, false)
             { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "px_" + key };
             var flipped = new Color32[W * H];
             for (int y = 0; y < H; y++)
-                Array.Copy(_px, y * W, flipped, (H - 1 - y) * W, W);   // row 0 is the top here, the bottom in a texture
+                Array.Copy(px, y * W, flipped, (H - 1 - y) * W, W);   // row 0 is the top here, the bottom in a texture
             tex.SetPixels32(flipped);
             tex.Apply(false, true);
-            var s = Sprite.Create(tex, new Rect(0, 0, W, H), pivot01, ppu);
-            _baked[key] = s;
-            return s;
+            return Sprite.Create(tex, new Rect(0, 0, W, H), pivot01, ppu);
+        }
+
+        /// <summary>A line <paramref name="thickness"/> pixels wide (round caps), coloured per pixel.</summary>
+        public void Line(float x0, float y0, float x1, float y1, float thickness, Func<int, int, Color32> color)
+        {
+            float r = thickness * 0.5f;
+            int minX = Mathf.FloorToInt(Mathf.Min(x0, x1) - r - 1), maxX = Mathf.CeilToInt(Mathf.Max(x0, x1) + r + 1);
+            int minY = Mathf.FloorToInt(Mathf.Min(y0, y1) - r - 1), maxY = Mathf.CeilToInt(Mathf.Max(y0, y1) + r + 1);
+            Vector2 a = new Vector2(x0, y0), b = new Vector2(x1, y1), ab = b - a;
+            float len2 = Mathf.Max(0.0001f, ab.sqrMagnitude);
+            for (int y = minY; y <= maxY; y++)
+            for (int x = minX; x <= maxX; x++)
+            {
+                Vector2 p = new Vector2(x + 0.5f, y + 0.5f);
+                float t = Mathf.Clamp01(Vector2.Dot(p - a, ab) / len2);
+                if ((p - (a + ab * t)).sqrMagnitude <= r * r) Set(x, y, color(x, y));
+            }
+        }
+
+        public void Line(float x0, float y0, float x1, float y1, float thickness, Color32 c) =>
+            Line(x0, y0, x1, y1, thickness, (x, y) => c);
+
+        /// <summary>A tapering stroke along a polyline: thick at the first point, thin at the last.</summary>
+        public void Stroke(Vector2[] pts, float startWidth, float endWidth, Func<int, int, Color32> color)
+        {
+            for (int i = 0; i < pts.Length - 1; i++)
+            {
+                float t = pts.Length <= 2 ? 0f : i / (float)(pts.Length - 2);
+                Line(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y, Mathf.Lerp(startWidth, endWidth, t), color);
+            }
+        }
+
+        /// <summary>Is (x, y) inside the polygon (even-odd rule)?</summary>
+        public static bool InPoly(float x, float y, Vector2[] poly)
+        {
+            bool inside = false;
+            float px = x + 0.5f, py = y + 0.5f;
+            for (int i = 0, j = poly.Length - 1; i < poly.Length; j = i++)
+            {
+                if ((poly[i].y > py) != (poly[j].y > py) &&
+                    px < (poly[j].x - poly[i].x) * (py - poly[i].y) / (poly[j].y - poly[i].y) + poly[i].x)
+                    inside = !inside;
+            }
+            return inside;
+        }
+
+        /// <summary>Deterministic 0..1 value noise per integer cell, for bark, moss and tatters.</summary>
+        public static float Hash(int x, int y, int seed = 0)
+        {
+            unchecked
+            {
+                int h = x * 374761393 + y * 668265263 + seed * 1442695041;
+                h = (h ^ (h >> 13)) * 1274126177;
+                return ((h ^ (h >> 16)) & 0x7fffffff) / (float)0x7fffffff;
+            }
+        }
+
+        /// <summary>A soft round glow (alpha falls off from the centre), for eyes, hearts and runes.</summary>
+        public static Sprite Glow(string key, int size, Color32 color, float ppu)
+        {
+            if (TryGet(key, out Sprite s)) return s;
+            var c = new PixelCanvas(size, size);
+            float r = size * 0.5f;
+            c.Fill((x, y) => true, (x, y) =>
+            {
+                float dx = x + 0.5f - r, dy = y + 0.5f - r;
+                float k = Mathf.Clamp01(1f - Mathf.Sqrt(dx * dx + dy * dy) / r);
+                // Stepped, not smooth: three hard rings read as pixel art, a gradient does not.
+                float a = k > 0.66f ? 1f : k > 0.33f ? 0.55f : k > 0.05f ? 0.2f : 0f;
+                return new Color32(color.r, color.g, color.b, (byte)(color.a * a));
+            });
+            return c.Bake(key, ppu, new Vector2(0.5f, 0.5f));
         }
 
         public static Color32 WithAlpha(Color32 c, byte a) => new Color32(c.r, c.g, c.b, a);

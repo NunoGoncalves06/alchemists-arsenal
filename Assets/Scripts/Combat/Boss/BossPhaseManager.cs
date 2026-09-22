@@ -16,7 +16,11 @@ namespace AlchemistsArsenal.Combat
     /// into control without any separate code path.
     ///
     /// The moment-to-moment behaviour (telegraph / attack / recover) lives in
-    /// <see cref="BossBehaviourRunner"/>. This class holds no physics.
+    /// <see cref="BossBehaviourRunner"/>. This class holds no physics. It does own
+    /// how fast the boss walks: the phase's <see cref="BossPhaseData.MoveSpeedMultiplier"/>
+    /// (which nothing read before), nothing at all while it is still arriving, and
+    /// barely a shuffle while it winds up, so a shockwave bursts from where its
+    /// ring was drawn.
     /// </summary>
     [RequireComponent(typeof(CombatantBody))]
     [RequireComponent(typeof(ElementalDamageAccumulator))]
@@ -29,6 +33,18 @@ namespace AlchemistsArsenal.Combat
         public BossPhase CurrentPhase { get; private set; } = BossPhase.Neutral;
         public event Action<BossPhase, BossPhase> OnPhaseChanged;
 
+        public BossDefinition Definition => definition;
+        public BossAttackExecutor Executor => attackExecutor;
+
+        /// <summary>Still arriving: it neither moves nor attacks yet.</summary>
+        public bool IsEntering => Time.time < _entranceUntil;
+        public float Entrance01 => definition != null && definition.EntranceSeconds > 0f
+            ? Mathf.Clamp01(1f - (_entranceUntil - Time.time) / definition.EntranceSeconds) : 1f;
+
+        public BossBehaviourRunner.State ActionState => _behaviour != null ? _behaviour.Current : BossBehaviourRunner.State.Idle;
+        public BossAttackPattern PendingAttack => _behaviour != null ? _behaviour.Pending : null;
+        public float Windup01 => _behaviour != null ? _behaviour.Windup01 : 0f;
+
         // --- IElementalWardProvider ---
         public bool HasActiveWard => CurrentPhase == BossPhase.ElementalWard;
         public ElementType WardElement =>
@@ -38,6 +54,8 @@ namespace AlchemistsArsenal.Combat
         private CombatantBody _body;
         private ElementalDamageAccumulator _accumulator;
         private BossBehaviourRunner _behaviour;
+        private MonsterWalker _walker;
+        private float _entranceUntil;
 
         private float _phaseEnteredAt;
         private float _nextEvalTime;
@@ -46,6 +64,7 @@ namespace AlchemistsArsenal.Combat
         {
             _body = GetComponent<CombatantBody>();
             _accumulator = GetComponent<ElementalDamageAccumulator>();
+            _walker = GetComponent<MonsterWalker>();
             _behaviour = new BossBehaviourRunner(_body, attackExecutor);
         }
 
@@ -53,10 +72,14 @@ namespace AlchemistsArsenal.Combat
         {
             EnterPhase(BossPhase.Neutral);
             _nextEvalTime = Time.time;
+            _entranceUntil = Time.time + (definition != null ? definition.EntranceSeconds : 0f);
         }
 
         private void Update()
         {
+            if (_walker != null) _walker.SpeedMultiplier = WalkMultiplier();
+            if (IsEntering) return;
+
             if (Time.time >= _nextEvalTime)
             {
                 _nextEvalTime = Time.time + EvalInterval();
@@ -137,6 +160,15 @@ namespace AlchemistsArsenal.Combat
         {
             BossPhaseData pd = definition != null ? definition.ForPhase(CurrentPhase) : null;
             return pd != null ? pd.AttackPatterns : Array.Empty<BossAttackPattern>();
+        }
+
+        private float WalkMultiplier()
+        {
+            if (IsEntering || _body == null || !_body.IsAlive) return 0f;
+            var state = ActionState;
+            if (state == BossBehaviourRunner.State.Telegraph || state == BossBehaviourRunner.State.Attack) return 0.1f;
+            BossPhaseData pd = definition != null ? definition.ForPhase(CurrentPhase) : null;
+            return pd != null ? pd.MoveSpeedMultiplier : 1f;
         }
 
         private float EvalInterval() => definition != null ? definition.PhaseEvalInterval : 0.75f;

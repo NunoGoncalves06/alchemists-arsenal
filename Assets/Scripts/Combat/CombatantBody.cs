@@ -84,6 +84,9 @@ namespace AlchemistsArsenal.Combat
             currentHP = maxHP;
         }
 
+        /// <summary>How long the body stays after death (a boss has a longer fall than a pest).</summary>
+        public void SetDeathLinger(float seconds) => deathLingerSeconds = Mathf.Max(0f, seconds);
+
         /// <summary>Copy stats from a <see cref="MonsterData"/> definition (spawn-time).</summary>
         public void InitialiseFrom(MonsterData data)
         {
