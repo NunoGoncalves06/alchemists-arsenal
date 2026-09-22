@@ -63,7 +63,12 @@ namespace AlchemistsArsenal.DebugTools
             AdventurerRegistry.Clear();
 
             ElementalMatrix matrix = BuildMatrix();
-            SpawnAdventurer(new Vector2(-3f, 0f), 12, matrix); // fragile, and starts close
+            // Fragile, starts close, and unarmed. This used to be armed and only lost
+            // because a monster hugging the hero vetoed every throw (the min-safe-range
+            // stall); with point-blank throws legal, a Perfect flask every 0.8 s
+            // juggles three brutes with knockback and wins. The scenario is about the
+            // wipe path, so the hero is given nothing to fight back with.
+            SpawnAdventurer(new Vector2(-3f, 0f), 12, matrix, armed: false);
 
             MonsterData brute = MonsterData.Create("Brute", ElementType.Fire, 400, 4.5f);
             var biome = ScriptableObject.CreateInstance<BiomeData>();
@@ -80,6 +85,8 @@ namespace AlchemistsArsenal.DebugTools
 
             Report($"Lose scenario finished ({t:F1}s)", finished);
             Report("Lose scenario outcome = Lost", !won && mgr.Phase == ExpeditionPhase.Lost);
+            Report($"Lose scenario says the party was wiped out ('{mgr.OutcomeReason}')",
+                mgr.OutcomeReason.Contains("wiped out"));
 
             CleanupExpedition(mgr, biome);
         }
@@ -143,7 +150,7 @@ namespace AlchemistsArsenal.DebugTools
             return m;
         }
 
-        private static void SpawnAdventurer(Vector2 pos, int hp, ElementalMatrix matrix, int ammo = 99)
+        private static void SpawnAdventurer(Vector2 pos, int hp, ElementalMatrix matrix, int ammo = 99, bool armed = true)
         {
             var go = new GameObject("TestAdventurer");
             go.SetActive(false);
@@ -159,6 +166,7 @@ namespace AlchemistsArsenal.DebugTools
             body.Initialise(Team.Adventurer, ElementType.Nature, hp);
 
             go.AddComponent<AdventurerMovementController>();
+            if (!armed) { go.SetActive(true); return; }
 
             var ai = go.AddComponent<UtilityAI_CombatController>();
             var elemental = ScriptableObject.CreateInstance<ElementalVulnerabilityConsideration>();
