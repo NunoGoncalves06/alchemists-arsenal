@@ -14,9 +14,13 @@ using AlchemistsArsenal.UI.Stations;
 namespace AlchemistsArsenal.UI
 {
     /// <summary>
-    /// The morning shell (DESIGN.md §7.6): top bar, the four-station rail, the centre
-    /// column the active <see cref="StationPanel"/> fills, and the right dock that
-    /// carries the job you took and the live quality meter.
+    /// The morning shell (DESIGN.md §7.6): top bar, the station rail, the centre
+    /// column the active <see cref="StationPanel"/> fills, and the right dock: every
+    /// fighter's flask with the stage it has reached, then the quality meter and
+    /// ledger of the flask on the bench in front of you.
+    ///
+    /// Several flasks are in flight at once (one per fighter), each bench working
+    /// its own; the rail says how many are waiting at each.
     ///
     /// The shell owns none of the crafting: each station is its own class under
     /// <c>UI/Stations</c> and tells the shell, through one callback, when it has
@@ -49,9 +53,11 @@ namespace AlchemistsArsenal.UI
         private UIKit.MeterView _quality;
 
         // order dock
-        private Image _buyerPortrait;
-        private TextMeshProUGUI _buyerName, _jobTitle, _jobTerms, _gradeText, _logText, _sendHint;
+        private Transform _flaskRows;
+        private TextMeshProUGUI _focusTitle, _gradeText, _logText, _sendHint;
         private Button _sendBtn;
+        private ActiveOrder _focus;
+        private int _dockSig = int.MinValue;
 
         // ------------------------------------------------------------------ build
 
@@ -147,33 +153,26 @@ namespace AlchemistsArsenal.UI
             edge.rectTransform.anchorMax = new Vector2(0f, 1f);
             edge.rectTransform.sizeDelta = new Vector2(2f, 0f);
 
-            // --- the job -----------------------------------------------------
-            var jobCard = UIKit.Card(dock.transform, "Today's job", out Transform job, spacing: 6f);
-            UIFactory.Place(jobCard.rectTransform, 0.04f, 0.62f, 0.96f, 0.975f);
+            // --- every fighter's flask ---------------------------------------
+            var flasksCard = UIKit.Card(dock.transform, "Today's flasks", out Transform flasks, spacing: 4f);
+            UIFactory.Place(flasksCard.rectTransform, 0.04f, 0.62f, 0.96f, 0.975f);
+            // The rows get a container of their own: rebuilding them cleared the card,
+            // heading and all.
+            var rows = UIFactory.VStack(flasks, 4f);
+            UIFactory.Flex(rows.gameObject, 1f, 1f);
+            _flaskRows = rows.transform;
 
-            var who = UIFactory.HStack(job, 10f);
-            who.childAlignment = TextAnchor.MiddleLeft;
-            UIFactory.Flex(who.gameObject, 1f, 0f, minHeight: 62f);
-            _buyerPortrait = UIKit.Portrait(who.transform, PixelSprites.Buyer("rookie"), 58f);
-            UIFactory.Flex(_buyerPortrait.transform.parent.parent.gameObject, 0f, 0f, minWidth: 58f, minHeight: 58f);
-            _buyerName = UIFactory.Label(who.transform, "", UITheme.SizeBody, UITheme.TextHi,
-                TextAlignmentOptions.Left, true);
-            UIFactory.Flex(_buyerName.gameObject, 1f, 1f);
-
-            _jobTitle = UIFactory.Label(job, "", UITheme.SizeBody, UITheme.Candle);
-            UIFactory.Flex(_jobTitle.gameObject, 1f, 0f, minHeight: 24f);
-            _jobTerms = UIFactory.Label(job, "", UITheme.SizeSmall, UITheme.TextMid);
-            UIFactory.Flex(_jobTerms.gameObject, 1f, 1f, minHeight: 44f);
-
-            // --- quality -----------------------------------------------------
-            var qualityCard = UIKit.Card(dock.transform, "Potion quality", out Transform quality, spacing: 6f);
+            // --- the flask in front of you -----------------------------------
+            var qualityCard = UIKit.Card(dock.transform, "Potion quality", out Transform quality, spacing: 5f);
             UIFactory.Place(qualityCard.rectTransform, 0.04f, 0.42f, 0.96f, 0.60f);
 
-            _quality = UIKit.Meter(quality, "Score", UITheme.Candle, withBand: false, height: 20f);
+            _focusTitle = UIFactory.Label(quality, "", UITheme.SizeSmall, UITheme.Candle, TextAlignmentOptions.Left, true);
+            UIFactory.FixedHeight(_focusTitle.gameObject, 20f);
+            _quality = UIKit.Meter(quality, "Score", UITheme.Candle, withBand: false, height: 18f);
             UIKit.GradeScale(quality);
-            _gradeText = UIFactory.Label(quality, "", UITheme.SizeBody, UITheme.TextMid,
+            _gradeText = UIFactory.Label(quality, "", UITheme.SizeSmall, UITheme.TextMid,
                 TextAlignmentOptions.Left, true);
-            UIFactory.Flex(_gradeText.gameObject, 1f, 0f, minHeight: 24f);
+            UIFactory.Flex(_gradeText.gameObject, 1f, 0f, minHeight: 22f);
 
             // --- ledger ------------------------------------------------------
             var logCard = UIKit.Card(dock.transform, "What the flask has been through", out Transform log);
@@ -208,7 +207,7 @@ namespace AlchemistsArsenal.UI
 
             if (GameLoopManager.Instance != null)
                 GameLoopManager.Instance.OnMorningTimeChanged += SetClock;
-            HookOrder();
+            _dockSig = int.MinValue;
             RefreshDock();
             _everSwitched = false;          // cut, don't glide, to the Counter on a new morning
             SwitchTab(StationTab.Counter); // a fresh morning starts back at the Counter
@@ -219,7 +218,6 @@ namespace AlchemistsArsenal.UI
             if (GameLoopManager.Instance != null)
                 GameLoopManager.Instance.OnMorningTimeChanged -= SetClock;
             _stations[(int)_activeTab].OnExit();
-            UnhookOrder();
         }
 
         private void SwitchTab(StationTab tab)
@@ -229,7 +227,7 @@ namespace AlchemistsArsenal.UI
             // guaranteed to have happened in the same frame the Counter creates that
             // order and immediately switches here — checking CurrentOrder directly as
             // a fallback closes that race (it previously silently failed to switch).
-            bool hasOrder = CraftingManager.Instance != null && CraftingManager.Instance.CurrentOrder != null;
+            bool hasOrder = CraftingManager.Instance != null && CraftingManager.Instance.Orders.Count > 0;
             if (tab != StationTab.Counter && !TutorialManager.StationsUnlocked && !hasOrder) return;
 
             if (_stations[(int)_activeTab] != null) _stations[(int)_activeTab].OnExit();
@@ -249,25 +247,47 @@ namespace AlchemistsArsenal.UI
             if (_bg != null) _bg.enabled = !active.ShowsWorld;
 
             RefreshRail();
+            _dockSig = int.MinValue;   // the dock follows the flask on this bench
             AudioManager.Play(Sfx.Tab);
         }
 
         private void RefreshRail()
         {
-            bool unlocked = TutorialManager.StationsUnlocked
-                            || (CraftingManager.Instance != null && CraftingManager.Instance.CurrentOrder != null);
+            var cm = CraftingManager.Instance;
+            bool unlocked = TutorialManager.StationsUnlocked || (cm != null && cm.Orders.Count > 0);
             for (int i = 0; i < _tabs.Length; i++)
             {
                 if (_tabs[i] == null) continue;
                 bool locked = i != (int)StationTab.Counter && !unlocked;
                 _tabs[i].SetState(i == (int)_activeTab, locked, _stations[i].Complete);
+                _tabs[i].SetCount(WaitingAt((StationTab)i));
+            }
+        }
+
+        /// <summary>How many flasks (or, at the Counter, fighters) are waiting at a bench.</summary>
+        private static int WaitingAt(StationTab tab)
+        {
+            switch (tab)
+            {
+                case StationTab.Counter:
+                {
+                    RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+                    if (s == null) return 0;
+                    int n = 0;
+                    foreach (HeroRecord h in s.DeployedParty()) if (s.ContractFor(h.id) == null) n++;
+                    return n;
+                }
+                case StationTab.Prep: return StationPanel.CountAt(BrewStage.Prep);
+                case StationTab.Cauldron: return StationPanel.CountAt(BrewStage.Cauldron);
+                default: return StationPanel.CountAt(BrewStage.Bottling);
             }
         }
 
         /// <summary>
-        /// Take the first job on the board. Kept as the same private name the
-        /// headless playtest driver reflects on, so the harness still exercises the
-        /// real Counter path rather than calling the manager API behind it.
+        /// Serve whoever is at the Counter with the first job on the board. Kept as
+        /// the same private name the headless playtest driver reflects on, so the
+        /// harness still exercises the real Counter path rather than calling the
+        /// manager API behind it. Once every fighter has ordered, on to Prep.
         /// </summary>
         private void AcceptOrder()
         {
@@ -279,10 +299,10 @@ namespace AlchemistsArsenal.UI
             if (_stations[(int)StationTab.Counter] is not CounterStation counter) return;
             if (!counter.AcceptFirstOffer()) return;
 
-            HookOrder();
             foreach (var station in _stations) station.Refresh();
+            _dockSig = int.MinValue;
             RefreshDock();
-            SwitchTab(StationTab.Prep);   // the leaves come before the stirring
+            if (CounterStation.AllServed) SwitchTab(StationTab.Prep);   // the leaves come before the stirring
         }
 
         private void OnStationChanged()
@@ -291,76 +311,109 @@ namespace AlchemistsArsenal.UI
             RefreshRail();
         }
 
-        // --- order binding ---
+        // --- the dock ---
 
-        private bool _orderHooked;
-
-        private void HookOrder()
+        /// <summary>A cheap fingerprint of everything the dock shows; it redraws only when it changes.</summary>
+        private int DockSignature()
         {
-            var order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
-            if (order == null || _orderHooked) return;
-            order.OnQualityChanged += OnQuality;
-            _orderHooked = true;
+            int sig = (int)_activeTab * 7919;
+            var cm = CraftingManager.Instance;
+            if (cm != null)
+                for (int i = 0; i < cm.Orders.Count; i++)
+                {
+                    ActiveOrder o = cm.Orders[i];
+                    sig = sig * 31 + o.qualityScore * 7 + (int)o.stage * 1009 + o.deductions.Count * 131;
+                }
+            RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+            if (s != null && s.contracts != null) sig = sig * 17 + s.contracts.Count;
+            ActiveOrder shown = _stations[(int)_activeTab].ShownOrder;
+            if (shown != null) sig = sig * 13 + shown.queueIndex + 1;
+            return sig;
         }
 
-        private void UnhookOrder()
+        private static string StageName(BrewStage stage) => stage switch
         {
-            var order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
-            if (order != null) order.OnQualityChanged -= OnQuality;
-            _orderHooked = false;
-        }
+            BrewStage.Malting => "MALTING",
+            BrewStage.Prep => "PREP",
+            BrewStage.Cauldron => "CAULDRON",
+            BrewStage.Bottling => "BOTTLING",
+            _ => "READY",
+        };
 
-        private void OnQuality(int q) => RefreshDock();
+        /// <summary>One row per fighter going out: face, name, element, where their flask is, its score.</summary>
+        private void BuildFlaskRows()
+        {
+            for (int i = _flaskRows.childCount - 1; i >= 0; i--) Destroy(_flaskRows.GetChild(i).gameObject);
+            RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+            var cm = CraftingManager.Instance;
+            if (s == null) return;
+
+            var party = s.DeployedParty();
+            foreach (HeroRecord h in party)
+            {
+                ActiveOrder o = cm != null ? cm.OrderFor(h.id) : null;
+                bool focused = o != null && o == _focus;
+                Image row = UIKit.Surface(_flaskRows, out Transform inner,
+                    focused ? UITheme.SurfaceTop : UITheme.SurfaceHi, focused ? UITheme.Candle : UITheme.LineSoft, "FlaskRow");
+                UIFactory.FixedHeight(row.gameObject, 40f);
+
+                var face = UIFactory.Icon(inner, PixelSprites.Buyer(h.portraitId), 30f);
+                UIFactory.Place(face.rectTransform, 0.01f, 0.08f, 0.14f, 0.92f);
+                var name = UIFactory.Label(inner, h.displayName, UITheme.SizeSmall, UITheme.TextHi, TextAlignmentOptions.Left, true);
+                UIFactory.Place(name.rectTransform, 0.16f, 0f, 0.52f, 1f);
+
+                if (o == null)
+                {
+                    var wait = UIFactory.Label(inner, "AT THE COUNTER", UITheme.SizeTiny, UITheme.TextLow, TextAlignmentOptions.Left);
+                    UIFactory.Place(wait.rectTransform, 0.62f, 0f, 0.99f, 1f);
+                    continue;
+                }
+
+                var badge = UIFactory.ElementBadge(inner, o.element, 20f);
+                UIFactory.Place(badge.rectTransform, 0.53f, 0.22f, 0.60f, 0.78f);
+                var stage = UIFactory.Label(inner, StageName(o.stage), UITheme.SizeTiny,
+                    o.Finished ? UITheme.Ok : UITheme.Candle, TextAlignmentOptions.Left);
+                UIFactory.Place(stage.rectTransform, 0.62f, 0f, 0.86f, 1f);
+                var score = UIFactory.MonoLabel(inner, o.qualityScore.ToString(), UITheme.SizeSmall,
+                    UITheme.GradeColor(o.GetGrade()), TextAlignmentOptions.Right);
+                UIFactory.Place(score.rectTransform, 0.84f, 0f, 0.98f, 1f);
+            }
+            if (party.Count == 0)
+                UIFactory.Label(_flaskRows, "Nobody is going out today.", UITheme.SizeSmall, UITheme.TextLow);
+        }
 
         private void RefreshDock()
         {
-            // Self-healing: an order created any way other than through the Counter
-            // (the headless driver, a load) would otherwise leave the dock stale,
-            // because nothing had subscribed to OnQualityChanged yet. HookOrder is
-            // idempotent, so calling it here costs nothing.
-            HookOrder();
+            var cm = CraftingManager.Instance;
+            _focus = _stations[(int)_activeTab].ShownOrder ?? (cm != null ? cm.CurrentOrder : null);
+            BuildFlaskRows();
 
-            ActiveOrder order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
-            ContractRecord job = SaveSystem.Instance != null && SaveSystem.Instance.State != null
-                ? SaveSystem.Instance.State.contract : null;
-            bool has = order != null;
+            bool any = cm != null && cm.Orders.Count > 0;
+            _sendBtn.interactable = any;
+            _sendHint.text = SendHint();
 
-            _sendBtn.interactable = has;
-
-            if (job != null && job.accepted)
+            ActiveOrder order = _focus;
+            if (order == null)
             {
-                CustomerDefinition buyer = CustomerCatalog.ById(job.buyerId);
-                _buyerPortrait.sprite = PixelSprites.Buyer(buyer.PortraitId);
-                _buyerName.text = $"{job.buyerName}\n<size=80%><color=#{ColorUtility.ToHtmlStringRGB(UITheme.TextLow)}>{buyer.Title}</color></size>";
-                _jobTitle.text = $"{job.title} — <b>{job.PotionName}</b>";
-                _jobTerms.text =
-                    $"Wants <color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(job.RequiredGrade))}>" +
-                    $"{job.RequiredGrade.ToString().ToUpperInvariant()}</color> or better.\n" +
-                    $"Pays {job.fee} g, +{job.bonus} g if it lands. Below grade pays half.";
-            }
-            else
-            {
-                _buyerName.text = "Nobody served yet";
-                _jobTitle.text = "";
-                _jobTerms.text = "Step up to the Counter and take one of the three jobs on the board.";
-            }
-
-            if (!has)
-            {
+                _focusTitle.text = "";
                 _quality.Set(0f, "—");
                 _gradeText.text = "No potion on the bench.";
                 _logText.text = "";
-                _sendHint.text = "Take a job first.";
                 return;
             }
+
+            ContractRecord job = order.contract;
+            bool hasJob = job != null && job.accepted;
+            _focusTitle.text = (string.IsNullOrEmpty(order.heroName) ? "" : $"{order.heroName}'s ") + $"{order.element} flask" +
+                               (hasJob ? $"  <size=85%><color=#{ColorUtility.ToHtmlStringRGB(UITheme.TextLow)}>{job.title} · {job.fee} g +{job.bonus}</color></size>" : "");
 
             var grade = order.GetGrade();
             _quality.Set(order.qualityScore / 100f, $"{order.qualityScore} / 100");
             _quality.SetFillColor(UITheme.GradeColor(grade));
             _gradeText.text =
                 $"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(grade))}>{grade.ToString().ToUpperInvariant()}</color>" +
-                (job != null && job.accepted
-                    ? job.Meets(grade) ? "  — meets the contract" : "  — below what they asked for"
+                (hasJob
+                    ? job.Meets(grade) ? "  — meets the job" : $"  — they want {job.RequiredGrade.ToString().ToUpperInvariant()}"
                     : "");
 
             var sb = new StringBuilder();
@@ -373,15 +426,18 @@ namespace AlchemistsArsenal.UI
             }
             if (order.deductions.Count == 0) sb.AppendLine("Nothing done to it yet.");
             _logText.text = sb.ToString();
+        }
 
-            var pot = PhysicsCauldronManager.Instance;
-            bool brewed = pot != null && pot.IsBrewComplete;
-            bool bottled = _stations[(int)StationTab.Bottling].Complete;
-            bool prepped = _stations[(int)StationTab.Prep].Complete;
-            _sendHint.text = bottled ? "Sealed and labelled — good to go."
-                : brewed ? "Brewed. Bottle it before you send it."
-                : !prepped ? "Crush and add the leaves at the Prep bench first."
-                : "You can send it early — it just won't be as good.";
+        private static string SendHint()
+        {
+            var cm = CraftingManager.Instance;
+            if (cm == null || cm.Orders.Count == 0) return "Take a job at the Counter first.";
+            HeroRecord next = CounterStation.NextFighter;
+            if (next != null) return $"{next.displayName} hasn't ordered yet — they would carry sludge.";
+            if (cm.AllDone) return "Every flask sealed and labelled — good to go.";
+            int left = 0;
+            for (int i = 0; i < cm.Orders.Count; i++) if (!cm.Orders[i].Finished) left++;
+            return $"{left} flask{(left == 1 ? "" : "s")} still on the benches — you can send early, it just won't be as good.";
         }
 
         private void SetClock(float t01)
@@ -398,6 +454,14 @@ namespace AlchemistsArsenal.UI
         {
             StationPanel active = _stations[(int)_activeTab];
             if (active != null) active.Tick();
+
+            int sig = DockSignature();
+            if (sig != _dockSig)
+            {
+                _dockSig = sig;
+                RefreshDock();
+                RefreshRail();
+            }
         }
     }
 }

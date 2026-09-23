@@ -33,6 +33,11 @@ namespace AlchemistsArsenal.Data
         public const string SpareVials = "ammo1";
         public const string ThickBoots = "hp1";
         public const string QuickHands = "cd1";
+        /// <summary>
+        /// Retired: party capacity used to be bought here on top of the hire. Hiring
+        /// a fighter is all it takes now (see <see cref="Core.RunState.MaxParty"/>).
+        /// The ids stay so a save that owns them still loads.
+        /// </summary>
         public const string SecondPack = "party2";
         public const string ThirdPack = "party3";
 
@@ -42,40 +47,12 @@ namespace AlchemistsArsenal.Data
             new UpgradeDefinition(SpareVials, "Spare Vials", "+5 ammo per expedition", 30),
             new UpgradeDefinition(ThickBoots, "Thick Boots", "+30 max HP", 35),
             new UpgradeDefinition(QuickHands, "Quick Hands", "-25% bomb cooldown", 45),
-            new UpgradeDefinition(SecondPack, "Second Pack", "Send a second hero on every expedition", 220),
-            new UpgradeDefinition(ThirdPack, "Third Pack", "Send a third hero on every expedition", 520),
         };
 
-        /// <summary>
-        /// Whether an upgrade can be bought at all yet, regardless of gold.
-        /// Only the party-capacity nodes are gated, and they are gated on having
-        /// cleared a road rather than on price — that is what keeps the late game
-        /// hard, since gold alone can never buy your way to a full party.
-        ///
-        /// Deliberately a switch rather than a field on
-        /// <see cref="UpgradeDefinition"/>: a new constructor argument would touch
-        /// every existing entry for the sake of two.
-        /// </summary>
-        public static bool IsAvailable(string id, Core.RunState s)
-        {
-            if (s == null) return true;
-            return id switch
-            {
-                SecondPack => ClearedBiome(s, 1),
-                ThirdPack => ClearedBiome(s, 3),
-                _ => true,
-            };
-        }
+        /// <summary>Whether an upgrade can be bought at all yet, regardless of gold.</summary>
+        public static bool IsAvailable(string id, Core.RunState s) => true;
 
-        /// <summary>The road you must have starred before a capacity node unlocks.</summary>
-        public static string UnlockHint(string id) => id switch
-        {
-            SecondPack => "Clear Cinder Peaks first",
-            ThirdPack => "Clear Venom Swamp first",
-            _ => "",
-        };
-
-        private static bool ClearedBiome(Core.RunState s, int index) =>
-            s.bestGrades != null && index < s.bestGrades.Length && s.bestGrades[index] > 0;
+        /// <summary>Why an upgrade is not available yet (empty while nothing is gated).</summary>
+        public static string UnlockHint(string id) => "";
     }
 }

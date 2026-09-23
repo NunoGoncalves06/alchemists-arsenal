@@ -59,10 +59,31 @@ namespace AlchemistsArsenal.UI.Stations
         /// <summary>Redraw anything that reflects the order (called when quality changes).</summary>
         public virtual void Refresh() { }
 
-        protected static ActiveOrder Order =>
+        /// <summary>
+        /// The order this station is showing. Each bench works its own order (the
+        /// oldest one waiting at its stage), so the benches override this with theirs;
+        /// the default is the most recently taken order.
+        /// </summary>
+        protected virtual ActiveOrder Order =>
             CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
 
-        protected static bool HasOrder => Order != null;
+        protected bool HasOrder => Order != null;
+
+        /// <summary>The order this station is showing, for the shell's dock to follow.</summary>
+        public ActiveOrder ShownOrder => Order;
+
+        /// <summary>True once today has orders and every one of them is past <paramref name="stage"/>.</summary>
+        protected static bool AllPast(BrewStage stage)
+        {
+            var cm = CraftingManager.Instance;
+            if (cm == null || cm.Orders.Count == 0) return false;
+            foreach (ActiveOrder o in cm.Orders) if (o.stage <= stage) return false;
+            return true;
+        }
+
+        /// <summary>How many of today's orders are waiting at, or being worked at, <paramref name="stage"/>.</summary>
+        public static int CountAt(BrewStage stage) =>
+            CraftingManager.Instance != null ? CraftingManager.Instance.CountAt(stage) : 0;
 
         /// <summary>Destroy every child of a container before rebuilding it.</summary>
         protected static void Clear(Transform container)

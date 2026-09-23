@@ -35,6 +35,8 @@ namespace AlchemistsArsenal.Core
 
         [Header("Morning")]
         [Min(30f)] [SerializeField] private float morningBudgetSeconds = 150f;
+        [Tooltip("Extra morning for each fighter beyond the first: every fighter orders their own flask.")]
+        [Min(0f)] [SerializeField] private float extraSecondsPerFighter = 110f;
 
         public GamePhase Phase { get; private set; } = GamePhase.Boot;
         public float MorningRemaining01 { get; private set; } = 1f;
@@ -65,6 +67,10 @@ namespace AlchemistsArsenal.Core
         private GameObject _expeditionRoot;
         private ExpeditionWorld _expeditionWorld;
         private float _morningRemaining;
+        private float _morningBudget = 150f;
+
+        /// <summary>This morning's whole clock, in seconds (it grows with the party).</summary>
+        public float MorningBudgetSeconds => _morningBudget;
 
         private void Awake()
         {
@@ -83,7 +89,7 @@ namespace AlchemistsArsenal.Core
             if (UI.TutorialManager.Active) return; // budget is frozen while Day-1 is being taught (reviewer P3)
 
             _morningRemaining -= Time.unscaledDeltaTime * Mathf.Max(0f, BudgetRateMultiplier);
-            MorningRemaining01 = Mathf.Clamp01(_morningRemaining / morningBudgetSeconds);
+            MorningRemaining01 = Mathf.Clamp01(_morningRemaining / Mathf.Max(1f, _morningBudget));
             OnMorningTimeChanged?.Invoke(MorningRemaining01);
 
             if (_morningRemaining <= 0f)
@@ -140,7 +146,11 @@ namespace AlchemistsArsenal.Core
         public void BeginMorning()
         {
             if (Phase != GamePhase.DayIntro) { Debug.LogWarning($"[Loop] BeginMorning from {Phase} ignored"); return; }
-            _morningRemaining = morningBudgetSeconds;
+            // Every fighter orders their own flask, so every fighter adds to the morning.
+            RunState st = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+            int fighters = st != null ? Mathf.Max(1, st.DeployedParty().Count) : 1;
+            _morningBudget = morningBudgetSeconds + extraSecondsPerFighter * (fighters - 1);
+            _morningRemaining = _morningBudget;
             MorningRemaining01 = 1f;
             SetPhase(GamePhase.Morning);
         }
@@ -153,20 +163,25 @@ namespace AlchemistsArsenal.Core
         }
 
         /// <summary>
-        /// Counter: take the customer's job. Records the contract on the run state
-        /// (so Evening knows what was promised) and opens the matching order — the
-        /// one path from "a buyer asked for something" to "there is a potion to brew".
+        /// Counter: a fighter takes a job. Records the contract on the run state (so
+        /// Evening knows what was promised to whom) and opens that fighter's order —
+        /// the one path from "a fighter asked for something" to "there is a potion to
+        /// brew". A fighter has one job a day; taking another replaces it.
         /// </summary>
-        public void AcceptContract(ContractRecord contract)
+        public ActiveOrder AcceptContract(ContractRecord contract)
         {
-            if (contract == null) return;
+            if (contract == null) return null;
             contract.accepted = true;
-            if (SaveSystem.Instance != null && SaveSystem.Instance.State != null)
+            RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+            if (s != null)
             {
-                SaveSystem.Instance.State.contract = contract;
+                s.contracts ??= new List<ContractRecord>();
+                if (!string.IsNullOrEmpty(contract.heroId))
+                    s.contracts.RemoveAll(c => c != null && c.heroId == contract.heroId);
+                s.contracts.Add(contract);
                 SaveSystem.Instance.MarkDirty();
             }
-            ConfirmOrder(contract.PotionName, contract.element);
+            return CraftingManager.Instance != null ? CraftingManager.Instance.StartOrder(contract) : null;
         }
 
         public void BeginHandoff()
@@ -180,13 +195,24 @@ namespace AlchemistsArsenal.Core
             if (Phase != GamePhase.Handoff) { Debug.LogWarning($"[Loop] BeginAfternoon from {Phase} ignored"); return; }
             if (_expeditionRoot != null) return; // re-entrancy guard (reviewer P6)
 
-            ActiveOrder order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
-            // Once, here — finished or not. Each hero gets their own loadout
-            // instance even when they share a brew, because the AI keeps a private
-            // ammo pool per controller.
+            // Once, here — finished or not. Each fighter carries their OWN order's
+            // flasks: the one they asked for at the Counter, at whatever grade it
+            // reached. A fighter nobody served goes out with the dregs (a null order
+            // is a Poor "Raw Sludge"). Each gets their own loadout instance, because
+            // the AI keeps a private ammo pool per controller.
             RunState party = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+            CraftingManager cm = CraftingManager.Instance;
             PendingParty = party != null ? party.DeployedParty() : null;
-            PendingLoadouts = LoadoutBuilder.BuildAll(new[] { order }, PendingParty);
+            var carried = new List<ActiveOrder>();
+            if (PendingParty != null)
+                foreach (HeroRecord h in PendingParty) carried.Add(cm != null ? cm.OrderFor(h.id) : null);
+            // An order with no fighter behind it (the bootstrap demo, the sims) is the lead's.
+            if (cm != null && cm.Orders.Count > 0 && string.IsNullOrEmpty(cm.Orders[0].heroId))
+            {
+                if (carried.Count == 0) carried.Add(cm.Orders[0]);
+                else if (carried[0] == null) carried[0] = cm.Orders[0];
+            }
+            PendingLoadouts = LoadoutBuilder.BuildAll(carried, PendingParty);
 
             BiomeData biome = BiomeLibrary.Get(TargetBiomeIndex);
 
@@ -239,21 +265,9 @@ namespace AlchemistsArsenal.Core
             {
                 if (r != null)
                 {
-                    ContractRecord job = s.contract ?? ContractRecord.None;
-                    r.contractBuyer = job.accepted ? job.buyerName : "";
-                    r.contractTitle = job.accepted ? job.title : "";
-                    r.contractFee = job.accepted ? job.fee : Economy.BaseFee;
-                    r.contractBonus = job.accepted ? job.bonus : 0;
-                    r.contractRequired = job.RequiredGrade;
                     r.replayDay = s.IsReplayDay;
-
-                    int fee = 0; bool tip = false, met = false;
-                    // No fee at all for a lost job (P11) — the customer got nothing.
-                    if (r.won) (fee, tip, met) = Economy.ContractPayout(r.craftedGrade, job, s.IsReplayDay);
-                    r.goldPaidByGrade = fee;
-                    r.perfectTip = tip;
-                    r.contractMet = r.won && met;
-                    s.AddGold(r.TotalGold); // loot + fee
+                    SettleContracts(s, r);
+                    s.AddGold(r.TotalGold); // loot + fees
 
                     if (r.won)
                     {
@@ -282,7 +296,8 @@ namespace AlchemistsArsenal.Core
                 s.day++;
                 s.EnsureDeployment();
                 s.replayBiomeIndex = -1;
-                s.contract = ContractRecord.None; // tomorrow's customer brings their own job
+                s.contracts?.Clear();              // tomorrow every fighter orders afresh
+                s.contract = ContractRecord.None;
                 if (CraftingManager.Instance != null) CraftingManager.Instance.ClearOrder();
                 SaveSystem.Instance.MarkDirty();
             }
@@ -291,6 +306,66 @@ namespace AlchemistsArsenal.Core
             _expeditionWorld = null;
             SetPhase(GamePhase.Evening);
             SaveSystem.Instance.AutoSave();
+        }
+
+        /// <summary>
+        /// Pay every fighter's job on the grade of the flask THEY carried, and write
+        /// it into the report line by line. No fee at all for a lost road (P11) — the
+        /// fighters came back with nothing done. A day with no job at all (a test, an
+        /// old save) pays the base fee on the telemetry's grade, as it always did.
+        /// The report's single-job fields and its <c>craftedGrade</c> (which the star
+        /// for a fine flask reads) take the first job and the worst flask.
+        /// </summary>
+        private static void SettleContracts(RunState s, ExpeditionReport r)
+        {
+            CraftingManager cm = CraftingManager.Instance;
+            r.contracts.Clear();
+            int paidTotal = 0;
+            bool anyTip = false, allMet = true, anyJob = false;
+            PotionGrade worst = PotionGrade.Perfect;
+            ContractRecord first = null;
+
+            if (s.contracts != null)
+                foreach (ContractRecord job in s.contracts)
+                {
+                    if (job == null || !job.accepted) continue;
+                    anyJob = true;
+                    first ??= job;
+                    ActiveOrder o = cm != null ? cm.OrderFor(job.heroId) : null;
+                    if (o == null && cm != null && string.IsNullOrEmpty(job.heroId)) o = cm.CurrentOrder;
+                    PotionGrade g = o != null ? o.GetGrade() : PotionGrade.Poor;
+                    if ((int)g > (int)worst) worst = g;   // PotionGrade counts down: Poor is 3
+
+                    int fee = 0; bool tip = false, met = false;
+                    if (r.won) (fee, tip, met) = Economy.ContractPayout(g, job, s.IsReplayDay);
+                    paidTotal += fee;
+                    anyTip |= tip;
+                    allMet &= met;
+                    r.contracts.Add(new ExpeditionReport.ContractLine
+                    {
+                        heroName = string.IsNullOrEmpty(job.heroName) ? job.buyerName : job.heroName,
+                        portraitId = string.IsNullOrEmpty(job.buyerId) ? "rookie" : job.buyerId,
+                        title = job.title, sponsor = job.sponsor ?? "", element = job.element,
+                        required = job.RequiredGrade, delivered = g,
+                        fee = job.fee, bonus = job.bonus, met = r.won && met, paid = fee,
+                    });
+                }
+
+            if (!anyJob)
+            {
+                if (r.won) (paidTotal, anyTip, _) = Economy.ContractPayout(r.craftedGrade, null, s.IsReplayDay);
+                allMet = true;
+            }
+            else r.craftedGrade = worst;
+
+            r.contractBuyer = first != null ? (string.IsNullOrEmpty(first.heroName) ? first.buyerName : first.heroName) : "";
+            r.contractTitle = first != null ? first.title : "";
+            r.contractFee = first != null ? first.fee : Economy.BaseFee;
+            r.contractBonus = first != null ? first.bonus : 0;
+            r.contractRequired = first != null ? first.RequiredGrade : PotionGrade.Poor;
+            r.goldPaidByGrade = paidTotal;
+            r.perfectTip = anyTip;
+            r.contractMet = r.won && allMet;
         }
 
         public void BeginBiomeMap()

@@ -16,7 +16,7 @@ namespace AlchemistsArsenal.Core
     public class RunState
     {
         /// <summary>Bumped whenever the shape below changes; <see cref="SaveSystem.Migrate"/> handles older files.</summary>
-        public const int CurrentVersion = 2;   // 2: storyFlags, endingSeen
+        public const int CurrentVersion = 3;   // 2: storyFlags, endingSeen · 3: contracts (one per fighter)
 
         public int saveVersion = CurrentVersion;
         public int slot = 0;
@@ -52,10 +52,17 @@ namespace AlchemistsArsenal.Core
         public List<string> unlockedDiary = new List<string>();
 
         /// <summary>
-        /// The job taken at today's Counter — who ordered it, the grade they'll
-        /// accept and what it pays. Persisted (rather than living on the Morning
-        /// screen) so a save taken mid-morning still knows what it owes at Evening.
-        /// Cleared when the day resolves.
+        /// The jobs taken at today's Counter, one per fighter served — who it is
+        /// for, the grade they'll accept and what it pays. Persisted (rather than
+        /// living on the Morning screen) so a save taken mid-morning still knows what
+        /// it owes at Evening. Cleared when the day resolves.
+        /// </summary>
+        public List<ContractRecord> contracts = new List<ContractRecord>();
+
+        /// <summary>
+        /// Legacy: the single job of a save written before fighters ordered their own
+        /// flasks. <see cref="SaveSystem.Migrate"/> moves it into <see cref="contracts"/>;
+        /// nothing else reads it.
         /// </summary>
         public ContractRecord contract = ContractRecord.None;
 
@@ -89,15 +96,23 @@ namespace AlchemistsArsenal.Core
         }
 
         /// <summary>
-        /// How many heroes may go out on one expedition. Capped at 3 on purpose:
-        /// monster HP is flat per biome and difficulty never scales by day, so a
-        /// fourth body would end most fights in wave one. Buying capacity is
-        /// gated on clearing a biome, not just on gold — see
-        /// <see cref="UpgradeCatalog.IsAvailable"/>.
+        /// Most heroes that go out on one expedition — and so the most flasks one
+        /// morning brews, since every fighter orders their own. Hiring is the only
+        /// gate: nothing buys capacity any more. The later roads are tuned to need
+        /// the bodies (see BiomeLibrary), which is what keeps them hard.
         /// </summary>
-        public int DeployCap =>
-            1 + (HasUpgrade(UpgradeCatalog.SecondPack) ? 1 : 0)
-              + (HasUpgrade(UpgradeCatalog.ThirdPack) ? 1 : 0);
+        public const int MaxParty = 4;
+
+        public int DeployCap => MaxParty;
+
+        /// <summary>Today's job for <paramref name="heroId"/>, or null if they have not been served.</summary>
+        public ContractRecord ContractFor(string heroId)
+        {
+            if (contracts == null || string.IsNullOrEmpty(heroId)) return null;
+            foreach (ContractRecord c in contracts)
+                if (c != null && c.accepted && c.heroId == heroId) return c;
+            return null;
+        }
 
         /// <summary>The heroes actually going out, in roster order. Never empty.</summary>
         public List<HeroRecord> DeployedParty()

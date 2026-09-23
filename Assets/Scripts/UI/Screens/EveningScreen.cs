@@ -175,6 +175,8 @@ namespace AlchemistsArsenal.UI
 
         private void BuildJob(ExpeditionReport r)
         {
+            if (r.contracts.Count > 1) { BuildJobs(r); return; }
+
             var card = UIKit.Card(_body, "The job", out Transform c, spacing: 8f);
             UIFactory.Place(card.rectTransform, 0.34f, 0.34f, 0.66f, 1f);
 
@@ -223,8 +225,45 @@ namespace AlchemistsArsenal.UI
             UIKit.KeyValue(c, "PAID", $"{r.goldPaidByGrade} g", keyColor: UITheme.Candle, valueColor: UITheme.Candle);
         }
 
+        /// <summary>Several fighters, several jobs: one line each — what they asked for, what they carried, what it paid.</summary>
+        private void BuildJobs(ExpeditionReport r)
+        {
+            var card = UIKit.Card(_body, $"The jobs — {r.contracts.Count} fighters", out Transform c, spacing: 6f);
+            UIFactory.Place(card.rectTransform, 0.34f, 0.34f, 0.66f, 1f);
+
+            foreach (ExpeditionReport.ContractLine line in r.contracts)
+            {
+                Image row = UIKit.Surface(c, out Transform inner, UITheme.SurfaceHi, UITheme.LineSoft, "JobRow");
+                UIFactory.FixedHeight(row.gameObject, 58f);
+                var face = UIFactory.Icon(inner, Art.PixelSprites.Buyer(line.portraitId), 40f);
+                UIFactory.Place(face.rectTransform, 0.01f, 0.1f, 0.15f, 0.9f);
+                var who = UIFactory.Label(inner,
+                    $"<b>{line.heroName}</b>  <size=85%>{line.title}</size>\n" +
+                    $"<size=85%><color=#{ColorUtility.ToHtmlStringRGB(UITheme.Element(line.element))}>{line.element}</color> · wanted " +
+                    $"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(line.required))}>{line.required.ToString().ToUpperInvariant()}</color>, carried " +
+                    $"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(line.delivered))}>{line.delivered.ToString().ToUpperInvariant()}</color></size>",
+                    UITheme.SizeSmall, UITheme.TextHi, TextAlignmentOptions.Left);
+                UIFactory.Place(who.rectTransform, 0.17f, 0f, 0.76f, 1f);
+                var paid = UIFactory.MonoLabel(inner, r.won ? $"{line.paid} g" : "0 g", UITheme.SizeBody,
+                    r.won && line.met ? UITheme.Ok : UITheme.Danger, TextAlignmentOptions.Right);
+                UIFactory.Place(paid.rectTransform, 0.76f, 0f, 0.97f, 1f);
+            }
+
+            var rule = UIFactory.Rule(c, UITheme.LineSoft);
+            UIFactory.FixedHeight(rule.gameObject, 2f);
+            if (!r.won)
+            {
+                var none = UIFactory.Label(c, "Nobody came back with the job done. No fees.", UITheme.SizeSmall, UITheme.Danger);
+                UIFactory.Flex(none.gameObject, 1f, 0f, minHeight: 22f);
+            }
+            if (r.perfectTip) UIKit.KeyValue(c, "Perfect tips", "included", valueColor: UITheme.Ok);
+            if (r.replayDay) UIKit.KeyValue(c, "Replayed road", "x0.50", valueColor: UITheme.Danger);
+            UIKit.KeyValue(c, "PAID", $"{r.goldPaidByGrade} g", keyColor: UITheme.Candle, valueColor: UITheme.Candle);
+        }
+
         private static string BuyerIdFor(ExpeditionReport r)
         {
+            if (r.contracts.Count > 0) return r.contracts[0].portraitId;
             foreach (var cust in CustomerCatalog.All)
                 if (cust.DisplayName == r.contractBuyer) return cust.PortraitId;
             return "rookie";
@@ -500,7 +539,9 @@ namespace AlchemistsArsenal.UI
             if (!HeroCatalog.CanHire(s) || s.gold < cost) return;
 
             HeroRecord hired = HeroCatalog.CandidateFor(s.day, s.roster);
-            hired.deployed = false;             // who goes out is the player's call
+            // Hiring is all it takes: they go out tomorrow if the party has room, and
+            // come to the Counter after everyone who was already here (roster order).
+            hired.deployed = CountDeployed(s) < s.DeployCap;
             s.AddGold(-cost);
             s.roster.Add(hired);
             SaveSystem.Instance.MarkDirty();

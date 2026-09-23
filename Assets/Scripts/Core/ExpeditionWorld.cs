@@ -126,7 +126,7 @@ namespace AlchemistsArsenal.Core
         private void ResolveFighter()
         {
             RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
-            ContractRecord job = s != null ? s.contract : null;
+            ContractRecord job = s != null && s.contracts != null && s.contracts.Count > 0 ? s.contracts[0] : null;
             CustomerDefinition buyer = job != null && job.accepted
                 ? CustomerCatalog.ById(job.buyerId)
                 : CustomerCatalog.Rookie;

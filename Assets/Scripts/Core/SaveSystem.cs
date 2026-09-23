@@ -190,6 +190,20 @@ namespace AlchemistsArsenal.Core
 
             MigrateRoster(s);
 
+            // v3: fighters order their own flasks, one job each. A save from before
+            // that carries a single job; it belonged to whoever leads the roster.
+            s.contracts ??= new System.Collections.Generic.List<Data.ContractRecord>();
+            if (s.contracts.Count == 0 && s.contract != null && s.contract.accepted)
+            {
+                if (string.IsNullOrEmpty(s.contract.heroId) && s.roster.Count > 0)
+                {
+                    s.contract.heroId = s.roster[0].id;
+                    s.contract.heroName = s.roster[0].displayName;
+                }
+                s.contracts.Add(s.contract);
+            }
+            s.contract = Data.ContractRecord.None;
+
             s.saveVersion = RunState.CurrentVersion;
             return s;
         }

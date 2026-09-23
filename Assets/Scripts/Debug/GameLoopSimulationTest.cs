@@ -304,8 +304,7 @@ namespace AlchemistsArsenal.DebugTools
             {
                 HeroCatalog.NewHire("A", 0), HeroCatalog.NewHire("B", 1),
             };
-            s.ownedUpgrades.Add(UpgradeCatalog.SecondPack);   // cap 2: both out today
-            foreach (var hero in s.roster) hero.deployed = true;
+            foreach (var hero in s.roster) hero.deployed = true;   // both out today (the cap is RunState.MaxParty)
             string downId = s.roster[1].id;
 
             // Day 3 resolves with B down, then the day rolls over (as BeginEvening does).
@@ -362,6 +361,7 @@ namespace AlchemistsArsenal.DebugTools
             overfull.roster = new System.Collections.Generic.List<HeroRecord>
             {
                 HeroCatalog.NewHire("A", 0), HeroCatalog.NewHire("B", 1), HeroCatalog.NewHire("C", 2),
+                HeroCatalog.NewHire("D", 3), HeroCatalog.NewHire("E", 4),
             };
             foreach (var hero in overfull.roster) hero.deployed = true;
             var trimmed = SaveSystem.Migrate(overfull);
@@ -433,22 +433,17 @@ namespace AlchemistsArsenal.DebugTools
                 $"costs: each hire is dearer than the last ({HeroCatalog.HireCost(1)} / " +
                 $"{HeroCatalog.HireCost(2)} / {HeroCatalog.HireCost(3)} / {HeroCatalog.HireCost(4)} g)");
 
-            // A day-1 player can buy nothing: no win banked, so no hiring, and the
-            // party-capacity nodes are gated on roads rather than on price.
+            // A day-1 player can hire nobody: no win banked yet.
             var day1 = RunState.NewGame(0);
             Check(!HeroCatalog.CanHire(day1), "costs: hiring is locked until a road is brought home");
-            Check(!UpgradeCatalog.IsAvailable(UpgradeCatalog.SecondPack, day1)
-                  && !UpgradeCatalog.IsAvailable(UpgradeCatalog.ThirdPack, day1),
-                "costs: party capacity is gated on clearing biomes, not on gold");
 
-            var veteran = RunState.NewGame(0);
-            veteran.bestGrades[1] = 1; veteran.bestGrades[3] = 1;
-            Check(UpgradeCatalog.IsAvailable(UpgradeCatalog.SecondPack, veteran)
-                  && UpgradeCatalog.IsAvailable(UpgradeCatalog.ThirdPack, veteran),
-                "costs: capacity unlocks once the gating roads are cleared");
-            veteran.ownedUpgrades.Add(UpgradeCatalog.SecondPack);
-            veteran.ownedUpgrades.Add(UpgradeCatalog.ThirdPack);
-            Check(veteran.DeployCap == 3, "costs: both capacity nodes bring the party to 3");
+            // Capacity is no longer for sale: a hire is all it takes to send another
+            // fighter out, so the upgrade shelf must not sell party slots.
+            bool sellsSlots = false;
+            foreach (var up in UpgradeCatalog.All)
+                if (up.Id == UpgradeCatalog.SecondPack || up.Id == UpgradeCatalog.ThirdPack) sellsSlots = true;
+            Check(!sellsSlots && day1.DeployCap == RunState.MaxParty,
+                $"costs: no upgrade sells party slots; a hire alone fills one (cap {day1.DeployCap})");
         }
     }
 }

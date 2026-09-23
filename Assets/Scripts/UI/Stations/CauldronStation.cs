@@ -23,8 +23,11 @@ namespace AlchemistsArsenal.UI.Stations
         public override string RailName => "Cauldron";
         public override Sprite RailIcon => PixelSprites.Cauldron();
         public override bool ShowsWorld => true;
-        public override bool Complete =>
-            PhysicsCauldronManager.Instance != null && PhysicsCauldronManager.Instance.IsBrewComplete;
+        public override bool Complete => AllPast(Systems.BrewStage.Cauldron);
+
+        /// <summary>The order in the pot (see <see cref="PhysicsCauldronManager.Working"/>).</summary>
+        protected override Systems.ActiveOrder Order =>
+            PhysicsCauldronManager.Instance != null ? PhysicsCauldronManager.Instance.Working : null;
 
         private UIKit.MeterView _stir, _brew;
         private Image _spinNeedle, _spinTrack;
@@ -121,14 +124,13 @@ namespace AlchemistsArsenal.UI.Stations
             var order = Order;
 
             _recipeElement.text = order != null
-                ? $"Brewing: <b>{order.potionName}</b>"
-                : "No order yet.";
+                ? $"Brewing: <b>{order.potionName}</b>" + (string.IsNullOrEmpty(order.heroName) ? "" : $" for {order.heroName}")
+                : "No order in the pot.";
 
             bool cw = pot == null || pot.RequiredClockwise;
             _recipeDirection.text = order == null ? "" : cw ? "Turn CLOCKWISE" : "Turn ANTICLOCKWISE";
 
-            var mix = Systems.CraftingManager.Instance != null
-                ? Systems.CraftingManager.Instance.Mixture : null;
+            var mix = order != null ? order.Mixture : null;
             if (mix != null && !mix.Ready)
                 _recipeDirection.text = "Waiting on the Prep bench";
 
@@ -186,13 +188,14 @@ namespace AlchemistsArsenal.UI.Stations
             {
                 SetStatus("ACCEPT AN ORDER FIRST", UITheme.TextLow);
             }
+            else if (pot.Working != null && pot.Working.stage > Systems.BrewStage.Cauldron)
+            {
+                SetStatus(CountAt(Systems.BrewStage.Cauldron) > 0 ? "BREWED — THE NEXT MASH GOES IN"
+                    : "BREW READY — BOTTLE IT", UITheme.Candle);
+            }
             else if (!pot.MixtureReady)
             {
-                SetStatus("CRUSH AND ADD THE LEAVES AT PREP FIRST", UITheme.Danger);
-            }
-            else if (pot.IsBrewComplete)
-            {
-                SetStatus("BREW READY — BOTTLE IT", UITheme.Candle);
+                SetStatus("NOTHING IN THE POT — CRUSH THE LEAVES AT PREP FIRST", UITheme.Danger);
             }
             else if (pot.Burning)
             {

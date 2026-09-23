@@ -1,6 +1,7 @@
 using UnityEngine;
 using System;
 using AlchemistsArsenal.Combat;
+using AlchemistsArsenal.Core;
 using AlchemistsArsenal.Data;
 using AlchemistsArsenal.PhysicsKit;
 using AlchemistsArsenal.Systems;
@@ -140,17 +141,49 @@ namespace AlchemistsArsenal.Crafting
         private float _bandScale = 1f;
 
         /// <summary>
-        /// The Prep bench's gate. Stirring an empty pot does nothing at all: you crush
-        /// and add the leaves first, then you stir them. A null mixture (a bare test
-        /// scene) counts as ready so nothing that predates the recipe system deadlocks.
+        /// The order in the pot — being brewed, or brewed and still showing until the
+        /// next one waiting at the Cauldron is taken up. The pot works the oldest order
+        /// that has finished Prep (see <see cref="CraftingManager"/>), and it takes the
+        /// mash itself when it takes the order: the band the mix earned, and the leaves
+        /// falling in. A second fighter's mash simply waits its turn.
         /// </summary>
-        public bool MixtureReady
+        public ActiveOrder Working { get; private set; }
+
+        /// <summary>The order the pot can still act on: <see cref="Working"/>, while it is at the Cauldron.</summary>
+        private ActiveOrder Order => Working != null && Working.stage == BrewStage.Cauldron ? Working : null;
+        private float _lingerUntil;
+
+        /// <summary>The element of the brew in the pot (what the liquid is tinted).</summary>
+        public ElementType BrewElement => Working != null ? Working.element : ElementType.Nature;
+
+        /// <summary>Raised when the pot takes up an order (the view re-tints the brew).</summary>
+        public event Action<ActiveOrder> OrderTaken;
+
+        /// <summary>
+        /// The gate: there is a mash in the pot to stir. Stirring an empty pot does
+        /// nothing at all — you crush and add the leaves first, then you stir them. A
+        /// bare test scene with no crafting at all counts as ready, so nothing that
+        /// predates the recipe system deadlocks.
+        /// </summary>
+        public bool MixtureReady => CraftingManager.Instance == null || Order != null;
+
+        private void BindNext()
         {
-            get
+            var cm = CraftingManager.Instance;
+            if (cm == null || Order != null || Time.time < _lingerUntil) return;
+            ActiveOrder next = cm.Waiting(BrewStage.Cauldron);
+            if (next == null || next == Working) return;
+
+            Working = next;
+            int day = SaveSystem.Instance != null && SaveSystem.Instance.State != null ? SaveSystem.Instance.State.day : 1;
+            // A fresh brew, and each fighter's recipe turns its own way.
+            BeginBrew(day + next.queueIndex);
+            if (next.Mixture != null)
             {
-                var mix = CraftingManager.Instance != null ? CraftingManager.Instance.Mixture : null;
-                return mix == null || mix.Ready;
+                ApplyMix(next.Mixture.Evaluate());
+                foreach (ElementType e in next.Mixture.Added) DropIngredient(e);
             }
+            OrderTaken?.Invoke(next);
         }
 
         /// <summary>Raised with the stir meter's reading (0..1) every frame it is recomputed.</summary>
@@ -305,6 +338,7 @@ namespace AlchemistsArsenal.Crafting
 
         private void Update()
         {
+            BindNext();
             Vector2 surface = ToSurface(Pointer.World(_cam != null ? _cam : Camera.main));
             float R = _liquid != null ? _liquid.Radius : 1f;
 
@@ -332,6 +366,14 @@ namespace AlchemistsArsenal.Crafting
             UpdateBottomAndSurface(Time.deltaTime);
             OnStirChanged?.Invoke(StirPower01);
             CheckStirQualityImpact();
+
+            // Brewed: on to Bottling. The finished brew stays in view for a moment
+            // before the next fighter's mash goes in.
+            if (Order != null && IsBrewComplete && CraftingManager.Instance != null)
+            {
+                CraftingManager.Instance.Advance(Order);
+                _lingerUntil = Time.time + 1.5f;
+            }
         }
 
         /// <summary>
@@ -384,7 +426,7 @@ namespace AlchemistsArsenal.Crafting
 
             LiquidBody2D.Floater went = _liquid != null ? _liquid.SlopOutermost() : null;
             string with = went != null && went.Tag is ElementType e ? $", and a {e} leaf with it" : "";
-            ActiveOrder order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
+            ActiveOrder order = Order;
             if (order != null && !IsBrewComplete)
                 order.ApplyDeduction(QualityBudget.Splash, "Cauldron",
                     $"Stirred too fast — the brew slopped over the rim{with}", Time.time);
@@ -433,7 +475,7 @@ namespace AlchemistsArsenal.Crafting
 
         private void CheckStirQualityImpact()
         {
-            ActiveOrder activeOrder = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
+            ActiveOrder activeOrder = Order;
             if (activeOrder == null) return;
             if (!Attended) return;        // not at this bench
             if (!MixtureReady) return;    // nothing in the pot yet

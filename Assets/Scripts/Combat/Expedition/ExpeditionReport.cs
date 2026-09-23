@@ -42,6 +42,26 @@ namespace AlchemistsArsenal.Combat
         public bool contractMet = true;
         public PotionGrade contractRequired = PotionGrade.Poor;
 
+        /// <summary>One fighter's job, as it settled: what they ordered, what they carried, what it paid.</summary>
+        [Serializable]
+        public class ContractLine
+        {
+            public string heroName = "";
+            public string portraitId = "rookie";
+            public string title = "";
+            public string sponsor = "";
+            public ElementType element;
+            public PotionGrade required = PotionGrade.Poor;
+            public PotionGrade delivered = PotionGrade.Poor;
+            public int fee;
+            public int bonus;
+            public bool met;
+            public int paid;
+        }
+
+        /// <summary>Every fighter's job today, in the order they were served (filled at Evening).</summary>
+        public readonly List<ContractLine> contracts = new List<ContractLine>();
+
         /// <summary>
         /// A replay of a cleared road, which pays half. Recorded at Evening because
         /// the run state forgets it the moment the day resolves; the report used to

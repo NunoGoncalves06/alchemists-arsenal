@@ -202,6 +202,15 @@ namespace AlchemistsArsenal.UI
             public Button Button;
             public Image Background, Dot, IconImage;
             public TextMeshProUGUI Label, Step;
+            public string BaseLabel = "";
+
+            /// <summary>How many orders are waiting at this bench, shown after its name ("PREP · 2").</summary>
+            public void SetCount(int waiting)
+            {
+                if (Label == null) return;
+                string text = waiting > 0 ? $"{BaseLabel} · {waiting}" : BaseLabel;
+                if (Label.text != text) Label.text = text;
+            }
 
             public void SetState(bool active, bool locked, bool done)
             {
@@ -246,6 +255,7 @@ namespace AlchemistsArsenal.UI
             view.Label = UIFactory.Label(bg.transform, label, UITheme.SizeTiny, UITheme.TextHi,
                 TextAlignmentOptions.Center, true);
             view.Label.characterSpacing = 4f;
+            view.BaseLabel = label;
             UIFactory.Place(view.Label.rectTransform, 0f, 0.02f, 1f, 0.30f);
 
             view.Step = UIFactory.Label(bg.transform, step, UITheme.SizeTiny, UITheme.TextLow,

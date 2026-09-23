@@ -118,5 +118,34 @@ namespace AlchemistsArsenal.Data
             foreach (var c in All) if (c.Id == id) return c;
             return Rookie;
         }
+
+        /// <summary>The voice and lines of a fighter (heroes are hired from these same people).</summary>
+        public static CustomerDefinition ForHero(HeroRecord hero)
+        {
+            if (hero == null) return Rookie;
+            foreach (var c in All) if (c.PortraitId == hero.portraitId) return c;
+            return Rookie;
+        }
+
+        /// <summary>
+        /// Who drops by the shop today, besides the fighters: a patron who backs the
+        /// guild commission and, once the story has moved on, has something to say
+        /// (see <c>StoryDirector.CounterLine</c>). Nobody on day one; never someone
+        /// who has since signed on as a fighter.
+        /// </summary>
+        public static CustomerDefinition Visitor(int day, Core.RunState s)
+        {
+            if (day <= 1) return null;
+            for (int k = 0; k < All.Count - 1; k++)
+            {
+                CustomerDefinition c = All[1 + ((day - 2 + k) % (All.Count - 1))];
+                bool signedOn = false;
+                if (s != null && s.roster != null)
+                    foreach (HeroRecord h in s.roster)
+                        if (h != null && h.portraitId == c.PortraitId) { signedOn = true; break; }
+                if (!signedOn) return c;
+            }
+            return null;
+        }
     }
 }

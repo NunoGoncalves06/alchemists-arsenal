@@ -118,8 +118,39 @@ namespace AlchemistsArsenal.Crafting
         /// <summary>Anything that moved quality or the bench's state (the HUD redraws).</summary>
         public event Action Changed;
 
-        private static BrewMixture Mix => CraftingManager.Instance != null ? CraftingManager.Instance.Mixture : null;
-        private static ActiveOrder Order => CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
+        /// <summary>
+        /// The order this bench is working — its leaves, its strikes — or showing, once
+        /// finished, until the next one waiting at Prep is taken up. The bench works
+        /// the oldest order waiting at its stage (see <see cref="CraftingManager"/>).
+        /// </summary>
+        public ActiveOrder Working { get; private set; }
+
+        /// <summary>The order the bench can still act on: <see cref="Working"/>, while it is at Prep.</summary>
+        private ActiveOrder Order => Working != null && Working.stage == BrewStage.Prep ? Working : null;
+        private BrewMixture Mix => Order?.Mixture;
+        private float _lingerUntil;
+
+        /// <summary>
+        /// Take up the next order waiting at Prep once the last one is done (and has
+        /// been seen done for a moment): fresh strikes, and its leaves on the bench.
+        /// </summary>
+        private void BindNext()
+        {
+            var cm = CraftingManager.Instance;
+            if (cm == null || Order != null || Time.time < _lingerUntil) return;
+            ActiveOrder next = cm.Waiting(BrewStage.Prep);
+            if (next == null || next == Working) return;
+
+            Working = next;
+            StrikesLeft = QualityBudget.GrindStrikes;
+            LastStrikeSpeed = -1f;
+            if (next.Mixture != null)
+            {
+                EnsureRecipeStock(next.Mixture);
+                SetReaction($"{next.heroName}'s {next.Mixture.Recipe.Name} — {next.Mixture.Recipe.Shorthand}.", UI.UITheme.TextMid);
+            }
+            Changed?.Invoke();
+        }
 
         private void Awake() => Instance = this;
 
@@ -267,6 +298,7 @@ namespace AlchemistsArsenal.Crafting
         public void NewDay(int day)
         {
             _rolledForDay = day;
+            Working = null;
             foreach (var l in _leaves) if (l.Body != null) Destroy(l.Body.gameObject);
             _leaves.Clear();
             StrikesLeft = QualityBudget.GrindStrikes;
@@ -326,14 +358,33 @@ namespace AlchemistsArsenal.Crafting
             var need = new Dictionary<ElementType, int>();
             foreach (ElementType e in mix.Recipe.Steps) need[e] = (need.TryGetValue(e, out int n) ? n : 0) + 1;
 
-            var rng = new System.Random(_rolledForDay * 131 + (int)mix.Recipe.Result);
+            var rng = new System.Random(_rolledForDay * 131 + (int)mix.Recipe.Result + 17 * _leaves.Count);
             foreach (var kv in need)
             {
                 int short_ = kv.Value - (have.TryGetValue(kv.Key, out int h) ? h : 0);
                 for (int i = 0; i < short_; i++)
-                    _leaves.Add(SpawnLeaf(Roll(kv.Key, rng), SlotLocal(_leaves.Count)));
+                    _leaves.Add(SpawnLeaf(Roll(kv.Key, rng), FreeSlotLocal()));
             }
             Changed?.Invoke();
+        }
+
+        /// <summary>
+        /// The first place on the plank no leaf is lying in. Several orders' leaves
+        /// pass over the bench in a day, so slots are reused rather than counted up
+        /// (counting up walked the extras along the plank and into the mortar).
+        /// </summary>
+        private Vector2 FreeSlotLocal()
+        {
+            const int Slots = 8;
+            for (int i = 0; i < Slots; i++)
+            {
+                Vector2 home = (Vector2)transform.position + SlotLocal(i);
+                bool taken = false;
+                foreach (var l in _leaves)
+                    if (l.Body != null && !l.InBowl && (l.Home - home).sqrMagnitude < 0.01f) { taken = true; break; }
+                if (!taken) return SlotLocal(i);
+            }
+            return SlotLocal(Slots - 1);
         }
 
         private static HerbData Roll(ElementType element, System.Random rng)
@@ -380,6 +431,7 @@ namespace AlchemistsArsenal.Crafting
         {
             float dt = Time.deltaTime;
             _strikeCooldown -= dt;
+            BindNext();
             UpdatePressHint();
             if (!Attended) { EndLift(); Hovered = null; return; }
 
@@ -575,7 +627,7 @@ namespace AlchemistsArsenal.Crafting
             BrewMixture mix = Mix;
             if (order == null || mix == null || mix.AllLeavesIn)
             {
-                SetReaction(order == null ? "Take a job at the Counter first — nothing to prep yet." : "The mortar is full already.",
+                SetReaction(order == null ? "No order is waiting at this bench yet — take a job at the Counter." : "The mortar is full already.",
                     UI.UITheme.TextMid);
                 Changed?.Invoke();
                 return;
@@ -702,8 +754,10 @@ namespace AlchemistsArsenal.Crafting
         }
 
         /// <summary>
-        /// Settle the mixture: score it, hand the pot the band width it has earned, and
-        /// tip the mash into the cauldron (the leaves go into the pot as falling bodies).
+        /// Settle the mixture: score it and send the order on to the Cauldron. The mash
+        /// waits for the pot there: the cauldron takes it up (the band width it earned,
+        /// the leaves falling in) when it takes up this order, which may be after
+        /// someone else's brew is done with it.
         /// </summary>
         private void FinishMix(ActiveOrder order, BrewMixture mix)
         {
@@ -713,13 +767,6 @@ namespace AlchemistsArsenal.Crafting
             if (delta > 0) order.ApplyBonus(delta, "Prep", $"{outcome} mix — {mix.Recipe.Name}");
             else if (delta < 0) order.ApplyDeduction(-delta, "Prep", $"{outcome} mix — {mix.Recipe.Name}");
 
-            var pot = PhysicsCauldronManager.Instance;
-            if (pot != null)
-            {
-                pot.ApplyMix(outcome);
-                foreach (ElementType e in mix.Added) pot.DropIngredient(e);
-            }
-
             foreach (var l in _leaves)
             {
                 if (!l.InBowl || l.Body == null) continue;
@@ -727,6 +774,10 @@ namespace AlchemistsArsenal.Crafting
                 Destroy(l.Body.gameObject);
                 l.Body = null;
             }
+            _leaves.RemoveAll(l => l.Body == null);
+
+            if (CraftingManager.Instance != null) CraftingManager.Instance.Advance(order);
+            _lingerUntil = Time.time + 1.5f;
 
             SetReaction(RecipeBook.Describe(outcome),
                 outcome == MixOutcome.Perfect ? UI.UITheme.Ok

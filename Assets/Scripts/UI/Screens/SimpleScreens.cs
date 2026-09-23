@@ -294,8 +294,8 @@ namespace AlchemistsArsenal.UI
 
     public class HandoffScreen : GameScreen
     {
-        private TextMeshProUGUI _flaskName, _grade, _contract, _quality, _who, _sub;
-        private UnityEngine.UI.Image _flaskArt, _fighterArt;
+        private TextMeshProUGUI _sub;
+        private RectTransform _row;
 
         protected override void Build()
         {
@@ -308,32 +308,11 @@ namespace AlchemistsArsenal.UI
                 TextAlignmentOptions.Center);
             UIFactory.Place(_sub.rectTransform, 0f, 0.74f, 1f, 0.78f);
 
-            // A plain bordered surface, not a Card: everything in here is anchored by
-            // hand, so a layout stack would only fight it.
-            var card = UIKit.Surface(transform, out Transform box, UITheme.Surface, UITheme.Line, "PartyCard");
-            UIFactory.Place(card.rectTransform, 0.30f, 0.34f, 0.70f, 0.72f);
-
-            _fighterArt = UIKit.Portrait(box, Art.PixelSprites.Rookie(), 120f);
-            var frame = (RectTransform)_fighterArt.transform.parent.parent;   // art > mat > frame
-            UIFactory.Place(frame, 0.06f, 0.30f, 0.32f, 0.92f);
-
-            _who = UIFactory.Title(box, "", UITheme.SizeHeading + 2, UITheme.TextHi);
-            UIFactory.Place(_who.rectTransform, 0.36f, 0.74f, 0.96f, 0.92f);
-
-            _flaskArt = UIFactory.Icon(box, Art.PixelSprites.Flask(ElementType.Nature), 56f);
-            UIFactory.Place(_flaskArt.rectTransform, 0.36f, 0.40f, 0.48f, 0.70f);
-
-            _flaskName = UIFactory.Label(box, "", UITheme.SizeBody, UITheme.TextHi, TextAlignmentOptions.Left, true);
-            UIFactory.Place(_flaskName.rectTransform, 0.50f, 0.56f, 0.96f, 0.72f);
-
-            _grade = UIFactory.Label(box, "", UITheme.SizeBody, UITheme.Candle, TextAlignmentOptions.Left);
-            UIFactory.Place(_grade.rectTransform, 0.50f, 0.40f, 0.96f, 0.56f);
-
-            _quality = UIFactory.MonoLabel(box, "", UITheme.SizeSmall, UITheme.TextMid, TextAlignmentOptions.Left);
-            UIFactory.Place(_quality.rectTransform, 0.36f, 0.24f, 0.96f, 0.38f);
-
-            _contract = UIFactory.Label(box, "", UITheme.SizeSmall, UITheme.TextLow, TextAlignmentOptions.Left);
-            UIFactory.Place(_contract.rectTransform, 0.06f, 0.06f, 0.96f, 0.24f);
+            // One card per fighter, side by side, each with the flask they carry.
+            var row = UIFactory.HStack(transform, 18f);
+            row.childAlignment = TextAnchor.MiddleCenter;
+            _row = (RectTransform)row.transform;
+            UIFactory.Place(_row, 0.06f, 0.33f, 0.94f, 0.72f);
 
             var begin = UIFactory.Button(transform, "BEGIN EXPEDITION", () => GameLoopManager.Instance.BeginAfternoon());
             UIFactory.Place(begin.image.rectTransform, 0.38f, 0.18f, 0.62f, 0.27f);
@@ -341,38 +320,63 @@ namespace AlchemistsArsenal.UI
 
         protected override void OnShow()
         {
-            var order = Systems.CraftingManager.Instance != null
-                ? Systems.CraftingManager.Instance.CurrentOrder : null;
-            var job = SaveSystem.Instance != null && SaveSystem.Instance.State != null
-                ? SaveSystem.Instance.State.contract : null;
+            for (int i = _row.childCount - 1; i >= 0; i--) Destroy(_row.GetChild(i).gameObject);
 
-            // Whoever ordered the potion is the one who walks the road with it.
-            CustomerDefinition fighter = job != null && job.accepted
-                ? CustomerCatalog.ById(job.buyerId) : CustomerCatalog.Rookie;
-            _who.text = fighter.DisplayName;
-            _fighterArt.sprite = Art.PixelSprites.Fighter(fighter.PortraitId);
-            _sub.text = $"what {fighter.DisplayName} carries out of the shop";
+            RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+            var cm = Systems.CraftingManager.Instance;
+            var party = s != null ? s.DeployedParty() : new System.Collections.Generic.List<HeroRecord>();
+            _sub.text = party.Count == 1
+                ? $"what {party[0].displayName} carries out of the shop"
+                : $"{party.Count} fighters, and the flask each of them carries";
+
+            foreach (HeroRecord hero in party)
+            {
+                Systems.ActiveOrder order = cm != null ? cm.OrderFor(hero.id) : null;
+                // An order with no fighter behind it (a test) belongs to the lead.
+                if (order == null && hero == party[0] && cm != null && cm.Orders.Count > 0
+                    && string.IsNullOrEmpty(cm.Orders[0].heroId))
+                    order = cm.Orders[0];
+                BuildCard(hero, order, s != null ? s.ContractFor(hero.id) : null);
+            }
+        }
+
+        private void BuildCard(HeroRecord hero, Systems.ActiveOrder order, ContractRecord job)
+        {
+            var card = UIKit.Surface(_row, out Transform box, UITheme.Surface, UITheme.Line, "FighterCard");
+            UIFactory.Flex(card.gameObject, 1f, 1f, minWidth: 180f);
+            var le = card.GetComponent<UnityEngine.UI.LayoutElement>() ?? card.gameObject.AddComponent<UnityEngine.UI.LayoutElement>();
+            le.preferredWidth = 300f;
+
+            var art = UIKit.Portrait(box, Art.PixelSprites.Fighter(hero.portraitId), 96f);
+            UIFactory.Place((RectTransform)art.transform.parent.parent, 0.25f, 0.54f, 0.75f, 0.96f);
+
+            var who = UIFactory.Title(box, hero.displayName, UITheme.SizeHeading, UITheme.TextHi, TextAlignmentOptions.Center);
+            UIFactory.Place(who.rectTransform, 0.04f, 0.44f, 0.96f, 0.54f);
+
+            var flask = UIFactory.Icon(box, Art.PixelSprites.Flask(order != null ? order.element : ElementType.Poison), 40f);
+            UIFactory.Place(flask.rectTransform, 0.06f, 0.20f, 0.24f, 0.42f);
+
+            var what = UIFactory.Label(box, "", UITheme.SizeSmall, UITheme.TextHi, TextAlignmentOptions.Left, true);
+            UIFactory.Place(what.rectTransform, 0.27f, 0.20f, 0.96f, 0.42f);
+
+            var terms = UIFactory.Label(box, "", UITheme.SizeTiny, UITheme.TextLow, TextAlignmentOptions.Left);
+            UIFactory.Place(terms.rectTransform, 0.06f, 0.02f, 0.96f, 0.19f);
 
             if (order == null)
             {
-                _flaskArt.sprite = Art.PixelSprites.Flask(ElementType.Poison);
-                _flaskName.text = "Raw Sludge";
-                _grade.text = "<color=#d64550>NOTHING FINISHED</color>";
-                _quality.text = "";
-                _contract.text = $"You never took a job today. {fighter.DisplayName} goes out with the dregs.";
+                what.text = "Raw Sludge\n<color=#d64550>NOTHING FINISHED</color>";
+                terms.text = "Never ordered today — goes out with the dregs.";
                 return;
             }
 
             var grade = order.GetGrade();
-            _flaskArt.sprite = Art.PixelSprites.Flask(order.element);
-            _flaskName.text = order.potionName;
-            _grade.text = $"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(grade))}>" +
-                          $"{grade.ToString().ToUpperInvariant()}</color>";
-            _quality.text = $"quality {order.qualityScore} / 100";
-            _contract.text = job != null && job.accepted
+            what.text = $"{order.potionName}\n<color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(grade))}>" +
+                        $"{grade.ToString().ToUpperInvariant()}</color>  <size=85%>{order.qualityScore} / 100" +
+                        (order.Finished ? "" : " · unfinished") + "</size>";
+            terms.text = job != null && job.accepted
                 ? job.Meets(grade)
-                    ? $"{job.buyerName} asked for {job.RequiredGrade.ToString().ToUpperInvariant()} or better — this clears it."
-                    : $"{job.buyerName} asked for {job.RequiredGrade.ToString().ToUpperInvariant()} or better. This is short, and they will pay half."
+                    ? $"Wanted {job.RequiredGrade.ToString().ToUpperInvariant()} or better — this clears it."
+                    : $"Wanted {job.RequiredGrade.ToString().ToUpperInvariant()} or better. This is short: half pay."
                 : "";
         }
     }

@@ -227,11 +227,30 @@ namespace AlchemistsArsenal.Core
                     // for why this goes through reflection rather than a simulated
                     // mouse click.
                     object morningScreen = UIManager.Instance != null ? UIManager.Instance.ScreenOf(ScreenId.Morning) : null;
-                    CallPrivate(morningScreen, "AcceptOrder");
-                    yield return null;
-                    ActiveOrder order = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
-                    if (order == null) { Fail("AcceptOrder did not produce a CurrentOrder."); yield break; }
-                    Log($"Order '{order.potionName}' accepted, quality {order.qualityScore} ({order.GetGrade()})");
+                    // Every fighter going out today comes to the Counter and orders their
+                    // own flask, in roster order — through the same method the TAKE THIS
+                    // JOB button reaches, once per fighter.
+                    int partySize = SaveSystem.Instance.State.DeployedParty().Count;
+                    for (int k = 0; k < partySize + 1 && UI.Stations.CounterStation.NextFighter != null; k++)
+                    {
+                        CallPrivate(morningScreen, "AcceptOrder");
+                        yield return null;
+                    }
+                    CraftingManager cmgr = CraftingManager.Instance;
+                    if (cmgr == null || cmgr.Orders.Count == 0) { Fail("AcceptOrder did not produce an order."); yield break; }
+                    if (cmgr.Orders.Count != partySize)
+                        Fail($"{partySize} fighter(s) going out but {cmgr.Orders.Count} order(s) taken at the Counter.");
+                    if (UI.Stations.CounterStation.NextFighter != null) Fail("A fighter was left waiting at the Counter.");
+                    var orders = new List<ActiveOrder>(cmgr.Orders);
+                    var partyNow = SaveSystem.Instance.State.DeployedParty();
+                    for (int k = 0; k < orders.Count; k++)
+                    {
+                        ActiveOrder o = orders[k];
+                        // The one at the Counter is the fighter who carries the flask.
+                        if (k < partyNow.Count && o.heroId != partyNow[k].id)
+                            Fail($"Order {k + 1} is for '{o.heroName}', but {partyNow[k].displayName} was next in line.");
+                        Log($"Order for {o.heroName}: '{o.potionName}', quality {o.qualityScore} ({o.GetGrade()})");
+                    }
 
                     // TutorialManager flips StationsUnlocked on its own coroutine once
                     // it notices the order — wait for the real flag instead of
@@ -243,27 +262,53 @@ namespace AlchemistsArsenal.Core
                     foreach (var step in WaitUntil(() => TutorialManager.StationsUnlocked, 15f, "StationsUnlocked after AcceptOrder"))
                         yield return step;
                     if (_errorCount > 0) yield break;
-                    // Prep comes first now: the Cauldron will not brew until the
-                    // recipe's leaves are crushed in and ground, so a driver that
-                    // skipped straight to stirring would sit on a cold pot forever.
-                    // Every bench is played for real through the scripted pointer.
+                    if (orders.Count > 1)
+                    {
+                        SwitchMorningTab(morningScreen, "Counter");
+                        foreach (var step in Settle($"day{day}_morning_counter_served")) yield return step;
+                    }
+
+                    // Prep comes first: the Cauldron will not brew until the recipe's
+                    // leaves are crushed in and ground. Every bench is played for real
+                    // through the scripted pointer, one order after another; each bench
+                    // takes up the next order waiting at it by itself.
                     SwitchMorningTab(morningScreen, "Prep");
                     foreach (var step in Settle($"day{day}_morning_prep")) yield return step;
-                    foreach (var step in DrivePrep(order, day)) { if (_errorCount > 0) break; yield return step; }
+                    for (int k = 0; k < orders.Count && _errorCount == 0; k++)
+                    {
+                        _orderTag = k == 0 ? "" : $"_o{k + 1}";
+                        foreach (var step in DrivePrep(orders[k], day)) { if (_errorCount > 0) break; yield return step; }
+                    }
                     if (_errorCount > 0) yield break;
 
                     SwitchMorningTab(morningScreen, "Cauldron");
+                    _orderTag = "";
                     foreach (var step in Settle($"day{day}_morning_cauldron")) yield return step;
-                    foreach (var step in DriveCauldron(order, day)) { if (_errorCount > 0) break; yield return step; }
+                    for (int k = 0; k < orders.Count && _errorCount == 0; k++)
+                    {
+                        _orderTag = k == 0 ? "" : $"_o{k + 1}";
+                        foreach (var step in DriveCauldron(orders[k], day)) { if (_errorCount > 0) break; yield return step; }
+                        if (_errorCount > 0) break;
+                        foreach (var step in Settle($"day{day}{_orderTag}_morning_cauldron_done")) yield return step;
+                    }
                     if (_errorCount > 0) yield break;
-                    foreach (var step in Settle($"day{day}_morning_cauldron_done")) yield return step;
 
                     SwitchMorningTab(morningScreen, "Bottling");
+                    _orderTag = "";
                     foreach (var step in Settle($"day{day}_morning_bottling")) yield return step;
-                    foreach (var step in DriveBottling(order, day)) { if (_errorCount > 0) break; yield return step; }
+                    for (int k = 0; k < orders.Count && _errorCount == 0; k++)
+                    {
+                        _orderTag = k == 0 ? "" : $"_o{k + 1}";
+                        foreach (var step in DriveBottling(orders[k], day)) { if (_errorCount > 0) break; yield return step; }
+                        if (_errorCount > 0) break;
+                        foreach (var step in Settle($"day{day}{_orderTag}_morning_bottling_done")) yield return step;
+                    }
+                    _orderTag = "";
                     if (_errorCount > 0) yield break;
-                    foreach (var step in Settle($"day{day}_morning_bottling_done")) yield return step;
-                    Log($"Morning done: {order.qualityScore} ({order.GetGrade()}); flawless would be {QualityBudget.FlawlessMorning()}.");
+
+                    foreach (ActiveOrder o in orders)
+                        Log($"Morning done for {o.heroName}: {o.qualityScore} ({o.GetGrade()}), {o.stage}; flawless would be {QualityBudget.FlawlessMorning()}.");
+                    if (!cmgr.AllDone) Fail("Not every order was sealed and labelled by the end of the morning.");
 
                     GameLoopManager.Instance.BeginHandoff();
                     foreach (var step in WaitForPhase(GamePhase.Handoff, 5f)) { if (_errorCount > 0) yield break; yield return step; }
@@ -399,15 +444,8 @@ namespace AlchemistsArsenal.Core
                         // it is directly comparable with day 1's solo run on the
                         // same road. This is the regression test for "does a
                         // three-hero party trivialise the early game".
-                        st.bestGrades[1] = Math.Max(st.bestGrades[1], 1);
-                        st.bestGrades[3] = Math.Max(st.bestGrades[3], 1);
+                        // Hiring alone sends a fighter out: no party slot to buy first.
                         st.gold = 2000;
-                        CallPrivate(eveningScreen, "BuyUpgrade", UpgradeCatalog.SecondPack,
-                            CostOf(UpgradeCatalog.SecondPack));
-                        CallPrivate(eveningScreen, "BuyUpgrade", UpgradeCatalog.ThirdPack,
-                            CostOf(UpgradeCatalog.ThirdPack));
-                        if (st.DeployCap != 3)
-                            Fail($"Deploy cap is {st.DeployCap} after buying both packs, expected 3.");
 
                         while (st.roster.Count < 3)
                         {
@@ -470,11 +508,19 @@ namespace AlchemistsArsenal.Core
                 for (int i = 0; i < n; i++) yield return null;
             }
 
+            /// <summary>Suffix for screenshots of the second and later orders of a morning ("_o2").</summary>
+            private string _orderTag = "";
+
             private IEnumerable DrivePrep(ActiveOrder order, int day)
             {
                 var bench = Crafting.PrepBench.Instance;
-                var mix = CraftingManager.Instance != null ? CraftingManager.Instance.Mixture : null;
-                if (bench == null || mix == null) { Fail("Prep bench or mixture missing."); yield break; }
+                if (bench == null || order == null) { Fail("Prep bench or order missing."); yield break; }
+                // The bench takes up the next order waiting at Prep by itself.
+                foreach (var step in WaitUntil(() => bench.Working == order, 6f, $"the Prep bench taking up {order.heroName}'s order"))
+                    yield return step;
+                if (_errorCount > 0) yield break;
+                var mix = order.Mixture;
+                if (mix == null) { Fail("Order has no mixture."); yield break; }
                 PhysicsKit.Pointer.Scripted = _pointer;
 
                 // Leaves: click each one the recipe asks for; a click tosses it into the bowl.
@@ -499,7 +545,9 @@ namespace AlchemistsArsenal.Core
                     }
                 }
                 if (_errorCount > 0) { PhysicsKit.Pointer.Scripted = null; yield break; }
-                foreach (var step in Settle($"day{day}_morning_prep_mortar")) yield return step;
+                foreach (var step in Settle($"day{day}{_orderTag}_morning_prep_mortar")) yield return step;
+                if (!bench.PressHintShowing)
+                    Fail("The leaves are in, but the bench is not pointing at the bowl (press-here hint missing).");
 
                 // The bowl is drawn in three-quarter view: a leaf that has settled must
                 // be drawn inside its mouth, not hanging over the front of the mortar.
@@ -539,8 +587,12 @@ namespace AlchemistsArsenal.Core
             private IEnumerable DriveCauldron(ActiveOrder order, int day)
             {
                 var pot = Crafting.PhysicsCauldronManager.Instance;
-                var mix = CraftingManager.Instance != null ? CraftingManager.Instance.Mixture : null;
-                if (pot == null || pot.Liquid == null) { Fail("No cauldron / surface to stir."); yield break; }
+                if (pot == null || pot.Liquid == null || order == null) { Fail("No cauldron / surface to stir."); yield break; }
+                // The pot takes up the next brewed mash by itself (after the last brew has been seen done).
+                foreach (var step in WaitUntil(() => pot.Working == order, 8f, $"the cauldron taking up {order.heroName}'s mash"))
+                    yield return step;
+                if (_errorCount > 0) yield break;
+                var mix = order.Mixture;
 
                 // Wait for the mash to land on the surface.
                 float w = 0f;
@@ -556,7 +608,7 @@ namespace AlchemistsArsenal.Core
 
                 // Day 2 also checks both fumbles: stirred too fast the pot slops over
                 // the rim, and left too slow the brew catches and then burns on it.
-                if (day == 2)
+                if (day == 2 && order.queueIndex == 0)
                 {
                     int splashes = pot.SplashCount;
                     float frantic = pot.FullStirDegPerSec * 1.6f;
@@ -568,7 +620,7 @@ namespace AlchemistsArsenal.Core
                     }
                     if (pot.SplashCount == splashes) Fail($"A frantic stir ({frantic:0} deg/s) never slopped the pot over its rim.");
                     else Log($"Cauldron fumble: a frantic stir slopped the pot over its rim (slosh {pot.Slosh01:0.00}), as it should.");
-                    Capture($"day{day}_morning_cauldron_spill");
+                    Capture($"day{day}{_orderTag}_morning_cauldron_spill");
                     foreach (var f in Frames(40)) yield return f;
 
                     // Now stop, with the spoon still over the brew: the bottom catches.
@@ -584,7 +636,7 @@ namespace AlchemistsArsenal.Core
                         if (!charged) Fail("The bottom burned but nothing was charged for it.");
                         else Log($"Cauldron fumble: the bottom caught and burned (scorch {pot.Scorch01:0.00}), as it should.");
                     }
-                    Capture($"day{day}_morning_cauldron_burning");
+                    Capture($"day{day}{_orderTag}_morning_cauldron_burning");
                 }
 
                 float elapsed = 0f;
@@ -602,7 +654,7 @@ namespace AlchemistsArsenal.Core
                     if (!captured && pot.BrewProgress01 > 0.4f)
                     {
                         captured = true;
-                        Capture($"day{day}_morning_cauldron_brewing");
+                        Capture($"day{day}{_orderTag}_morning_cauldron_brewing");
                     }
                     yield return null;
                 }
@@ -614,7 +666,11 @@ namespace AlchemistsArsenal.Core
             private IEnumerable DriveBottling(ActiveOrder order, int day)
             {
                 var bench = Crafting.BottlingBench.Instance;
-                if (bench == null) { Fail("No Bottling bench."); yield break; }
+                if (bench == null || order == null) { Fail("No Bottling bench."); yield break; }
+                foreach (var step in WaitUntil(() => bench.Working == order && bench.Current == Crafting.BottlingBench.Step.Pour,
+                             8f, $"the bottling bench taking up {order.heroName}'s brew"))
+                    yield return step;
+                if (_errorCount > 0) yield break;
 
                 bench.PourHeld = true;
                 float t = 0f;
@@ -623,7 +679,7 @@ namespace AlchemistsArsenal.Core
                 while (bench.Fill01 < 0.72f && t < 12f)
                 {
                     t += Time.deltaTime;
-                    if (!captured && bench.Fill01 > 0.35f) { captured = true; Capture($"day{day}_morning_bottling_pour"); }
+                    if (!captured && bench.Fill01 > 0.35f) { captured = true; Capture($"day{day}{_orderTag}_morning_bottling_pour"); }
                     yield return null;
                 }
                 bench.PourHeld = false;
