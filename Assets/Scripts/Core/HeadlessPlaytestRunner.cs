@@ -559,13 +559,14 @@ namespace AlchemistsArsenal.Core
                 if (day == 2)
                 {
                     int splashes = pot.SplashCount;
-                    for (float t = 0f; t < 1.8f && pot.SplashCount == splashes; t += Time.deltaTime)
+                    float frantic = pot.FullStirDegPerSec * 1.6f;
+                    for (float t = 0f; t < 2.5f && pot.SplashCount == splashes; t += Time.deltaTime)
                     {
-                        angle += dir * 820f * Time.deltaTime * Mathf.Deg2Rad;
+                        angle += dir * frantic * Time.deltaTime * Mathf.Deg2Rad;
                         _pointer.World = pot.ToWorld(new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * R * 0.6f);
                         yield return null;
                     }
-                    if (pot.SplashCount == splashes) Fail("A frantic stir (820 deg/s) never slopped the pot over its rim.");
+                    if (pot.SplashCount == splashes) Fail($"A frantic stir ({frantic:0} deg/s) never slopped the pot over its rim.");
                     else Log($"Cauldron fumble: a frantic stir slopped the pot over its rim (slosh {pot.Slosh01:0.00}), as it should.");
                     Capture($"day{day}_morning_cauldron_spill");
                     foreach (var f in Frames(40)) yield return f;
@@ -595,7 +596,7 @@ namespace AlchemistsArsenal.Core
                     float power = pot.TooSlow ? pot.MaxOptimalStir
                         : pot.TooFast ? pot.MinOptimalStir
                         : pot.StirBandCentre;
-                    angle += dir * power * 420f * Time.deltaTime * Mathf.Deg2Rad;
+                    angle += dir * power * pot.FullStirDegPerSec * Time.deltaTime * Mathf.Deg2Rad;
                     _pointer.World = pot.ToWorld(new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * R * 0.6f);
                     elapsed += Time.deltaTime;
                     if (!captured && pot.BrewProgress01 > 0.4f)

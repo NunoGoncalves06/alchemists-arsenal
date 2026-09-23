@@ -210,7 +210,8 @@ namespace AlchemistsArsenal.UI.Stations
             }
             else if (pot.TooFast)
             {
-                SetStatus(pot.Slosh01 > 0.5f ? "IT'S ABOUT TO GO OVER THE RIM — EASE OFF" : "TOO FAST — IT'S STARTING TO SLOSH",
+                if (pot.Slosh01 < 0.05f) SetStatus("A LITTLE FAST — EASE OFF", UITheme.Candle);
+                else SetStatus(pot.Slosh01 > 0.5f ? "IT'S ABOUT TO GO OVER THE RIM — EASE OFF" : "TOO FAST — IT'S SLOSHING",
                     UITheme.Water);
             }
             else if (pot.TooSlow)
