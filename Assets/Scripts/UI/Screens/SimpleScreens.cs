@@ -406,9 +406,9 @@ namespace AlchemistsArsenal.UI
             var s = SaveSystem.Instance.State;
             var party = s.DeployedParty();
             if (_sub != null)
-                _sub.text = party.Count <= 1
+                _sub.text = (party.Count <= 1
                     ? $"where {(party.Count == 1 ? party[0].displayName : "Rookie")} walks tomorrow"
-                    : $"where the party of {party.Count} walks tomorrow";
+                    : $"where the party of {party.Count} walks tomorrow").ToUpperInvariant();   // a Heading is set in capitals
 
             var card = UIKit.Card(_dynamic, "The five roads", out Transform list, spacing: 8f);
             UIFactory.Place(card.rectTransform, 0.05f, 0.2f, 0.62f, 0.82f);
