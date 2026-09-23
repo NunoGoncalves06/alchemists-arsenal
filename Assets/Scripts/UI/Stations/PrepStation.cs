@@ -36,7 +36,7 @@ namespace AlchemistsArsenal.UI.Stations
         private static BrewMixture Mix =>
             Systems.CraftingManager.Instance != null ? Systems.CraftingManager.Instance.Mixture : null;
 
-        private TextMeshProUGUI _recipeName, _recipeMethod, _hint, _leafInfo, _reaction, _strikeLabel;
+        private TextMeshProUGUI _recipeName, _recipeMethod, _hint, _leafInfo, _reaction, _strikeLabel, _status;
         private Transform _stepRow;
         private Image _band, _last, _predicted, _track;
         private PrepBench _hooked;
@@ -54,6 +54,13 @@ namespace AlchemistsArsenal.UI.Stations
             UIFactory.FixedHeight(steps.gameObject, 40f);
             _stepRow = steps.transform;
             PassThrough(recipe.transform);
+
+            // What to do right now, big, in a band across the top of the view (clear
+            // of the bowl, where the bench's own arrow points): the step that was
+            // missed in play was "the leaves are in — now press the bowl".
+            _status = UIFactory.Label(root, "", UITheme.SizeTitle, UITheme.TextLow, TextAlignmentOptions.Center, true);
+            UIFactory.Place(_status.rectTransform, 0.02f, 0.885f, 0.98f, 1f);
+            _status.raycastTarget = false;
 
             // --- the HUD strip under the world view ---------------------------
             var strip = UIKit.Surface(root, out Transform s, UITheme.Alpha(UITheme.Ground, 0.94f), UITheme.Line, "Hud");
@@ -149,7 +156,7 @@ namespace AlchemistsArsenal.UI.Stations
                     ? $"Get <b>{mix.NextStep}</b> into the mortar next — drag it in, or click a leaf to toss it. " +
                       $"{mix.Remaining} to go."
                 : !mix.Ground
-                    ? "Hold on the mortar to lift the pestle, and let go to drop it. Three clean strikes."
+                    ? "<b>Press and hold on the bowl</b> — the pestle rises over it. <b>Let go</b> and it drops and smashes the leaves. Three clean strikes."
                 : "Ground and tipped into the pot. On to the Cauldron.";
 
             if (bench != null)
@@ -190,6 +197,7 @@ namespace AlchemistsArsenal.UI.Stations
         {
             var bench = PrepBench.Instance;
             if (bench == null) return;
+            UpdateStatus(bench);
 
             // The leaf under the pointer, spelled out: potency and wilt are also
             // visible on the bench (plumper, and drooping grey), but this names them.
@@ -216,6 +224,27 @@ namespace AlchemistsArsenal.UI.Stations
                 : bench.LastStrikeSpeed >= 0f
                     ? $"Last strike {bench.LastStrikeSpeed:0.0} m/s. {bench.StrikesLeft} left."
                     : $"{bench.StrikesLeft} strikes. Clean is {PrepBench.IdealStrike - band:0.0}-{PrepBench.IdealStrike + band:0.0} m/s.";
+        }
+
+        /// <summary>The one instruction that matters right now, pulsing when it is the pestle's turn.</summary>
+        private void UpdateStatus(PrepBench bench)
+        {
+            if (_status == null) return;
+            BrewMixture mix = Mix;
+            string text; Color color;
+            if (mix == null) { text = "TAKE A JOB AT THE COUNTER FIRST"; color = UITheme.TextLow; }
+            else if (!mix.AllLeavesIn) { text = $"PUT THE LEAVES IN THE MORTAR — {mix.Remaining} TO GO"; color = UITheme.TextHi; }
+            else if (mix.Ground) { text = "GROUND — ON TO THE CAULDRON"; color = UITheme.Ok; }
+            else if (bench.LiftReady) { text = "LET GO WHEN THE SPEED IS IN THE GREEN"; color = UITheme.Candle; }
+            else if (bench.Lifting) { text = "HOLD IT — THE PESTLE IS COMING OVER"; color = UITheme.Candle; }
+            else
+            {
+                text = "NOW PRESS AND HOLD ON THE BOWL <size=65%>— the pestle rises; let go to smash the leaves</size>";
+                float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 5f);
+                color = Color.Lerp(UITheme.Candle, UITheme.CandleHot, pulse);
+            }
+            _status.text = text;
+            _status.color = color;
         }
 
         private static void Anchor(Image img, float x0, float x1)

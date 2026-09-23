@@ -34,8 +34,14 @@ namespace AlchemistsArsenal.Data
         // --------------------------------------------------------------- cauldron
         /// <summary>The whole brew pays this much, spread over its progress bar.</summary>
         public const int BrewTotal = 22;
-        /// <summary>Charged per second out of the band or stirring backwards.</summary>
+        /// <summary>Charged per second stirring backwards.</summary>
         public const int BrewPenalty = 6;
+        /// <summary>
+        /// Charged per second below the band, rising as the brew catches: merely too
+        /// slow, then sticking to the bottom, then burning there (plus a little more
+        /// the worse it has got).
+        /// </summary>
+        public const int BrewSlow = 2, BrewStick = 5, BrewBurn = 9;
         /// <summary>Each herb flung out of the pot by over-stirring.</summary>
         public const int Splash = 4;
 

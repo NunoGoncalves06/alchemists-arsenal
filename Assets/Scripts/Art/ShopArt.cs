@@ -298,6 +298,35 @@ namespace AlchemistsArsenal.Art
             return c.Bake(key, PPU, new Vector2(0.5f, 0f));
         }
 
+        /// <summary>A chunky gold arrow pointing down: "press here".</summary>
+        public static Sprite PressArrow()
+        {
+            const string key = "press_arrow";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 13, h = 14;
+            var gold = new[] { PixelCanvas.Hex(0xb07a26), PixelCanvas.Hex(0xe8b64c), PixelCanvas.Hex(0xffe39a) };
+            var c = new PixelCanvas(w, h);
+            // shaft, then a head that widens toward its point at the bottom
+            c.Fill((x, y) => y >= 1 && y <= 6 && x >= 4 && x <= 8, (x, y) => x == 4 ? gold[2] : gold[1]);
+            c.Fill((x, y) => y >= 7 && y <= 12 && Mathf.Abs(x - 6) <= 12 - y, (x, y) =>
+                Mathf.Abs(x - 6) == 12 - y ? gold[0] : x < 6 ? gold[2] : gold[1]);
+            c.Outline(K);
+            return c.Bake(key, PPU, new Vector2(0.5f, 0f));
+        }
+
+        /// <summary>A gold ring the shape of the mortar's mouth, drawn on it to say "here".</summary>
+        public static Sprite PressRing()
+        {
+            const string key = "press_ring";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 32, h = 10;
+            var c = new PixelCanvas(w, h);
+            c.Fill((x, y) => PixelCanvas.InEllipse(x, y, w * 0.5f, h * 0.5f, w * 0.5f - 0.5f, h * 0.5f - 0.5f)
+                             && !PixelCanvas.InEllipse(x, y, w * 0.5f, h * 0.5f, w * 0.5f - 2.5f, h * 0.5f - 2.2f),
+                (x, y) => new Color32(0xff, 0xd9, 0x7a, 220));
+            return c.Bake(key, PPU, new Vector2(0.5f, 0.5f));
+        }
+
         /// <summary>A stone-headed, wooden-handled pestle, head down.</summary>
         public static Sprite Pestle()
         {

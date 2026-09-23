@@ -19,14 +19,19 @@ namespace AlchemistsArsenal.Crafting
     /// true.</para>
     ///
     /// <para><b>Too slow and it catches.</b> The pot is over the fire the whole time.
-    /// Stir slower than the band — or stop — once the brew is going, and it starts
-    /// sticking to the bottom and then burning there: smoke, a darkening brew, and
-    /// points off every second, until the spoon is moving fast enough to scrape it
-    /// clean again.</para>
+    /// Stir slower than the band — or stop — once the brew is going and it costs a
+    /// little every second; keep it up and it starts sticking to the bottom (costs
+    /// more) and then burning there (costs most): smoke and a darkening brew, until
+    /// the spoon is moving fast enough to scrape it clean again.</para>
     ///
-    /// <para><b>Too fast and it slops.</b> Faster than the band and the surface starts
-    /// to heave; hold it there and a wave goes over the rim. That costs points, and
-    /// takes the outermost undissolved herb with it.</para>
+    /// <para><b>Too fast and it slops.</b> Just past the band is fast but holding.
+    /// Faster still and the surface starts to heave; hold it there and a wave goes
+    /// over the rim. That costs points, and takes the outermost undissolved herb with
+    /// it.</para>
+    ///
+    /// <para>The band sits around one turn a second, and the spoon only grips the
+    /// brew in full out toward the wall, so a relaxed circle is on the band and a
+    /// twitch near the middle does nothing.</para>
     ///
     /// <para>The band is the stir itself. It used to be a heat meter that the stir only
     /// fed indirectly, so "too cold" and "overheating" were two names for the same
@@ -43,28 +48,35 @@ namespace AlchemistsArsenal.Crafting
 
         [Header("Stirring")]
         [Tooltip("Pointer rotation about the surface centre (deg/sec) that reads as a full stir.")]
-        [SerializeField] private float spinForFullPower = 420f;
+        [SerializeField] private float spinForFullPower = 720f;
         [Tooltip("Below this (deg/sec) the spoon is considered still, in either direction.")]
         [SerializeField] private float spinDeadZone = 45f;
+        [Tooltip("How quickly the stir reading follows the spoon (1/s). Lower is steadier.")]
+        [SerializeField] private float spinSmoothing = 4.5f;
+        [Tooltip("Inside this fraction of the radius the spoon barely moves the brew; from fullGripRadius out it counts in full.")]
+        [Range(0f, 0.5f)] [SerializeField] private float innerDeadRadius = 0.2f;
+        [Range(0.2f, 1f)] [SerializeField] private float fullGripRadius = 0.5f;
 
         [Header("The band of stir speeds")]
-        [Tooltip("Middle of the band, as a fraction of a full stir.")]
-        [Range(0.2f, 0.8f)] [SerializeField] private float bandMid = 0.47f;
+        [Tooltip("Middle of the band, as a fraction of a full stir (one turn a second is 0.5).")]
+        [Range(0.2f, 0.8f)] [SerializeField] private float bandMid = 0.5f;
         [Tooltip("How far the band slides either side of that over a brew.")]
-        [Range(0f, 0.2f)] [SerializeField] private float bandDrift = 0.08f;
+        [Range(0f, 0.2f)] [SerializeField] private float bandDrift = 0.06f;
         [Range(0.05f, 0.3f)] [SerializeField] private float bandHalfWidth = 0.15f;
         [SerializeField] private float bandDriftSpeed = 0.18f;
 
         [Header("Sticking and sloshing")]
-        [Tooltip("Seconds of stirring too slowly before the bottom starts to catch.")]
+        [Tooltip("Seconds of stirring too slowly before it starts to cost, and before the bottom starts to catch.")]
         [SerializeField] private float slowGraceSeconds = 0.6f;
         [Tooltip("How fast the bottom catches while the spoon is too slow (per second).")]
         [SerializeField] private float scorchRate = 0.34f;
         [Tooltip("How fast a stir inside the band scrapes the bottom clean again.")]
         [SerializeField] private float scorchClearRate = 0.4f;
+        [Tooltip("Past the band's top, this much more (fraction of a full stir) is fast but still holding: no slosh yet.")]
+        [SerializeField] private float sloshMargin = 0.06f;
         [Tooltip("How fast the surface builds toward going over the rim while the stir is too fast.")]
-        [SerializeField] private float sloshRate = 0.9f;
-        [SerializeField] private float sloshSettleRate = 1.2f;
+        [SerializeField] private float sloshRate = 0.35f;
+        [SerializeField] private float sloshSettleRate = 1.0f;
         [Tooltip("Seconds after a spill before the pot can slop again.")]
         [SerializeField] private float spillCooldown = 0.8f;
 
@@ -83,7 +95,7 @@ namespace AlchemistsArsenal.Crafting
         /// <summary>Where the bottom counts as sticking, and where that has become a burn.</summary>
         public const float StickAt = 0.2f, BurnAt = 0.6f;
 
-        private float bandCenter = 0.47f;
+        private float bandCenter = 0.5f;
         private float bandPhase;
 
         private float lastPointerAngleDeg;
@@ -349,11 +361,15 @@ namespace AlchemistsArsenal.Crafting
                 if (!live || rate >= MinOptimalStir) _scorch = Mathf.Max(0f, _scorch - dt * scorchClearRate);
             }
 
+            // Just past the band is fast but holding; beyond that the surface heaves,
+            // slowly for a small overshoot (a couple of seconds' warning before it
+            // goes) and quickly for a frantic one.
             _spillCooldownLeft -= dt;
-            if (mouseOverPot && !IsBrewComplete && rate > MaxOptimalStir)
+            float sloshFrom = MaxOptimalStir + sloshMargin;
+            if (mouseOverPot && !IsBrewComplete && rate > sloshFrom)
             {
-                float over = Mathf.Clamp((rate - MaxOptimalStir) / Mathf.Max(0.05f, EffectiveBandHalfWidth), 0f, 3f);
-                _slosh = Mathf.Min(1f, _slosh + dt * sloshRate * (1f + 2.2f * over));
+                float over = Mathf.Clamp((rate - sloshFrom) / Mathf.Max(0.05f, EffectiveBandHalfWidth), 0f, 3f);
+                _slosh = Mathf.Min(1f, _slosh + dt * sloshRate * (1f + 1.6f * over));
                 if (_slosh >= 1f && _spillCooldownLeft <= 0f) Spill();
             }
             else _slosh = Mathf.Max(0f, _slosh - dt * sloshSettleRate);
@@ -376,13 +392,23 @@ namespace AlchemistsArsenal.Crafting
             Spilled?.Invoke();
         }
 
-        /// <summary>Signed angular velocity of the pointer about the surface centre, smoothed.</summary>
+        /// <summary>
+        /// Signed angular velocity of the pointer about the surface centre, smoothed.
+        ///
+        /// Angular speed is tangential speed over radius, so the same small wiggle of
+        /// the mouse near the middle of the pot read as a furious stir (and the band sat
+        /// at barely half a turn a second, slower than anyone circles a mouse). The
+        /// spoon now needs to be out toward the wall to move the brew in full — near
+        /// the centre it barely grips — and the reading follows it more steadily.
+        /// </summary>
         private void TrackSpin(Vector2 surface)
         {
-            if (!mouseOverPot || surface.sqrMagnitude < 0.04f)
+            float R = _liquid != null ? _liquid.Radius : 1f;
+            float r01 = surface.magnitude / Mathf.Max(0.01f, R);
+            if (!mouseOverPot || r01 < innerDeadRadius)
             {
                 hasLastAngle = false;
-                smoothedSpinDegPerSec = Mathf.Lerp(smoothedSpinDegPerSec, 0f, Damp(6f));
+                smoothedSpinDegPerSec = Mathf.Lerp(smoothedSpinDegPerSec, 0f, Damp(mouseOverPot ? 2.5f : 6f));
                 return;
             }
 
@@ -393,9 +419,13 @@ namespace AlchemistsArsenal.Crafting
             lastPointerAngleDeg = angle;
             hasLastAngle = true;
 
-            raw = Mathf.Clamp(raw, -spinForFullPower * 2f, spinForFullPower * 2f);
-            smoothedSpinDegPerSec = Mathf.Lerp(smoothedSpinDegPerSec, raw, Damp(8f));
+            float grip = Mathf.Clamp01((r01 - innerDeadRadius) / Mathf.Max(0.01f, fullGripRadius - innerDeadRadius));
+            raw = Mathf.Clamp(raw * grip, -spinForFullPower * 2f, spinForFullPower * 2f);
+            smoothedSpinDegPerSec = Mathf.Lerp(smoothedSpinDegPerSec, raw, Damp(spinSmoothing));
         }
+
+        /// <summary>What a full stir is, in degrees a second (the playtest drives the spoon in these units).</summary>
+        public float FullStirDegPerSec => spinForFullPower;
 
         private static float Damp(float rate) => 1f - Mathf.Exp(-rate * Time.deltaTime);
 
@@ -437,19 +467,36 @@ namespace AlchemistsArsenal.Crafting
 
             if (Time.time < nextDeductionTime) return;
 
-            int penalty = QualityBudget.BrewPenalty;
+            int penalty;
             string reason;
             if (StirringBackwards)
-                reason = $"Stirred {(RequiredClockwise ? "anticlockwise" : "clockwise")} — the recipe says otherwise";
-            else if (TooSlow && Sticking)
             {
-                reason = Burning
-                    ? $"Burning on the bottom ({Mathf.RoundToInt(_scorch * 100)}%) — stir faster"
-                    : $"Sticking to the bottom ({Mathf.RoundToInt(_scorch * 100)}%) — stir faster";
-                penalty += Mathf.RoundToInt(_scorch * 4f);
+                penalty = QualityBudget.BrewPenalty;
+                reason = $"Stirred {(RequiredClockwise ? "anticlockwise" : "clockwise")} — the recipe says otherwise";
             }
-            // Stirring too fast is paid for by the spills it causes, not by the second,
-            // and a stir that has only just dropped below the band has not caught yet.
+            // Below the band costs every second once it has lasted past a moment's
+            // grace, and more the further the brew has caught: slow, then sticking,
+            // then burning. (It used to cost nothing until it was already sticking.)
+            else if (TooSlow && _slowFor > slowGraceSeconds)
+            {
+                int pct = Mathf.RoundToInt(_scorch * 100);
+                if (Burning)
+                {
+                    penalty = QualityBudget.BrewBurn + Mathf.RoundToInt(_scorch * 4f);
+                    reason = $"Burning on the bottom ({pct}%) — stir faster";
+                }
+                else if (Sticking)
+                {
+                    penalty = QualityBudget.BrewStick + Mathf.RoundToInt(_scorch * 3f);
+                    reason = $"Sticking to the bottom ({pct}%) — stir faster";
+                }
+                else
+                {
+                    penalty = QualityBudget.BrewSlow;
+                    reason = "Stirring too slowly — the brew is settling";
+                }
+            }
+            // Stirring too fast is paid for by the spills it causes, not by the second.
             else return;
 
             activeOrder.ApplyDeduction(penalty, "Cauldron", reason, Time.time);

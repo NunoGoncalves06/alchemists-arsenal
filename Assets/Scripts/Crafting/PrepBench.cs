@@ -190,6 +190,36 @@ namespace AlchemistsArsenal.Crafting
             edge.sharedMaterial = PhysicsMaterials.Stone;
             GameLayers.Assign(m, GameLayers.ShopStatic);
 
+            // "Press here": once the leaves are all in, nothing on the bench said
+            // what to do with them. A ring on the bowl's mouth and an arrow over it.
+            _pressRing = AddArt(transform, ShopArt.PressRing(), 15, "PressRing");
+            _pressRing.transform.localScale = Vector3.one * MortarScale * 0.92f;
+            _pressArrow = AddArt(transform, ShopArt.PressArrow(), 30, "PressArrow");
+            _pressArrow.transform.localScale = Vector3.one * 1.2f;
+            _pressRing.enabled = _pressArrow.enabled = false;
+        }
+
+        private SpriteRenderer _pressRing, _pressArrow;
+
+        /// <summary>True while the bench is pointing at the bowl: the leaves are in and the pestle is waiting to be used.</summary>
+        public bool PressHintShowing { get; private set; }
+
+        private void UpdatePressHint()
+        {
+            BrewMixture mix = Mix;
+            PressHintShowing = Attended && mix != null && mix.AllLeavesIn && !mix.Ground
+                               && StrikesLeft > 0 && _lift == null && Order != null;
+            if (_pressRing == null) return;
+            _pressRing.enabled = _pressArrow.enabled = PressHintShowing;
+            if (!PressHintShowing) return;
+
+            float t = Time.unscaledTime;
+            float lip = transform.position.y + MortarLocal.y + ShopArt.MortarLipLocalY * MortarScale;
+            Vector2 mouth = new Vector2(transform.position.x + MortarLocal.x, lip);
+            _pressRing.transform.position = mouth;
+            float pulse = 0.5f + 0.5f * Mathf.Sin(t * 6f);
+            _pressRing.color = new Color(1f, 1f, 1f, 0.45f + 0.5f * pulse);
+            _pressArrow.transform.position = mouth + new Vector2(0f, 0.62f + 0.16f * Mathf.Abs(Mathf.Sin(t * 4f)));
         }
 
         private void BuildPestle()
@@ -350,6 +380,7 @@ namespace AlchemistsArsenal.Crafting
         {
             float dt = Time.deltaTime;
             _strikeCooldown -= dt;
+            UpdatePressHint();
             if (!Attended) { EndLift(); Hovered = null; return; }
 
             Vector2 p = Pointer.World(_cam);
@@ -578,6 +609,16 @@ namespace AlchemistsArsenal.Crafting
             if (VfxWorld.Active != null)
                 VfxWorld.Active.Burst(ToView(leaf.Body.position), PixelArt.Element(ing.Element), 8, 1.6f, 0.08f, 0.4f);
             AudioManager.Play(onCue || inRecipe ? Sfx.Confirm : Sfx.Deny);
+
+            // The last leaf in: say what comes next, loudly, on the bench itself.
+            if (mix.AllLeavesIn)
+            {
+                SetReaction("All the leaves are in. Now PRESS AND HOLD on the bowl to lift the pestle — let go to smash them.",
+                    UI.UITheme.CandleHot);
+                if (VfxWorld.Active != null)
+                    VfxWorld.Active.Flash(MortarWorld + Vector2.up * 0.9f, new Color(1f, 0.85f, 0.45f, 0.6f), 1.6f, 0.35f);
+                AudioManager.Play(Sfx.Chime);
+            }
             Changed?.Invoke();
         }
 
