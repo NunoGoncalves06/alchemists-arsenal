@@ -528,6 +528,7 @@ namespace AlchemistsArsenal.Core
                 foreach (var step in RunSuite<DebugTools.StationTabPhysicsSimulationTest>(20f)) yield return step;
 
                 foreach (var step in RunBossScenarios()) yield return step;
+                foreach (var step in CaptureGuardianPortraits()) yield return step;
                 if (FullSuite)
                 {
                     foreach (var step in RunBiomeSweep()) yield return step;
@@ -1341,6 +1342,58 @@ namespace AlchemistsArsenal.Core
                 var saved = WithRoadKit(BiomeLibrary.RoadTierNeeded[BiomeLibrary.Count - 1]);
                 foreach (var step in RunScenario(BiomeLibrary.Count - 1, 5, "boss_matriarch", capture: true)) yield return step;
                 RestoreUpgrades(saved);
+            }
+
+            /// <summary>
+            /// Each guardian drawn alone and idle on the game's dark ground, for documents:
+            /// every fight capture has heroes, rings or damage numbers over the figure.
+            /// Its own camera, far from any world, so nothing else is in the frame.
+            /// </summary>
+            private IEnumerable CaptureGuardianPortraits()
+            {
+                var guardians = new (string id, BossDefinition def)[]
+                {
+                    ("woodwose", DefaultExpeditionData.Woodwose()),
+                    ("matriarch", DefaultExpeditionData.Matriarch()),
+                };
+                const int w = 600, h = 800;
+                foreach (var (id, def) in guardians)
+                {
+                    var root = new GameObject($"~Portrait_{id}");
+                    root.transform.position = new Vector3(0f, 1000f, 0f);
+                    Vfx.BossVisual.Attach(root, def);
+                    var camGo = new GameObject("~PortraitCamera");
+                    var cam = camGo.AddComponent<Camera>();
+                    cam.orthographic = true;
+                    cam.orthographicSize = 3.8f;
+                    cam.transform.position = new Vector3(0f, 1001.6f, -10f);
+                    cam.clearFlags = CameraClearFlags.SolidColor;
+                    cam.backgroundColor = new Color(0.106f, 0.078f, 0.122f);
+                    cam.enabled = false;
+                    foreach (var f in Frames(90)) yield return f;   // settle into its idle pose
+
+                    var rt = new RenderTexture(w, h, 24);
+                    var prev = RenderTexture.active;
+                    cam.targetTexture = rt;
+                    cam.Render();
+                    RenderTexture.active = rt;
+                    var tex = new Texture2D(w, h, TextureFormat.RGB24, false);
+                    tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+                    tex.Apply();
+                    RenderTexture.active = prev;
+                    cam.targetTexture = null;
+
+                    string dir = Path.Combine(Directory.GetCurrentDirectory(), ScreensDir);
+                    Directory.CreateDirectory(dir);
+                    File.WriteAllBytes(Path.Combine(dir, $"portrait_{id}.png"), tex.EncodeToPNG());
+                    Log($"Screenshot: {ScreensDir}/portrait_{id}.png");
+                    Destroy(tex);
+                    rt.Release();
+                    Destroy(rt);
+                    Destroy(camGo);
+                    Destroy(root);
+                    yield return null;
+                }
             }
 
             /// <summary>Lend the run the road upgrades up to <paramref name="tier"/>; returns what it owned before.</summary>
