@@ -52,9 +52,12 @@ namespace AlchemistsArsenal.Crafting
             SurfaceRX = ShopArt.LiquidRX / ShopArt.PPU * PotScale;
             SurfaceRY = ShopArt.LiquidRY / ShopArt.PPU * PotScale;
 
-            Sprite(ShopArt.PotBack(), OrderBack, "PotBack");
+            // The clockwork stirrer rebuilds the pot in copper, with its frame over it.
+            bool clockwork = PhysicsCauldronManager.AutoStir;
+            Sprite(ShopArt.PotBack(clockwork), OrderBack, "PotBack");
             _liquid = Sprite(ShopArt.Liquid(ElementType.Nature), OrderLiquid, "Liquid");
-            Sprite(ShopArt.PotFront(), OrderFront, "PotFront");
+            Sprite(ShopArt.PotFront(clockwork), OrderFront, "PotFront");
+            if (clockwork) BuildClockwork();
 
             // The swirl lives in "surface space": a unit disc squashed onto the mouth's
             // ellipse, so turning it in its own plane reads as the liquid turning.
@@ -111,6 +114,45 @@ namespace AlchemistsArsenal.Crafting
             sr.sharedMaterial = SpriteMaterials.For(s);
             sr.sortingOrder = order;
             return sr;
+        }
+
+        private Transform _paddle, _gear;
+        private float _paddleAngle;
+        private Vector2 _crown;
+
+        /// <summary>A brass frame over the pot, a gear at its crown, and a paddle hanging from it into the brew.</summary>
+        private void BuildClockwork()
+        {
+            _crown = MouthCentre + new Vector2(0f, 1.9f);
+            var frame = new GameObject("ClockworkFrame");
+            frame.transform.SetParent(transform.parent, false);
+            frame.transform.position = _crown;
+            PixelArt.AddSprite(frame, ShopArt.Gantry(), OrderFront + 1).transform.localScale = Vector3.one * PotScale;
+
+            var gear = new GameObject("Gear");
+            gear.transform.SetParent(transform.parent, false);
+            gear.transform.position = _crown + new Vector2(0f, 0.55f);
+            PixelArt.AddSprite(gear, ShopArt.Gear(), OrderFront + 2).transform.localScale = Vector3.one * PotScale;
+            _gear = gear.transform;
+
+            var paddle = new GameObject("Paddle");
+            paddle.transform.SetParent(transform.parent, false);
+            paddle.transform.position = _crown;
+            // Between the brew and the pot's front rim: the blade dips in behind the lip.
+            PixelArt.AddSprite(paddle, ShopArt.Paddle(), OrderHerbs + 5).transform.localScale = Vector3.one * PotScale * 0.95f;
+            _paddle = paddle.transform;
+        }
+
+        /// <summary>The paddle sweeps round with the brew and the gear turns with it.</summary>
+        private void MoveClockwork(float dt)
+        {
+            if (_paddle == null) return;
+            _paddleAngle += _pot.SpinDegPerSec * 0.55f * dt * Mathf.Deg2Rad;
+            Vector2 blade = MouthCentre + new Vector2(Mathf.Cos(_paddleAngle) * SurfaceRX * 0.55f,
+                                                      Mathf.Sin(_paddleAngle) * SurfaceRY * 0.55f + _bob);
+            Vector2 d = blade - _crown;
+            _paddle.rotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(d.x, -d.y) * Mathf.Rad2Deg);
+            _gear.rotation = Quaternion.Euler(0f, 0f, -_paddleAngle * Mathf.Rad2Deg * 2f);
         }
 
         private Vector3 RestSpoon() => (Vector3)(MouthCentre + new Vector2(SurfaceRX * 0.95f, 0.7f));
@@ -230,8 +272,9 @@ namespace AlchemistsArsenal.Crafting
             _glow.color = new Color(1f, 0.55f, 0.2f, 0.22f + 0.03f * Mathf.Sin(Time.time * 2.1f));
 
             SyncHerbs();
-            Emit(dt, e, brewing, scorch, slosh);
+            Emit(dt, e, brewing || _pot.ClockworkTurning, scorch, slosh);
             MoveSpoon(dt);
+            MoveClockwork(dt);
         }
 
         private float _bob;

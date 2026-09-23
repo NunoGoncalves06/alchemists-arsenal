@@ -386,6 +386,7 @@ namespace AlchemistsArsenal.UI
     public class BiomeMapScreen : GameScreen
     {
         private RectTransform _dynamic;
+        private TMPro.TextMeshProUGUI _sub;
 
         protected override void Build()
         {
@@ -393,8 +394,8 @@ namespace AlchemistsArsenal.UI
 
             var road = UIFactory.Title(transform, "The forest road", UITheme.SizeTitle);
             UIFactory.Place(road.rectTransform, 0f, 0.88f, 1f, 0.97f, 34f);
-            var sub = UIFactory.Heading(transform, "where Rookie walks tomorrow", UITheme.TextLow);
-            UIFactory.Place(sub.rectTransform, 0f, 0.84f, 1f, 0.88f, 36f);
+            _sub = UIFactory.Heading(transform, "where Rookie walks tomorrow", UITheme.TextLow);
+            UIFactory.Place(_sub.rectTransform, 0f, 0.84f, 1f, 0.88f, 36f);
 
             _dynamic = UIFactory.Root(transform, "Dynamic");
         }
@@ -403,6 +404,11 @@ namespace AlchemistsArsenal.UI
         {
             for (int i = _dynamic.childCount - 1; i >= 0; i--) Destroy(_dynamic.GetChild(i).gameObject);
             var s = SaveSystem.Instance.State;
+            var party = s.DeployedParty();
+            if (_sub != null)
+                _sub.text = party.Count <= 1
+                    ? $"where {(party.Count == 1 ? party[0].displayName : "Rookie")} walks tomorrow"
+                    : $"where the party of {party.Count} walks tomorrow";
 
             var card = UIKit.Card(_dynamic, "The five roads", out Transform list, spacing: 8f);
             UIFactory.Place(card.rectTransform, 0.05f, 0.2f, 0.62f, 0.82f);
@@ -419,7 +425,7 @@ namespace AlchemistsArsenal.UI
                 UITheme.SizeSmall, UITheme.TextMid);
 
             var next = UIKit.Card(_dynamic, "Tomorrow", out Transform nextBox, spacing: 6f);
-            UIFactory.Place(next.rectTransform, 0.66f, 0.2f, 0.95f, 0.5f);
+            UIFactory.Place(next.rectTransform, 0.66f, 0.2f, 0.95f, 0.62f);
             int target = s.TargetBiomeIndex;
             var themeBadge = UIFactory.ElementBadge(nextBox, BiomeLibrary.Theme(target), 40f);
             UIFactory.FixedHeight(themeBadge.gameObject, 40f);
@@ -430,6 +436,23 @@ namespace AlchemistsArsenal.UI
                     ? "A road you have walked before. Half the fee, but pay all the same."
                     : "The next road you have not cleared.",
                 UITheme.SizeSmall, UITheme.TextMid);
+
+            // What the road asks of the party, against what the party has.
+            int fighters = s.DeployedParty().Count, tier = UpgradeCatalog.RoadTier(s);
+            int wantF = BiomeLibrary.FightersNeeded[target], wantT = BiomeLibrary.RoadTierNeeded[target];
+            bool ready = fighters >= wantF && tier >= wantT;
+            UIFactory.Label(nextBox, BiomeLibrary.Needs(target), UITheme.SizeSmall, UITheme.TextHi);
+            string going = $"{fighters} fighter{(fighters == 1 ? "" : "s")} going out";
+            string line;
+            if (ready) line = $"Ready: {going}, {(tier >= 2 ? "every road upgrade" : tier == 1 ? "the first road upgrades" : "nothing it needs missing")}.";
+            else
+            {
+                var missing = new System.Collections.Generic.List<string>();
+                if (fighters < wantF) missing.Add($"{wantF - fighters} more fighter{(wantF - fighters == 1 ? "" : "s")} (hire at the Evening's Party tab)");
+                if (tier < wantT) missing.Add(wantT >= 2 ? "the rest of the road upgrades" : "the first road upgrades (all four)");
+                line = $"Still missing: {string.Join(" and ", missing)}. Now: {going}.";
+            }
+            UIFactory.Label(nextBox, line, UITheme.SizeSmall, ready ? UITheme.Ok : UITheme.Danger);
 
             var sleep = UIFactory.Button(_dynamic, "SLEEP", () => GameLoopManager.Instance.Sleep(-1));
             UIFactory.Place(sleep.image.rectTransform, 0.66f, 0.06f, 0.95f, 0.15f);

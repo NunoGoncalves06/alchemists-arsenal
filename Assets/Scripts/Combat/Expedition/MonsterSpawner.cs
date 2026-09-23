@@ -55,7 +55,7 @@ namespace AlchemistsArsenal.Combat
             go.GetComponent<Rigidbody2D>().mass = MassFor(data.MaxHealth);
 
             var walker = go.AddComponent<MonsterWalker>();
-            walker.Configure(data.MoveSpeed);
+            walker.Configure(data.MoveSpeed, data.ContactDamage);
 
             go.AddComponent<MonsterTag>().Data = data; // instance -> archetype, for loot / telemetry
 

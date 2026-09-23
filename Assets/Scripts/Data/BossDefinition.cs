@@ -24,6 +24,9 @@ namespace AlchemistsArsenal.Data
         [SerializeField] private ElementType coreElement = ElementType.Arcane;
         [Min(1)] [SerializeField] private int maxHealth = 600;
 
+        [Tooltip("Health against a party of 1, 2, 3, 4 as a fraction of Max Health (authored for three). Empty = the shared PartyHealthScale.")]
+        [SerializeField] private float[] partyHealthScale = new float[0];
+
         [SerializeField] private ElementalThreatProfile threatProfile;
         [SerializeField] private BossPhaseData[] phases = new BossPhaseData[0];
 
@@ -53,8 +56,18 @@ namespace AlchemistsArsenal.Data
         public static readonly float[] PartyHealthScale = { 0.32f, 0.66f, 1f, 1.3f };
 
         /// <summary>The health this guardian has against a party of <paramref name="partySize"/>.</summary>
-        public int HealthFor(int partySize) =>
-            Mathf.Max(1, Mathf.RoundToInt(maxHealth * PartyHealthScale[Mathf.Clamp(partySize, 1, PartyHealthScale.Length) - 1]));
+        public int HealthFor(int partySize)
+        {
+            float[] scale = partyHealthScale != null && partyHealthScale.Length > 0 ? partyHealthScale : PartyHealthScale;
+            return Mathf.Max(1, Mathf.RoundToInt(maxHealth * scale[Mathf.Clamp(partySize, 1, scale.Length) - 1]));
+        }
+
+        /// <summary>
+        /// This guardian's own answer to party size, instead of the shared one. The
+        /// Matriarch is the last road's guardian: she is not meant to be carried by
+        /// one fighter however well kitted, so she shrinks far less for a small party.
+        /// </summary>
+        public void ConfigurePartyScale(params float[] scale) => partyHealthScale = scale ?? new float[0];
         public ElementalThreatProfile ThreatProfile => threatProfile;
         public IReadOnlyList<BossPhaseData> Phases => phases;
         public float PhaseEvalInterval => phaseEvalInterval;

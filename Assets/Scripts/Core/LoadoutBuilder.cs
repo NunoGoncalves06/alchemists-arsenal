@@ -71,9 +71,11 @@ namespace AlchemistsArsenal.Core
                   ?? (string.IsNullOrWhiteSpace(order.potionName) ? "Raw Sludge" : order.potionName);
 
             RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
-            float dmgMult = s != null && s.HasUpgrade(UpgradeCatalog.HeavierFlasks) ? 1.25f : 1f;
+            float dmgMult = (s != null && s.HasUpgrade(UpgradeCatalog.HeavierFlasks) ? 1.25f : 1f)
+                            * (s != null && s.HasUpgrade(UpgradeCatalog.TemperedGlass) ? 1.25f : 1f);
             float cdMult = s != null && s.HasUpgrade(UpgradeCatalog.QuickHands) ? 0.75f : 1f;
             int ammoBonus = (s != null && s.HasUpgrade(UpgradeCatalog.SpareVials) ? 5 : 0)
+                            + (s != null && s.HasUpgrade(UpgradeCatalog.Bandolier) ? 8 : 0)
                             + Mathf.Max(0, heroAmmoBonus);
 
             // Day 1 is a first-timer's fight with whatever quality potion they

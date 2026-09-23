@@ -183,6 +183,7 @@ namespace AlchemistsArsenal.Core
 
             s.ownedHerbs ??= new System.Collections.Generic.List<string>();
             s.ownedUpgrades ??= new System.Collections.Generic.List<string>();
+            s.seenUpgrades ??= new System.Collections.Generic.List<string>();
             s.unlockedDiary ??= new System.Collections.Generic.List<string>();
             s.storyFlags ??= new System.Collections.Generic.List<string>();
             s.ownedAdventurers ??= new System.Collections.Generic.List<string>();

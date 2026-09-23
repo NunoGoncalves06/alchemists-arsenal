@@ -35,6 +35,8 @@ namespace AlchemistsArsenal.Core
 
         public List<string> ownedHerbs = new List<string>();
         public List<string> ownedUpgrades = new List<string>();
+        /// <summary>Bench upgrades whose bench has already shown them off (the one-time "NEW" at the bench).</summary>
+        public List<string> seenUpgrades = new List<string>();
         /// <summary>
         /// Legacy. Superseded by <see cref="roster"/>, which
         /// <see cref="SaveSystem.Migrate"/> seeds from this list exactly once.

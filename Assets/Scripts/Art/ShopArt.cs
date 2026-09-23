@@ -50,6 +50,17 @@ namespace AlchemistsArsenal.Art
             PixelCanvas.Hex(0x2e1f14), PixelCanvas.Hex(0x3f2c1c), PixelCanvas.Hex(0x5a3f28),
             PixelCanvas.Hex(0x6b4a2f), PixelCanvas.Hex(0x8a6340),
         };
+        /// <summary>The upgraded benches: a copper pot, a brass mortar.</summary>
+        private static readonly Color32[] Copper =
+        {
+            PixelCanvas.Hex(0x3a1a10), PixelCanvas.Hex(0x6a2e18), PixelCanvas.Hex(0x9a4e26),
+            PixelCanvas.Hex(0xc8743a), PixelCanvas.Hex(0xf0a868),
+        };
+        private static readonly Color32[] Brass =
+        {
+            PixelCanvas.Hex(0x3e2e10), PixelCanvas.Hex(0x6a5220), PixelCanvas.Hex(0x9a7c34),
+            PixelCanvas.Hex(0xc8a852), PixelCanvas.Hex(0xf0d88a),
+        };
 
         /// <summary>(dark, mid, bright, highlight) for a brew of <paramref name="e"/>.</summary>
         public static Color32[] BrewRamp(ElementType e) => e switch
@@ -88,12 +99,14 @@ namespace AlchemistsArsenal.Art
             return false;
         }
 
-        private static PixelCanvas _pot;
+        private static PixelCanvas _pot, _copperPot;
 
         /// <summary>The whole pot, outlined once; split by <see cref="PotBack"/>/<see cref="PotFront"/>.</summary>
-        private static PixelCanvas WholePot()
+        private static PixelCanvas WholePot(bool copper)
         {
-            if (_pot != null) return _pot;
+            if (!copper && _pot != null) return _pot;
+            if (copper && _copperPot != null) return _copperPot;
+            Color32[] Iron = copper ? Copper : ShopArt.Iron;   // the same pot, beaten from copper
             var c = new PixelCanvas(PotW, PotH);
 
             // legs first, so the belly's outline sits over their tops
@@ -142,20 +155,20 @@ namespace AlchemistsArsenal.Art
                 float t = Mathf.InverseLerp(MouthCY - MouthRY, LiquidCY, y);
                 return t < 0.18f ? Iron[1] : PixelCanvas.Shade(new[] { K, Iron[0] }, 1f - t, x, y);
             });
-            _pot = c;
+            if (copper) _copperPot = c; else _pot = c;
             return c;
         }
 
         /// <summary>Upper rim and inside back wall: draws BEHIND the liquid and herbs.</summary>
-        public static Sprite PotBack() => Split("pot_back", back: true);
+        public static Sprite PotBack(bool copper = false) => Split(copper ? "pot_back_copper" : "pot_back", back: true, copper);
 
         /// <summary>Lower rim, belly, legs, handles: draws IN FRONT of the herbs.</summary>
-        public static Sprite PotFront() => Split("pot_front", back: false);
+        public static Sprite PotFront(bool copper = false) => Split(copper ? "pot_front_copper" : "pot_front", back: false, copper);
 
-        private static Sprite Split(string key, bool back)
+        private static Sprite Split(string key, bool back, bool copper)
         {
             if (PixelCanvas.TryGet(key, out Sprite s)) return s;
-            PixelCanvas whole = WholePot();
+            PixelCanvas whole = WholePot(copper);
             var c = new PixelCanvas(PotW, PotH);
             for (int y = 0; y < PotH; y++)
             for (int x = 0; x < PotW; x++)
@@ -251,11 +264,13 @@ namespace AlchemistsArsenal.Art
         private static bool MortarRim(int x, int y) => PixelCanvas.InEllipse(x, y, 18f, MortarRimY, 17f, 3.6f);
         private static bool MortarCavity(int x, int y) => PixelCanvas.InEllipse(x, y, 18f, MortarRimY + 0.4f, 13.5f, 2.6f);
 
-        private static PixelCanvas _mortar;
+        private static PixelCanvas _mortar, _brassMortar;
 
-        private static PixelCanvas WholeMortar()
+        private static PixelCanvas WholeMortar(bool brass)
         {
-            if (_mortar != null) return _mortar;
+            if (!brass && _mortar != null) return _mortar;
+            if (brass && _brassMortar != null) return _brassMortar;
+            Color32[] Stone = brass ? Brass : ShopArt.Stone;
             var c = new PixelCanvas(MortarW, MortarH);
             c.Fill((x, y) => MortarBody(x, y) && y < MortarH - 1, (x, y) =>
                 PixelCanvas.Shade(Stone, PixelCanvas.SphereLight(x, y, 18f, MortarRimY + 2f, 17f, 16f, 0.18f), x, y));
@@ -263,15 +278,15 @@ namespace AlchemistsArsenal.Art
                 PixelCanvas.Shade(Stone, PixelCanvas.SphereLight(x, y, 18f, MortarRimY - 2f, 17f, 7f, 0.4f), x, y));
             c.Fill(MortarCavity, (x, y) => y < MortarRimY ? Stone[0] : K);
             c.Outline(K);
-            _mortar = c;
+            if (brass) _brassMortar = c; else _mortar = c;
             return c;
         }
 
         /// <summary>The far half of the rim and the hollow: draws behind whatever is in the bowl.</summary>
-        public static Sprite MortarBack() => MortarPart("mortar_back", back: true);
+        public static Sprite MortarBack(bool brass = false) => MortarPart(brass ? "mortar_back_brass" : "mortar_back", back: true, brass);
 
         /// <summary>The near lip and the whole belly: draws over whatever is in the bowl.</summary>
-        public static Sprite MortarFront() => MortarPart("mortar_front", back: false);
+        public static Sprite MortarFront(bool brass = false) => MortarPart(brass ? "mortar_front_brass" : "mortar_front", back: false, brass);
 
         /// <summary>
         /// Height of the hollow's middle line above the mortar's base, in its unscaled
@@ -280,10 +295,10 @@ namespace AlchemistsArsenal.Art
         /// </summary>
         public const float MortarLipLocalY = (MortarH - (MortarRimY + 0.4f)) / PPU;
 
-        private static Sprite MortarPart(string key, bool back)
+        private static Sprite MortarPart(string key, bool back, bool brass)
         {
             if (PixelCanvas.TryGet(key, out Sprite s)) return s;
-            PixelCanvas whole = WholeMortar();
+            PixelCanvas whole = WholeMortar(brass);
             var c = new PixelCanvas(MortarW, MortarH);
             for (int y = 0; y < MortarH; y++)
             for (int x = 0; x < MortarW; x++)
@@ -328,14 +343,15 @@ namespace AlchemistsArsenal.Art
         }
 
         /// <summary>A stone-headed, wooden-handled pestle, head down.</summary>
-        public static Sprite Pestle()
+        public static Sprite Pestle(bool brass = false)
         {
-            const string key = "pestle";
+            string key = brass ? "pestle_brass" : "pestle";
             if (PixelCanvas.TryGet(key, out Sprite s)) return s;
             const int w = 9, h = 30;
             var c = new PixelCanvas(w, h);
+            Color32[] head = brass ? Brass : Stone;
             c.Fill((x, y) => y >= 18 && PixelCanvas.InEllipse(x, y, 4.5f, 23f, 4.4f, 6.8f), (x, y) =>
-                PixelCanvas.Shade(Stone, PixelCanvas.SphereLight(x, y, 4.5f, 23f, 4.4f, 6.8f, 0.2f), x, y));
+                PixelCanvas.Shade(head, PixelCanvas.SphereLight(x, y, 4.5f, 23f, 4.4f, 6.8f, 0.2f), x, y));
             c.Fill((x, y) => y < 19 && y > 1 && x >= 3 && x <= 5, (x, y) => x == 3 ? Wood[4] : x == 4 ? Wood[3] : Wood[1]);
             c.Fill((x, y) => PixelCanvas.InEllipse(x, y, 4.5f, 2f, 2.2f, 2f), (x, y) => y < 2 ? Wood[4] : Wood[2]);
             c.Outline(K);
@@ -513,6 +529,102 @@ namespace AlchemistsArsenal.Art
                 PixelCanvas.Shade(ramp, 1f - (x - 1) / 7f * 0.8f - (y > 4 ? 0.2f : 0f), x, y));
             c.Outline(K);
             return c.Bake(key, PPU, new Vector2(0.5f, 0.5f));
+        }
+
+        // ------------------------------------------------------------ upgrades
+
+        /// <summary>
+        /// The clockwork stirrer's frame: a brass arch that stands over the pot, with a
+        /// gear housing at its crown. Pivot at the crown (where the paddle hangs).
+        /// </summary>
+        public static Sprite Gantry()
+        {
+            const string key = "clock_gantry";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 64, h = 34;
+            var c = new PixelCanvas(w, h);
+            // Two legs down to either side of the pot, a crossbar, and a housing.
+            c.Fill((x, y) => ((x >= 2 && x <= 4) || (x >= w - 5 && x <= w - 3)) && y >= 6, (x, y) =>
+                PixelCanvas.Shade(Brass, x < w / 2 ? 0.8f : 0.45f, x, y));
+            c.Fill((x, y) => y >= 5 && y <= 7 && x >= 2 && x <= w - 3, (x, y) =>
+                PixelCanvas.Shade(Brass, y == 5 ? 1f : 0.55f, x, y));
+            c.Fill((x, y) => PixelCanvas.InEllipse(x, y, w * 0.5f, 6f, 7f, 5.5f), (x, y) =>
+                PixelCanvas.Shade(Copper, PixelCanvas.SphereLight(x, y, w * 0.5f, 5f, 7f, 5.5f, 0.3f), x, y));
+            c.Fill((x, y) => (x == w / 2 - 1 || x == w / 2) && y >= 10 && y <= 13, (x, y) => PixelCanvas.Shade(Iron, 0.5f, x, y));
+            c.Outline(K);
+            return c.Bake(key, PPU, new Vector2(0.5f, 1f - 12f / h));
+        }
+
+        /// <summary>An eight-toothed brass gear, pivot at its hub.</summary>
+        public static Sprite Gear()
+        {
+            const string key = "clock_gear";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int n = 13;
+            var c = new PixelCanvas(n, n);
+            c.Fill((x, y) =>
+            {
+                float dx = x + 0.5f - n * 0.5f, dy = y + 0.5f - n * 0.5f;
+                float r = Mathf.Sqrt(dx * dx + dy * dy), a = Mathf.Atan2(dy, dx);
+                bool tooth = Mathf.Cos(a * 8f) > 0.3f;
+                return r <= (tooth ? 6.2f : 4.8f) && r >= 1.4f;
+            }, (x, y) => PixelCanvas.Shade(Brass, 0.9f - (x + y) * 0.03f, x, y));
+            c.Outline(K);
+            return c.Bake(key, PPU, new Vector2(0.5f, 0.5f));
+        }
+
+        /// <summary>The stirring paddle: a long wooden shaft and a flat blade, pivot at the top of the shaft.</summary>
+        public static Sprite Paddle()
+        {
+            const string key = "clock_paddle";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 7, h = 36;
+            var c = new PixelCanvas(w, h);
+            c.Fill((x, y) => x >= 2 && x <= 4 && y <= 26, (x, y) => PixelCanvas.Shade(Wood, x == 2 ? 0.85f : 0.5f, x, y));
+            c.Fill((x, y) => y >= 26 && y <= 34 && x >= 0 && x <= 6, (x, y) => PixelCanvas.Shade(Wood, 0.7f - (y - 26) * 0.04f, x, y));
+            c.Fill((x, y) => y >= 2 && y <= 4 && x >= 1 && x <= 5, (x, y) => PixelCanvas.Shade(Brass, 0.8f, x, y));   // collar
+            c.Outline(K);
+            return c.Bake(key, PPU, new Vector2(0.5f, 1f - 1f / h));
+        }
+
+        /// <summary>
+        /// A drying rack over the Prep bench: a wooden bar on two brackets with pegs, from
+        /// which the bench hangs its herbs to dry properly. Pivot at the middle of the bar.
+        /// </summary>
+        public static Sprite DryingRack()
+        {
+            const string key = "drying_rack";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 72, h = 12;
+            var c = new PixelCanvas(w, h);
+            c.Fill((x, y) => y >= 3 && y <= 5 && x >= 1 && x <= w - 2, (x, y) => PixelCanvas.Shade(Wood, y == 3 ? 0.95f : 0.45f, x, y));
+            c.Fill((x, y) => ((x >= 4 && x <= 6) || (x >= w - 7 && x <= w - 5)) && y <= 2, (x, y) => PixelCanvas.Shade(Iron, 0.6f, x, y));
+            for (int i = 0; i < 5; i++)
+            {
+                int px = 10 + i * 13;
+                c.Fill((x, y) => x == px && y >= 6 && y <= 9, (x, y) => PixelCanvas.Shade(Brass, 0.7f, x, y));
+            }
+            c.Outline(K);
+            return c.Bake(key, PPU, new Vector2(0.5f, 1f - 4f / h));
+        }
+
+        /// <summary>A glass funnel with a brass collar, sized to sit in the flask's neck; pivot at its spout.</summary>
+        public static Sprite Funnel()
+        {
+            const string key = "glass_funnel";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 20, h = 14;
+            var c = new PixelCanvas(w, h);
+            c.Fill((x, y) => y <= 8 && Mathf.Abs(x + 0.5f - w * 0.5f) <= 9.5f - y * 0.7f, (x, y) =>
+            {
+                bool edge = Mathf.Abs(x + 0.5f - w * 0.5f) > 8.5f - y * 0.7f || y == 0;
+                return edge ? PixelCanvas.Hex(0xc8e8f8, 220) : PixelCanvas.Hex(0x9fd4f0, 60);
+            });
+            c.Fill((x, y) => y > 8 && Mathf.Abs(x + 0.5f - w * 0.5f) <= 2.5f, (x, y) =>
+                y == 9 ? PixelCanvas.Shade(Brass, 0.8f, x, y) : PixelCanvas.Hex(0xc8e8f8, 200));
+            c.Fill((x, y) => x == 4 && y >= 1 && y <= 4, (x, y) => PixelCanvas.Hex(0xffffff, 160));
+            c.Outline(K);
+            return c.Bake(key, PPU, new Vector2(0.5f, 0f));
         }
 
         // ------------------------------------------------------------- the room

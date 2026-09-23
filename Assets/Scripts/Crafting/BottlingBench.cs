@@ -37,7 +37,13 @@ namespace AlchemistsArsenal.Crafting
         public enum Step { Pour, Seal, Label, Done }
 
         public const float BenchTopY = -1.9f;
-        public const float TargetLow = 0.78f, TargetHigh = 0.96f;
+        /// <summary>The line to pour to — wider with the glass funnel in the neck.</summary>
+        public static float TargetLow => Funnel ? 0.74f : 0.78f;
+        public static float TargetHigh => Funnel ? 0.98f : 0.96f;
+
+        public static bool Funnel =>
+            SaveSystem.Instance != null && SaveSystem.Instance.State != null
+            && SaveSystem.Instance.State.HasUpgrade(UpgradeCatalog.GlassFunnel);
         private const float FlaskScale = 1.5f, LadleScale = 1.4f;
         /// <summary>How far the ladle tips about its bowl (degrees, anticlockwise tips the lip down).</summary>
         private const float MaxTilt = 90f;
@@ -197,6 +203,11 @@ namespace AlchemistsArsenal.Crafting
             AddArt(go.transform, ShopArt.FlaskFront(), OrderGlass, "GlassFront", FlaskScale);
             // The line to pour to: ticks on the glass at the target band's two edges.
             AddArt(go.transform, ShopArt.FlaskMarks(RowAtFill(TargetLow), RowAtFill(TargetHigh)), OrderGlass + 1, "Line", FlaskScale);
+            if (Funnel)
+            {
+                var funnel = AddArt(go.transform, ShopArt.Funnel(), OrderGlass + 1, "Funnel", FlaskScale);
+                funnel.transform.localPosition = new Vector3(0f, (ShopArt.FlaskH - 2f) / ShopArt.PPU * FlaskScale, 0f);
+            }
 
             // The inside of the glass, lip to lip: down the neck, round the bulb, up the neck.
             var pts = new List<Vector2>();
