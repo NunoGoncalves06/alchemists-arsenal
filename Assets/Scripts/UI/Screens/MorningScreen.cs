@@ -35,13 +35,15 @@ namespace AlchemistsArsenal.UI
         // Prep comes before the Cauldron: you crush and add the leaves, then you
         // stir them. The Cauldron refuses to brew until the mixture is ready, so the
         // rail order is the order the work actually happens in.
-        private enum StationTab { Counter, Prep, Cauldron, Bottling }
+        // Malting comes right after the Counter: the grain is malted before anything
+        // else, and nothing reaches Prep until its malt is done.
+        private enum StationTab { Counter, Malting, Prep, Cauldron, Bottling }
 
         private readonly StationPanel[] _stations =
         {
-            new CounterStation(), new PrepStation(), new CauldronStation(), new BottlingStation(),
+            new CounterStation(), new MaltingStation(), new PrepStation(), new CauldronStation(), new BottlingStation(),
         };
-        private readonly UIKit.RailTab[] _tabs = new UIKit.RailTab[4];
+        private readonly UIKit.RailTab[] _tabs = new UIKit.RailTab[5];
 
         private StationTab _activeTab = StationTab.Counter;
         private bool _everSwitched;
@@ -277,6 +279,7 @@ namespace AlchemistsArsenal.UI
                     foreach (HeroRecord h in s.DeployedParty()) if (s.ContractFor(h.id) == null) n++;
                     return n;
                 }
+                case StationTab.Malting: return StationPanel.CountAt(BrewStage.Malting);
                 case StationTab.Prep: return StationPanel.CountAt(BrewStage.Prep);
                 case StationTab.Cauldron: return StationPanel.CountAt(BrewStage.Cauldron);
                 default: return StationPanel.CountAt(BrewStage.Bottling);
@@ -302,7 +305,7 @@ namespace AlchemistsArsenal.UI
             foreach (var station in _stations) station.Refresh();
             _dockSig = int.MinValue;
             RefreshDock();
-            if (CounterStation.AllServed) SwitchTab(StationTab.Prep);   // the leaves come before the stirring
+            if (CounterStation.AllServed) SwitchTab(StationTab.Malting);   // the grain is malted first
         }
 
         private void OnStationChanged()

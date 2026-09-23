@@ -178,6 +178,8 @@ namespace AlchemistsArsenal.Crafting
             int day = SaveSystem.Instance != null && SaveSystem.Instance.State != null ? SaveSystem.Instance.State.day : 1;
             // A fresh brew, and each fighter's recipe turns its own way.
             BeginBrew(day + next.queueIndex);
+            // The malt's enzymes are what break the herbs down: good malt, faster brew.
+            if (_liquid != null) _liquid.DissolveMultiplier = 0.7f + 0.6f * Mathf.Clamp01(next.MaltQuality01);
             if (next.Mixture != null)
             {
                 ApplyMix(next.Mixture.Evaluate());
