@@ -121,6 +121,8 @@ namespace AlchemistsArsenal.Combat
                 new[] { volley, slam }, new[] { storm, ring, slam }, new[] { pulse, volley },
                 enragedSpeed: 1.3f, wardSpeed: 0.7f);
             def.ConfigureIdentity("Mother of the Peak", "matriarch", 1.8f, new Vector2(0f, 2.7f));
+            // The last guardian barely shrinks for a small party: the Peak needs hired fighters.
+            def.ConfigurePartyScale(0.75f, 0.85f, 1f, 1.2f);
             return def;
         }
 

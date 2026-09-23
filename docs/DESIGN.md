@@ -916,18 +916,29 @@ an older section above, this one wins.
   `DamagePopups`, `CandleFlicker`.
 
 ### 12.2 The benches (morning)
-Scoring caps live in `Data/QualityBudget` (a flawless morning is 113 points, and
-the harness asserts it).
+Scoring caps live in `Data/QualityBudget` (a flawless morning is 115 points, and
+the harness asserts it). The benches run left to right: Counter, **Malting**,
+Prep, Cauldron, Bottling — and a flask cannot skip one (§12.6).
+- **Malting:** pour grain into the steeping jar to the line (a `BuoyancyEffector2D`
+  water: sound grain sinks, husks float and are skimmed), steep it, turn the
+  sprouting bed when it asks, then dry it in the kiln, holding the heat in its band
+  with logs (an `AreaEffector2D` of hot air lifts the grain as it heats). The malt's
+  quality is the brew's enzymes: it sets how fast the herbs dissolve in the pot.
 - **Prep:** leaves are thrown into the mortar on ballistic arcs (click, or drag
-  them in). A strike is the pestle's measured impact speed (ideal 6.5 m/s). Too
-  hard throws a leaf out. The bowl is drawn in three-quarter view, so its inside
+  them in). Once the last leaf is in, the bench says so — a pulsing arrow over the
+  bowl and "NOW PRESS AND HOLD ON THE BOWL". A strike is the pestle's measured
+  impact speed (ideal 6.5 m/s), and each lift is at most one strike. The gauge
+  predicts the fall to whatever the pestle will meet first (the top leaf, not the
+  bowl's floor). Too hard throws a leaf out. The bowl is drawn in three-quarter view, so its inside
   is foreshortened (`PrepBench.ToView`): a leaf on the floor of the physical bowl
   is drawn inside the mouth, with the near lip over its lower half.
 - **Cauldron:** the band is the **stir speed** itself, and it drifts. Too slow (or
   stopped) and the brew sticks to the bottom and then burns there — it darkens,
   smokes, and costs points every second until the spoon scrapes it clean. Too fast
   and the surface heaves and slops over the rim: one named penalty per spill, and
-  it takes the outermost undissolved herb with it. In the band, the vortex
+  it takes the outermost undissolved herb with it. Stirring too slowly also costs
+  (a small charge after a grace second), and a catching or burning bottom costs
+  more. In the band, the vortex
   dissolves the herbs and brew progress scales with how much has dissolved. (This
   replaced a heat meter that the stir only fed indirectly, so "too cold" and
   "overheating" were two names for the same hand.)
@@ -950,18 +961,18 @@ the harness asserts it).
   0.25 s.
 - **Phases:** Neutral, Enraged, Ward and Recovering, scored with IAUS as before.
   `MoveSpeedMultiplier` is read.
-- **Health:** authored for a party of three; one or two heroes face 0.32 / 0.66 of
-  it (`BossDefinition.HealthFor`).
+- **Health:** authored for a party of three (`BossDefinition.HealthFor`). The
+  Woodwose uses the shared scale — 0.32 / 0.66 / 1 / 1.3 of it for one to four
+  heroes — so one fighter can still clear the Woods. The Matriarch has her own,
+  0.75 / 0.85 / 1 / 1.2: the last road is not meant to be carried by one fighter.
 
 | Guardian | HP (x3) | Attacks |
 |---|---|---|
 | Elder Woodwose (Nature) | 1500 | Bramble Swipe, Thorn Volley, Root Slam, Briar Pulse |
 | Coven Matriarch (Arcane) | 1250 | Hex Volley, Hex Storm, Coven Slam, Sundering Ring, Ward Pulse |
 
-Measured with the harness's grade × party sweep: the Matriarch falls to a Great
-or Perfect flask at every party size, and to no Okay or Poor one. The optional
-Woodwose forgives Okay but not Poor. The Woodwose appears only once the Woods have
-been cleared, so a failed day-1 retry never meets it.
+The Woodwose appears only once the Woods have been cleared, so a failed day-1
+retry never meets it. How hard each road is, and what it takes, is in §12.6.
 
 ### 12.4 Arenas
 - **Backdrops:** `BiomeArt` draws each road (floor, skyline, margins, vignette),
@@ -986,3 +997,57 @@ The canon is the doc comment on `Story/StoryScript.cs`. The rules:
 - **Voices.** Veil's and Mira's Counter lines follow the roads cleared. The music
   is the kettle-charm lullaby (minor), a reveal drone, and the lullaby in major for
   the ending.
+
+### 12.6 One flask per fighter, the upgrades, and the difficulty curve (2026-09-23)
+- **Every fighter orders their own flask.** The fighters going out today come to
+  the Counter in roster order, and each takes a job (`ContractBoard.Offers`: the
+  standing order, a Guild commission, or their own element). Each job becomes an
+  `ActiveOrder` in `CraftingManager.Orders`, with a `BrewStage` (Malting, Prep,
+  Cauldron, Bottling, Done). Each bench works the oldest order waiting at its stage
+  by itself, so the benches run side by side: one fighter's grain dries in the
+  kiln while the next one's leaves are ground. A flask cannot skip a stage. The
+  morning clock grows by 135 s for each fighter after the first. Each fighter is
+  paid for their own job, and the Evening lists them one by one.
+- **Hiring is the only gate on the party.** A hire goes out the next day, after
+  the fighters already hired; no upgrade sells party slots. The cap is
+  `RunState.MaxParty` = 4. Hiring still needs the Woods cleared once.
+- **Bench upgrades** rebuild a bench. It looks different the next morning, and the
+  first visit announces it (a "NEW" banner and gold sparks, once, via
+  `RunState.seenUpgrades`). The Evening's Upgrades tab shows each one as a card
+  with what it installs, and plays an INSTALLED reveal on purchase.
+
+  | Upgrade | Bench | What changes |
+  |---|---|---|
+  | Clockwork Stirrer (220 g) | Cauldron | Copper pot with a wind-up paddle: brews by itself while you work elsewhere, at 0.8× pace and ¾ of the brew bonus |
+  | Draught Kiln (170 g) | Malting | Stokes itself to hold the heat band; dries a quarter faster |
+  | Steeping Vat (120 g) | Malting | Soak and sprouting run about a third faster |
+  | Drying Rack (110 g) | Prep | No wilted leaves; every leaf one potency plumper |
+  | Brass Mortar (100 g) | Prep | The clean-strike band is a third wider |
+  | Glass Funnel (90 g) | Bottling | A wider line to pour to |
+
+- **Road upgrades** go out with the party, in two tiers (a second-tier upgrade
+  needs its first): Heavier Flasks → Tempered Glass (+25% damage each), Spare
+  Vials → Bandolier (+5 then +8 ammo), Thick Boots → Hardened Leathers (+30 then
+  +50 HP), and Quick Hands (−25% cooldown). `UpgradeCatalog.RoadTier` reads a run's
+  kit as 0, 1 (all first-tier) or 2 (everything).
+- **The difficulty curve.** `BiomeLibrary.FightersNeeded` / `RoadTierNeeded` state
+  what each road asks for, and the biome map shows it against the party you have.
+
+  | Road | Asks for | Alone, nothing bought |
+  |---|---|---|
+  | Whispering Woods | 1 fighter | wins |
+  | Cinder Peaks | 1 fighter | wins |
+  | Frostbite Caverns | 2 fighters, first road tier | loses |
+  | Venom Swamp | 3 fighters, first road tier | loses (and so does one fighter with everything) |
+  | The Coven's Peak | 3 fighters, every road upgrade | loses (and so does a bare party of three or four) |
+
+  From the Caverns on, the waves are denser, tougher and bite harder
+  (`MonsterData.ContactDamage`), and each road has one off-element wave, so a
+  party with more than one kind of flask does better. The harness's `balance`
+  suite (also run by the full suite) fights every road with 1–4 fighters, with no
+  road upgrades, the first tier and both, on two seeds, carrying Great flasks. It
+  fails the run if the first two roads are lost alone, if a later road is won
+  alone and bare, or if what a road asks for is not enough.
+  `GameLoopSimulationTest.TestCurveIsAffordable` checks the other half: a player
+  who wins every road with Great flasks can pay for that kit with at most two
+  replay days before any road.

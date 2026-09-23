@@ -73,6 +73,8 @@ namespace AlchemistsArsenal.Core
             /// seed sweep across all five biomes). From <c>-playtestSuite</c>.</summary>
             private string _suite = "quick";
             private bool FullSuite => _suite == "full";
+            /// <summary>Only the difficulty curve: every road against every party a player could field.</summary>
+            private bool BalanceSuite => _suite == "balance";
 
             /// <summary>One entry per resolved fight, joined into the report's
             /// FINGERPRINT line so two runs can be diffed.</summary>
@@ -180,6 +182,13 @@ namespace AlchemistsArsenal.Core
                 foreach (var step in Settle("boot_main_menu")) yield return step;
                 foreach (var step in ProbeClocks()) yield return step;
 
+                if (BalanceSuite)
+                {
+                    SaveSystem.Instance.NewGame(HarnessSlot);
+                    foreach (var step in RunDifficultyCurve()) yield return step;
+                    yield break;
+                }
+
                 // Run the pure meta-layer checks (save round-trip, migration
                 // clamping, perk symmetry, cost curves, the quality budget) inside
                 // this same batchmode session. They are a MonoBehaviour because
@@ -274,6 +283,9 @@ namespace AlchemistsArsenal.Core
                     // is poured while the last one's dries in the kiln.
                     SwitchMorningTab(morningScreen, "Malting");
                     foreach (var step in Settle($"day{day}_morning_malting")) yield return step;
+                    RunState ms = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+                    if (ms != null && ms.HasUpgrade(Data.UpgradeCatalog.DraughtKiln) && !ms.seenUpgrades.Contains(Data.UpgradeCatalog.DraughtKiln))
+                        Fail("The Malting bench never announced its new Draught Kiln.");
                     foreach (var step in DriveMalting(orders, day)) { if (_errorCount > 0) break; yield return step; }
                     if (_errorCount > 0) yield break;
 
@@ -292,7 +304,10 @@ namespace AlchemistsArsenal.Core
 
                     SwitchMorningTab(morningScreen, "Cauldron");
                     _orderTag = "";
+                    _clockworkBrews = 0;
                     foreach (var step in Settle($"day{day}_morning_cauldron")) yield return step;
+                    if (ms != null && ms.HasUpgrade(Data.UpgradeCatalog.ClockworkStirrer) && !ms.seenUpgrades.Contains(Data.UpgradeCatalog.ClockworkStirrer))
+                        Fail("The Cauldron never announced its new Clockwork Stirrer.");
                     for (int k = 0; k < orders.Count && _errorCount == 0; k++)
                     {
                         _orderTag = k == 0 ? "" : $"_o{k + 1}";
@@ -301,6 +316,8 @@ namespace AlchemistsArsenal.Core
                         foreach (var step in Settle($"day{day}{_orderTag}_morning_cauldron_done")) yield return step;
                     }
                     if (_errorCount > 0) yield break;
+                    if (Crafting.PhysicsCauldronManager.AutoStir && orders.Count > 1 && _clockworkBrews == 0)
+                        Fail("The clockwork stirrer is installed but brewed nothing by itself.");
 
                     SwitchMorningTab(morningScreen, "Bottling");
                     _orderTag = "";
@@ -466,6 +483,26 @@ namespace AlchemistsArsenal.Core
 
                         CallPrivate(eveningScreen, "ShowRoster");
                         foreach (var step in Settle($"day{day}_evening_roster_full")) yield return step;
+
+                        // Every bench upgrade, so day 3 plays the rebuilt benches: the
+                        // clockwork cauldron brews one flask by itself, the draught kiln
+                        // keeps its own fire. A second tier cannot be bought before its first.
+                        st.gold = 2000;
+                        CallPrivate(eveningScreen, "BuyUpgrade", Data.UpgradeCatalog.TemperedGlass, 160);
+                        if (st.HasUpgrade(Data.UpgradeCatalog.TemperedGlass))
+                            Fail("Tempered Glass was sold before Heavier Flasks - the tier requirement is not enforced.");
+                        foreach (var up in Data.UpgradeCatalog.All)
+                        {
+                            if (!up.IsBench) continue;
+                            CallPrivate(eveningScreen, "BuyUpgrade", up.Id, up.Cost);
+                            if (!st.HasUpgrade(up.Id)) Fail($"Buying {up.DisplayName} did not take.");
+                        }
+                        Log($"Bench upgrades bought: {string.Join(", ", st.ownedUpgrades)}; {st.gold} g left.");
+                        foreach (var f in Frames(12)) yield return f;
+                        Capture($"day{day}_evening_upgrades_installing");
+                        // The reveal runs on real time (the Evening is paused): let it land.
+                        for (float t0 = Time.unscaledTime; Time.unscaledTime - t0 < 1.8f;) yield return null;
+                        foreach (var step in Settle($"day{day}_evening_upgrades_bought")) yield return step;
                     }
 
                     GameLoopManager.Instance.BeginBiomeMap();
@@ -493,6 +530,7 @@ namespace AlchemistsArsenal.Core
                 {
                     foreach (var step in RunBiomeSweep()) yield return step;
                     foreach (var step in RunGradeSweep()) yield return step;
+                    foreach (var step in RunDifficultyCurve()) yield return step;
                 }
 
                 // Last, because it changes what the whole run remembers.
@@ -519,6 +557,8 @@ namespace AlchemistsArsenal.Core
 
             /// <summary>Suffix for screenshots of the second and later orders of a morning ("_o2").</summary>
             private string _orderTag = "";
+            private bool _lastScenarioWon;
+            private int _clockworkBrews;
 
             /// <summary>
             /// Malt every order of the morning, interleaved: the jar and the kiln each
@@ -683,7 +723,7 @@ namespace AlchemistsArsenal.Core
                     t = 0f;
                     while (bench.StrikesLeft == left && t < 4f) { t += Time.deltaTime; yield return null; }
                     if (bench.StrikesLeft == left) { Fail($"Pestle strike {s + 1} never registered on the bowl."); break; }
-                    Log($"Prep strike {s + 1}: {bench.LastStrikeSpeed:0.00} m/s (clean {Crafting.PrepBench.IdealStrike}±{bench.CurrentBand})");
+                    Log($"Prep strike {s + 1}: {bench.LastStrikeSpeed:0.00} m/s (clean {Crafting.PrepBench.IdealStrike}±{bench.CurrentBand}) on {bench.LastStrikeWith}");
                     foreach (var f in Frames(25)) yield return f;
                 }
                 PhysicsKit.Pointer.Scripted = null;
@@ -696,9 +736,24 @@ namespace AlchemistsArsenal.Core
                 var pot = Crafting.PhysicsCauldronManager.Instance;
                 if (pot == null || pot.Liquid == null || order == null) { Fail("No cauldron / surface to stir."); yield break; }
                 // The pot takes up the next brewed mash by itself (after the last brew has been seen done).
-                foreach (var step in WaitUntil(() => pot.Working == order, 8f, $"the cauldron taking up {order.heroName}'s mash"))
+                // With the clockwork stirrer it may already have brewed it alone while we were at Prep.
+                foreach (var step in WaitUntil(() => pot.Working == order || order.stage > BrewStage.Cauldron, 8f,
+                             $"the cauldron taking up {order.heroName}'s mash"))
                     yield return step;
                 if (_errorCount > 0) yield break;
+                if (order.stage > BrewStage.Cauldron)
+                {
+                    int paddle = 0;
+                    foreach (var d in order.deductions) if (d.reason.Contains("clockwork paddle")) paddle += d.pointsDelta;
+                    if (!Crafting.PhysicsCauldronManager.AutoStir || paddle <= 0)
+                        Fail($"{order.heroName}'s flask left the cauldron without anyone stirring it.");
+                    else
+                    {
+                        _clockworkBrews++;
+                        Log($"Cauldron: the clockwork paddle brewed {order.heroName}'s flask alone while we worked Prep (+{paddle} of {QualityBudget.BrewTotal}), quality {order.qualityScore}");
+                    }
+                    yield break;
+                }
                 var mix = order.Mixture;
 
                 // Wait for the mash to land on the surface.
@@ -744,6 +799,28 @@ namespace AlchemistsArsenal.Core
                         else Log($"Cauldron fumble: the bottom caught and burned (scorch {pot.Scorch01:0.00}), as it should.");
                     }
                     Capture($"day{day}{_orderTag}_morning_cauldron_burning");
+                }
+
+                // With the clockwork stirrer, the second flask is left to the paddle:
+                // the spoon stays off the pot and the brew must still finish.
+                if (Crafting.PhysicsCauldronManager.AutoStir && order.queueIndex == 1)
+                {
+                    _pointer.World = pot.ToWorld(new Vector2(R * 4f, R * 3f));
+                    float waited = 0f;
+                    bool shot = false;
+                    while (!pot.IsBrewComplete && waited < 90f)
+                    {
+                        if (!pot.ClockworkTurning && waited > 0.5f && !pot.IsBrewComplete)
+                        { Fail("The clockwork paddle is not turning with the spoon off the pot."); break; }
+                        if (!shot && pot.BrewProgress01 > 0.3f) { shot = true; Capture($"day{day}{_orderTag}_morning_cauldron_clockwork"); }
+                        waited += Time.deltaTime;
+                        yield return null;
+                    }
+                    PhysicsKit.Pointer.Scripted = null;
+                    if (!pot.IsBrewComplete) Fail($"The clockwork stirrer never finished the brew in 90 s (progress {pot.BrewProgress01:P0}).");
+                    else _clockworkBrews++;
+                    if (pot.IsBrewComplete) Log($"Cauldron: the clockwork paddle brewed {order.heroName}'s flask alone in {waited:0.0}s, {pot.DissolvedFraction:P0} dissolved, quality {order.qualityScore}");
+                    yield break;
                 }
 
                 float elapsed = 0f;
@@ -1238,28 +1315,133 @@ namespace AlchemistsArsenal.Core
             private IEnumerable RunBossScenarios()
             {
                 foreach (var step in RunScenario(0, 5, "boss_woodwose", capture: true)) yield return step;
+                // The Peak is tuned to need the road kit (BiomeLibrary.RoadTierNeeded): she is
+                // met by the party a player has to bring there.
+                var saved = WithRoadKit(BiomeLibrary.RoadTierNeeded[BiomeLibrary.Count - 1]);
                 foreach (var step in RunScenario(BiomeLibrary.Count - 1, 5, "boss_matriarch", capture: true)) yield return step;
+                RestoreUpgrades(saved);
+            }
+
+            /// <summary>Lend the run the road upgrades up to <paramref name="tier"/>; returns what it owned before.</summary>
+            private static List<string> WithRoadKit(int tier)
+            {
+                RunState st = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+                if (st == null) return null;
+                var saved = new List<string>(st.ownedUpgrades);
+                foreach (var up in UpgradeCatalog.All)
+                {
+                    if (up.IsBench || st.HasUpgrade(up.Id)) continue;
+                    bool second = up.Requires.Length > 0;
+                    if (tier >= 2 || (tier >= 1 && !second)) st.ownedUpgrades.Add(up.Id);
+                }
+                return saved;
+            }
+
+            private static void RestoreUpgrades(List<string> saved)
+            {
+                RunState st = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+                if (st != null && saved != null) st.ownedUpgrades = saved;
             }
 
             /// <summary>
-            /// Full suite only: both guardians against every flask grade, with a full
-            /// party and alone. This is the loop's promise measured, not assumed: what
-            /// the morning brewed decides whether the afternoon's guardian falls.
+            /// Full suite only: both guardians against every flask grade. The Woodwose
+            /// with a full party and alone; the Matriarch with the party and road kit the
+            /// Peak asks for. This is the loop's promise measured, not assumed: what the
+            /// morning brewed decides whether the afternoon's guardian falls.
             /// </summary>
             private IEnumerable RunGradeSweep()
             {
                 int[] grades = { 97, 85, 70, 50 };
-                foreach (int biome in new[] { 0, BiomeLibrary.Count - 1 })
+                foreach (int q in grades)
+                    foreach (var step in RunScenario(0, 11, $"grade_b0_q{q}_x3", capture: false, quality: q, partySize: 3))
+                        yield return step;
+                foreach (int q in new[] { 97, 85, 70 })
+                    foreach (var step in RunScenario(0, 11, $"grade_b0_q{q}_x1", capture: false, quality: q, partySize: 1))
+                        yield return step;
+
+                int peak = BiomeLibrary.Count - 1;
+                var saved = WithRoadKit(BiomeLibrary.RoadTierNeeded[peak]);
+                foreach (int q in grades)
+                    foreach (var step in RunScenario(peak, 11, $"grade_b{peak}_q{q}_x{BiomeLibrary.FightersNeeded[peak]}", capture: false,
+                                 quality: q, partySize: BiomeLibrary.FightersNeeded[peak]))
+                        yield return step;
+                RestoreUpgrades(saved);
+            }
+
+            /// <summary>
+            /// The difficulty curve, measured: every road against the parties a player
+            /// could field by then — alone or hired up, with or without the road
+            /// upgrades — all carrying Great flasks. The first two roads must be won
+            /// alone and bare; from the third on, a player who neither hires nor buys
+            /// must lose, and one who does both must be able to win. Uses a fixed
+            /// roster of four (the Rookie and the notice board's first three) and puts
+            /// the run's own roster and upgrades back afterwards.
+            /// </summary>
+            private IEnumerable RunDifficultyCurve()
+            {
+                RunState st = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+                if (st == null) { Fail("Difficulty curve: no run state."); yield break; }
+                var savedRoster = st.roster;
+                var savedUps = st.ownedUpgrades;
+
+                var four = new List<HeroRecord> { HeroCatalog.NewHire("Rookie", 0) };
+                while (four.Count < 4) four.Add(HeroCatalog.CandidateFor(2, four));
+                foreach (HeroRecord h in four) { h.deployed = true; h.level = 1; h.restUntilDay = 0; }
+                st.roster = four;
+
+                string[] none = { };
+                string[] road1 = { UpgradeCatalog.HeavierFlasks, UpgradeCatalog.SpareVials, UpgradeCatalog.ThickBoots, UpgradeCatalog.QuickHands };
+                var road2 = new List<string>(road1) { UpgradeCatalog.TemperedGlass, UpgradeCatalog.Bandolier, UpgradeCatalog.HardLeathers }.ToArray();
+                var cells = new (string tag, int party, string[] ups)[]
                 {
-                    foreach (int q in grades)
-                        foreach (var step in RunScenario(biome, 11, $"grade_b{biome}_q{q}_x3", capture: false, quality: q, partySize: 3))
-                            yield return step;
-                    foreach (int q in new[] { 97, 85, 70 })
-                        foreach (var step in RunScenario(biome, 11, $"grade_b{biome}_q{q}_x1", capture: false, quality: q, partySize: 1))
-                            yield return step;
-                    foreach (int q in new[] { 85, 70 })
-                        foreach (var step in RunScenario(biome, 11, $"grade_b{biome}_q{q}_x2", capture: false, quality: q, partySize: 2))
-                            yield return step;
+                    ("x1_bare", 1, none), ("x1_road1", 1, road1), ("x1_road2", 1, road2),
+                    ("x2_bare", 2, none), ("x2_road1", 2, road1),
+                    ("x3_bare", 3, none), ("x3_road1", 3, road1), ("x3_road2", 3, road2),
+                    ("x4_bare", 4, none), ("x4_road2", 4, road2),
+                };
+                var won = new Dictionary<string, int>();
+                var table = new StringBuilder();
+                int[] seeds = { 11, 12 };
+                for (int biome = 0; biome < BiomeLibrary.Count && _errorCount == 0; biome++)
+                {
+                    table.Append($"\n  b{biome} {BiomeLibrary.Name(biome),-18}");
+                    foreach (var cell in cells)
+                    {
+                        int wins = 0;
+                        foreach (int seed in seeds)
+                        {
+                            st.ownedUpgrades = new List<string>(cell.ups);
+                            foreach (var step in RunScenario(biome, seed, $"curve_b{biome}_{cell.tag}_s{seed}", capture: false,
+                                         quality: 85, partySize: cell.party))
+                                yield return step;
+                            if (_lastScenarioWon) wins++;
+                        }
+                        won[$"b{biome}_{cell.tag}"] = wins;
+                        table.Append($" {cell.tag}={wins}/{seeds.Length}");
+                    }
+                }
+                st.roster = savedRoster;
+                st.ownedUpgrades = savedUps;
+                Log($"Difficulty curve (Great flasks, wins of {seeds.Length} seeds):{table}");
+
+                void Expect(string key, bool mustWin, string why)
+                {
+                    if (!won.TryGetValue(key, out int w)) return;
+                    if (mustWin && w < seeds.Length) Fail($"Difficulty curve: {key} won {w}/{seeds.Length} — {why}");
+                    if (!mustWin && w > 0) Fail($"Difficulty curve: {key} won {w}/{seeds.Length} — {why}");
+                }
+                string Cell(int party, int tier) => $"x{party}_{(tier == 0 ? "bare" : "road" + tier)}";
+                for (int b = 0; b < BiomeLibrary.Count; b++)
+                {
+                    int p = BiomeLibrary.FightersNeeded[b], t = BiomeLibrary.RoadTierNeeded[b];
+                    Expect($"b{b}_{Cell(p, t)}", true, $"what the road asks for must be enough ({BiomeLibrary.Needs(b)})");
+                    Expect($"b{b}_x3_road2", true, "a hired, upgraded party must be able to win every road.");
+                    if (p > 1 || t > 0)
+                        Expect($"b{b}_x1_bare", false, "a player who neither hires nor upgrades must lose here.");
+                    if (t >= 2)
+                        Expect($"b{b}_{Cell(p, 0)}", false, "bodies alone must not carry it: it needs the upgrades too.");
+                    if (p >= 3)
+                        Expect($"b{b}_x1_road2", false, "upgrades alone must not carry it: it needs hired fighters too.");
                 }
             }
 
@@ -1345,6 +1527,7 @@ namespace AlchemistsArsenal.Core
                     Log($"  {label} boss: {watch.Telegraphs} windups ({watch.ShapeCounts}), {watch.Landings} landings, " +
                         $"{watch.HeroHits} hero hits, phases {watch.PhasePath}.");
                 _fingerprint.Add($"{label}={summary}");
+                _lastScenarioWon = world.Expedition.Phase == ExpeditionPhase.Won;
                 if (capture && world.Expedition.Phase == ExpeditionPhase.Won && watch.Telegraphs > 0)
                 {
                     // Let the guardian come apart on camera before the arena is torn down.

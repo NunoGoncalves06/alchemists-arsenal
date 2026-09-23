@@ -153,6 +153,28 @@ namespace AlchemistsArsenal.Crafting
         private ActiveOrder Order => Working != null && Working.stage == BrewStage.Cauldron ? Working : null;
         private float _lingerUntil;
 
+        /// <summary>The clockwork stirrer: a copper pot with a wind-up paddle over it.</summary>
+        public static bool AutoStir =>
+            SaveSystem.Instance != null && SaveSystem.Instance.State != null
+            && SaveSystem.Instance.State.HasUpgrade(UpgradeCatalog.ClockworkStirrer);
+
+        /// <summary>How fast the paddle brews, against a good hand in the band.</summary>
+        private const float ClockworkPace = 0.8f;
+        /// <summary>
+        /// What the paddle's brew is worth against a good hand's: it never errs, but it
+        /// never works the herbs as well either. Owned-and-ignored is a fine flask; the
+        /// best one is still stirred.
+        /// </summary>
+        public const float ClockworkShare = 0.75f;
+        private float _paddleCredit;
+
+        /// <summary>
+        /// The paddle is turning the brew: there is a mash in the pot and no hand on the
+        /// spoon. It holds the middle of the band, the way the recipe turns, so the brew
+        /// goes on while the player works another bench.
+        /// </summary>
+        public bool ClockworkTurning => AutoStir && Order != null && !IsBrewComplete && !mouseOverPot;
+
         /// <summary>The element of the brew in the pot (what the liquid is tinted).</summary>
         public ElementType BrewElement => Working != null ? Working.element : ElementType.Nature;
 
@@ -330,6 +352,7 @@ namespace AlchemistsArsenal.Crafting
             IngredientCount = 0;
             SplashCount = 0;
             _paidChunks = 0;
+            _paddleCredit = 0f;
             _scorch = _slosh = _slowFor = 0f;
             _spillCooldownLeft = 0f;
             if (_liquid != null) _liquid.ClearAll();
@@ -349,11 +372,17 @@ namespace AlchemistsArsenal.Crafting
             mouseOverPot = Attended && MixtureReady && surface.sqrMagnitude <= (R * 1.15f) * (R * 1.15f);
 
             TrackSpin(surface);
+            if (ClockworkTurning)
+            {
+                float want = (RequiredClockwise ? -1f : 1f) * bandCenter * spinForFullPower;
+                smoothedSpinDegPerSec = Mathf.Lerp(smoothedSpinDegPerSec, want, Damp(3f));
+                everStirred = true;
+            }
 
             if (_liquid != null)
             {
-                _liquid.SpinDegPerSec = mouseOverPot ? smoothedSpinDegPerSec : 0f;
-                _liquid.StirringCorrectly = StirringCorrectly;
+                _liquid.SpinDegPerSec = mouseOverPot || ClockworkTurning ? smoothedSpinDegPerSec : 0f;
+                _liquid.StirringCorrectly = StirringCorrectly || ClockworkTurning;
                 _liquid.Spoon = mouseOverPot ? Vector2.ClampMagnitude(surface, R * 0.95f) : (Vector2?)null;
             }
 
@@ -452,7 +481,8 @@ namespace AlchemistsArsenal.Crafting
             if (!mouseOverPot || r01 < innerDeadRadius)
             {
                 hasLastAngle = false;
-                smoothedSpinDegPerSec = Mathf.Lerp(smoothedSpinDegPerSec, 0f, Damp(mouseOverPot ? 2.5f : 6f));
+                if (!ClockworkTurning)
+                    smoothedSpinDegPerSec = Mathf.Lerp(smoothedSpinDegPerSec, 0f, Damp(mouseOverPot ? 2.5f : 6f));
                 return;
             }
 
@@ -479,6 +509,16 @@ namespace AlchemistsArsenal.Crafting
         {
             ActiveOrder activeOrder = Order;
             if (activeOrder == null) return;
+
+            // The clockwork paddle brews on by itself, at any bench, and never errs.
+            if (ClockworkTurning)
+            {
+                float cpace = Mathf.Lerp(undissolvedPace, 1f, DissolvedFraction) * ClockworkPace;
+                BrewProgress01 = Mathf.Clamp01(BrewProgress01 + Time.deltaTime / Mathf.Max(1f, brewSeconds) * cpace);
+                PayChunks(activeOrder, "Held the band (the clockwork paddle)", ClockworkShare);
+                return;
+            }
+
             if (!Attended) return;        // not at this bench
             if (!MixtureReady) return;    // nothing in the pot yet
             if (IsBrewComplete) return;   // quality is locked
@@ -496,16 +536,7 @@ namespace AlchemistsArsenal.Crafting
                 float pace = Mathf.Lerp(undissolvedPace, 1f, DissolvedFraction);
                 BrewProgress01 = Mathf.Clamp01(BrewProgress01 + Time.deltaTime / Mathf.Max(1f, brewSeconds) * pace);
 
-                // The whole brew pays QualityBudget.BrewTotal, in instalments along the
-                // bar. Paying per second (as it used to) made a slower brew worth more.
-                int due = Mathf.FloorToInt(BrewProgress01 * BonusChunks + 0.0001f);
-                while (_paidChunks < due)
-                {
-                    _paidChunks++;
-                    int chunk = QualityBudget.BrewTotal / BonusChunks
-                                + (_paidChunks <= QualityBudget.BrewTotal % BonusChunks ? 1 : 0);
-                    activeOrder.ApplyBonus(chunk, "Cauldron", $"Held the band at {Mathf.RoundToInt(StirRate * 100)}%", Time.time);
-                }
+                PayChunks(activeOrder, $"Held the band at {Mathf.RoundToInt(StirRate * 100)}%");
                 return;
             }
 
@@ -545,6 +576,29 @@ namespace AlchemistsArsenal.Crafting
 
             activeOrder.ApplyDeduction(penalty, "Cauldron", reason, Time.time);
             nextDeductionTime = Time.time + deductionInterval;
+        }
+
+        /// <summary>
+        /// The whole brew pays QualityBudget.BrewTotal, in instalments along the bar.
+        /// Paying per second (as it used to) made a slower brew worth more.
+        /// </summary>
+        private void PayChunks(ActiveOrder order, string reason, float share = 1f)
+        {
+            int due = Mathf.FloorToInt(BrewProgress01 * BonusChunks + 0.0001f);
+            while (_paidChunks < due)
+            {
+                _paidChunks++;
+                int chunk = QualityBudget.BrewTotal / BonusChunks
+                            + (_paidChunks <= QualityBudget.BrewTotal % BonusChunks ? 1 : 0);
+                if (share < 1f)
+                {
+                    // A share of a chunk, carried over so the whole brew comes to the share.
+                    _paddleCredit += chunk * share;
+                    chunk = Mathf.FloorToInt(_paddleCredit + 0.0001f);
+                    _paddleCredit -= chunk;
+                }
+                order.ApplyBonus(chunk, "Cauldron", reason, Time.time);
+            }
         }
 
         /// <summary>A herb a spill threw is clear of the pot: the view flies it out. The spill itself is already scored.</summary>

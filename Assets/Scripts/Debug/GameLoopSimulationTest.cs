@@ -35,6 +35,7 @@ namespace AlchemistsArsenal.DebugTools
             TestInjuries();
             TestPerkSymmetry();
             TestCostCurve();
+            TestCurveIsAffordable();
             TestStoryRoundTrip();
             TestStoryRules();
             Done = true;
@@ -415,6 +416,63 @@ namespace AlchemistsArsenal.DebugTools
             Check(fullClimb <= HeroPerks.AttunementMultiplier + 0.05f,
                 $"perks: the whole level climb (x{fullClimb:F2}) is worth about one perk " +
                 $"(x{HeroPerks.AttunementMultiplier:F2}) - identity survives levelling");
+        }
+
+        /// <summary>
+        /// The later roads are tuned to need hired fighters and the road upgrades (the
+        /// harness's difficulty curve measures that). This checks the other half: that
+        /// a player who wins every road with Great flasks — the Guild commission for
+        /// every fighter, and only the least gold each monster can drop — can pay for
+        /// what each road needs with at most two replay days before it. The kit is
+        /// what the curve demands: a second fighter and the first road upgrades for
+        /// the Caverns, a third fighter for the Swamp, the second tier for the Peak.
+        /// </summary>
+        private void TestCurveIsAffordable()
+        {
+            // What each road needs: fighters, and the road upgrades bought so far (in gold).
+            var need = new (int party, int kit)[BiomeLibrary.Count];
+            for (int b = 0; b < BiomeLibrary.Count; b++)
+                need[b] = (BiomeLibrary.FightersNeeded[b], UpgradeCatalog.RoadTierCost(BiomeLibrary.RoadTierNeeded[b]));
+
+            int LeastLoot(int biome)
+            {
+                int g = 0;
+                foreach (var w in BiomeLibrary.Get(biome).Waves) g += w.count * w.monster.GoldMin;
+                return g;
+            }
+            int DayPay(int day, int biome, int party, bool replay)
+            {
+                int paid = 0;
+                for (int i = 0; i < party; i++)
+                {
+                    ContractRecord best = null;
+                    foreach (ContractRecord c in ContractBoard.Offers(day, biome, null))
+                        if (c.Meets(PotionGrade.Great) && (best == null || c.fee + c.bonus > best.fee + best.bonus)) best = c;
+                    if (best != null) { best.accepted = true; paid += Economy.ContractPayout(PotionGrade.Great, best, replay).paid; }
+                }
+                return paid + LeastLoot(biome);
+            }
+
+            int gold = 0, dayN = 1, fighters = 1, kit = 0, worst = 0;
+            var trace = new System.Text.StringBuilder();
+            for (int biome = 0; biome < BiomeLibrary.Count; biome++)
+            {
+                int replays = 0;
+                while (true)
+                {
+                    while (fighters < need[biome].party && gold >= HeroCatalog.HireCost(fighters))
+                    { gold -= HeroCatalog.HireCost(fighters); fighters++; }
+                    if (fighters >= need[biome].party && kit < need[biome].kit && gold >= need[biome].kit - kit)
+                    { gold -= need[biome].kit - kit; kit = need[biome].kit; }
+                    if ((fighters >= need[biome].party && kit >= need[biome].kit) || replays >= 6) break;
+                    gold += DayPay(dayN++, Mathf.Max(0, biome - 1), fighters, replay: true);
+                    replays++;
+                }
+                worst = Mathf.Max(worst, replays);
+                trace.Append($" b{biome}:day{dayN} x{fighters} kit{kit}g replays{replays}");
+                gold += DayPay(dayN++, biome, fighters, replay: false);
+            }
+            Check(worst <= 2, $"economy: the curve's kit is affordable with at most 2 replays before a road —{trace} (worst {worst})");
         }
 
         private void TestCostCurve()

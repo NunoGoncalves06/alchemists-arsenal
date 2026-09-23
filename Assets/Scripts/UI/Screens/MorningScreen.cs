@@ -61,6 +61,11 @@ namespace AlchemistsArsenal.UI
         private ActiveOrder _focus;
         private int _dockSig = int.MinValue;
 
+        // the one-time "NEW" at an upgraded bench
+        private Image _newBanner;
+        private TextMeshProUGUI _newText;
+        private float _newShownAt = -10f;
+
         // ------------------------------------------------------------------ build
 
         protected override void Build()
@@ -74,7 +79,44 @@ namespace AlchemistsArsenal.UI
             BuildRail();
             BuildOrderDock();
 
+            _newBanner = UIFactory.Panel(transform, UITheme.Parchment, "NewBanner");
+            // Low over the bench's own planks: every station keeps its text up top.
+            UIFactory.Place(_newBanner.rectTransform, 0.2f, 0.262f, 0.585f, 0.31f);
+            _newBanner.raycastTarget = false;
+            _newText = UIFactory.Label(_newBanner.transform, "", UITheme.SizeBody, UITheme.Ink900, TextAlignmentOptions.Center, true);
+            UIFactory.Stretch(_newText.rectTransform, 6f);
+            _newBanner.gameObject.SetActive(false);
+
             SwitchTab(StationTab.Counter);
+        }
+
+        /// <summary>
+        /// The first time an upgraded bench is visited, it shows itself off: a banner
+        /// naming what was installed, and gold sparks over the bench. Once per upgrade.
+        /// </summary>
+        private void AnnounceUpgrades(StationTab tab)
+        {
+            RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+            if (s == null || _newBanner == null) return;
+            string bench = _stations[(int)tab].RailName;
+            var names = new System.Collections.Generic.List<string>();
+            foreach (var up in UpgradeCatalog.All)
+            {
+                if (up.Bench != bench || !s.HasUpgrade(up.Id) || s.seenUpgrades.Contains(up.Id)) continue;
+                s.seenUpgrades.Add(up.Id);
+                names.Add(up.DisplayName);
+            }
+            if (names.Count == 0) return;
+            SaveSystem.Instance.MarkDirty();
+            _newText.text = $"<b>NEW</b> — {string.Join(" and ", names)} installed";
+            _newBanner.gameObject.SetActive(true);
+            _newShownAt = Time.unscaledTime;
+            if (Vfx.VfxWorld.Active != null && (int)tab < ShopWorld.BenchCentres.Length)
+            {
+                Vector2 at = ShopWorld.BenchCentres[(int)tab] + new Vector2(0f, 0.2f);
+                Vfx.VfxWorld.Active.Burst(at, new Color(1f, 0.85f, 0.4f), 26, 4f, 0.12f, 0.9f, glow: true);
+            }
+            AudioManager.Play(Sfx.Chime);
         }
 
         private void BuildTopBar()
@@ -251,6 +293,7 @@ namespace AlchemistsArsenal.UI
             RefreshRail();
             _dockSig = int.MinValue;   // the dock follows the flask on this bench
             AudioManager.Play(Sfx.Tab);
+            AnnounceUpgrades(tab);
         }
 
         private void RefreshRail()
@@ -457,6 +500,9 @@ namespace AlchemistsArsenal.UI
         {
             StationPanel active = _stations[(int)_activeTab];
             if (active != null) active.Tick();
+
+            if (_newBanner != null && _newBanner.gameObject.activeSelf && Time.unscaledTime - _newShownAt > 3.5f)
+                _newBanner.gameObject.SetActive(false);
 
             int sig = DockSignature();
             if (sig != _dockSig)

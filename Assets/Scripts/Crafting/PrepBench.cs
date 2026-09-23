@@ -72,6 +72,12 @@ namespace AlchemistsArsenal.Crafting
         private TargetJoint2D _lift;
         private float _liftHeight;
         private float _strikeCooldown;
+        /// <summary>
+        /// One strike per blow: a lift arms the pestle and the first blow it lands in
+        /// the bowl spends it. Without this a soft blow that first met a leaf, then
+        /// settled onto the bowl a moment later, counted as two strikes.
+        /// </summary>
+        private bool _strikeArmed;
         private int _rolledForDay = -1;
         private Grabbable2D _pressed;
         private float _pressTime;
@@ -81,7 +87,19 @@ namespace AlchemistsArsenal.Crafting
         public IReadOnlyList<Leaf> Leaves => _leaves;
         public int StrikesLeft { get; private set; } = QualityBudget.GrindStrikes;
         public float LastStrikeSpeed { get; private set; } = -1f;
-        public float CurrentBand => Bands[Mathf.Clamp(QualityBudget.GrindStrikes - StrikesLeft, 0, Bands.Length - 1)];
+        /// <summary>What the last strike landed on, and where (for the playtest's log).</summary>
+        public string LastStrikeWith { get; private set; } = "";
+        public float CurrentBand => Bands[Mathf.Clamp(QualityBudget.GrindStrikes - StrikesLeft, 0, Bands.Length - 1)]
+                                    * (Brass ? 1.33f : 1f);
+
+        private static bool HasUpgrade(string id) =>
+            SaveSystem.Instance != null && SaveSystem.Instance.State != null && SaveSystem.Instance.State.HasUpgrade(id);
+
+        /// <summary>The brass mortar: a heavier pestle in a brass bowl, and a wider clean band.</summary>
+        public static bool Brass => HasUpgrade(UpgradeCatalog.BrassMortar);
+
+        /// <summary>The drying rack: no wilted leaves, and each one a little plumper.</summary>
+        public static bool Rack => HasUpgrade(UpgradeCatalog.DryingRack);
         public string Reaction { get; private set; } = "";
         public Color ReactionColor { get; private set; } = Color.white;
         public Leaf Hovered { get; private set; }
@@ -102,11 +120,38 @@ namespace AlchemistsArsenal.Crafting
             get
             {
                 if (_lift == null || _pestle == null || !LiftReady) return 0f;
-                // A drop from where the head actually is: v = sqrt(2 g h).
-                float h = Mathf.Max(0f, _pestle.position.y - PestleHalfLength - BowlFloorY);
+                // A drop from where the head actually is to what it will meet first: v = sqrt(2 g h).
+                float h = Mathf.Max(0f, _pestle.position.y - PestleHalfLength - LandingY);
                 return Mathf.Sqrt(2f * Mathf.Abs(Physics2D.gravity.y) * h);
             }
         }
+
+        /// <summary>
+        /// Where the pestle's head will land: the top of the highest leaf under it, or
+        /// the bowl's floor if none is. Measuring to the floor alone read every blow
+        /// fast, and a leaf that settled on top of the others (so the blow met it
+        /// half a hand early) landed soft while the gauge still showed it clean.
+        /// </summary>
+        private float LandingY
+        {
+            get
+            {
+                float y = BowlFloorY;
+                float px = _pestle != null ? _pestle.position.x : MortarWorld.x;
+                foreach (var l in _leaves)
+                {
+                    if (!l.InBowl || l.Body == null) continue;
+                    var col = l.Body.GetComponent<Collider2D>();
+                    if (col == null) continue;
+                    Bounds b = col.bounds;
+                    if (b.max.x < px - PestleHeadHalfWidth || b.min.x > px + PestleHeadHalfWidth) continue;
+                    y = Mathf.Max(y, b.max.y);
+                }
+                return y;
+            }
+        }
+
+        private const float PestleHeadHalfWidth = 0.3f;
 
         private const float PestleHalfLength = 1.3f;
         private float RimTopY => transform.position.y + MortarLocal.y + 1.08f * MortarScale;
@@ -144,6 +189,7 @@ namespace AlchemistsArsenal.Crafting
             Working = next;
             StrikesLeft = QualityBudget.GrindStrikes;
             LastStrikeSpeed = -1f;
+            _strikeArmed = false;
             if (next.Mixture != null)
             {
                 EnsureRecipeStock(next.Mixture);
@@ -202,8 +248,9 @@ namespace AlchemistsArsenal.Crafting
             m.transform.SetParent(transform, false);
             m.transform.localPosition = MortarLocal;
             m.transform.localScale = Vector3.one * MortarScale;
-            AddArt(m.transform, ShopArt.MortarBack(), 8, "Back");
-            AddArt(m.transform, ShopArt.MortarFront(), 14, "Front");
+            AddArt(m.transform, ShopArt.MortarBack(Brass), 8, "Back");
+            AddArt(m.transform, ShopArt.MortarFront(Brass), 14, "Front");
+            if (Rack) BuildRack();
 
             // The bowl, as one solid lip-to-lip line (in the sprite's local units).
             var edge = m.AddComponent<EdgeCollider2D>();
@@ -232,6 +279,21 @@ namespace AlchemistsArsenal.Crafting
 
         private SpriteRenderer _pressRing, _pressArrow;
 
+        /// <summary>The drying rack over the bench, hung with bundles of herbs.</summary>
+        private void BuildRack()
+        {
+            var rack = new GameObject("DryingRack");
+            rack.transform.SetParent(transform, false);
+            rack.transform.localPosition = new Vector2(-2.6f, 2.35f);
+            AddArt(rack.transform, ShopArt.DryingRack(), -11, "Bar").transform.localScale = Vector3.one * 1.1f;
+            for (int i = 0; i < 5; i++)
+            {
+                var bundle = AddArt(rack.transform, ShopProps.HerbBundle(i + 3), -12, "Herbs");
+                bundle.transform.localPosition = new Vector2((-26f + i * 13f) / ShopArt.PPU * 1.1f, -0.35f);
+                bundle.transform.localScale = Vector3.one * 0.8f;
+            }
+        }
+
         /// <summary>True while the bench is pointing at the bowl: the leaves are in and the pestle is waiting to be used.</summary>
         public bool PressHintShowing { get; private set; }
 
@@ -258,7 +320,7 @@ namespace AlchemistsArsenal.Crafting
             var p = new GameObject("Pestle");
             p.transform.SetParent(transform, false);
             p.transform.localPosition = MortarLocal + new Vector2(2.1f, 1.3f);
-            AddArt(p.transform, ShopArt.Pestle(), 12, "Art").transform.localScale = Vector3.one * 1.45f;
+            AddArt(p.transform, ShopArt.Pestle(Brass), 12, "Art").transform.localScale = Vector3.one * 1.45f;
             _pestle = p.AddComponent<Rigidbody2D>();
             _pestle.mass = 2f;
             _pestle.linearDamping = 0.05f;
@@ -303,6 +365,7 @@ namespace AlchemistsArsenal.Crafting
             _leaves.Clear();
             StrikesLeft = QualityBudget.GrindStrikes;
             LastStrikeSpeed = -1f;
+            _strikeArmed = false;
             SetReaction("", Color.white);
 
             var rng = new System.Random(day * 7717 + 31);
@@ -392,6 +455,8 @@ namespace AlchemistsArsenal.Crafting
             string name = HerbData.NameFor(element, rng.Next(0, 2));
             int potency = rng.Next(1, 4);
             bool wilted = rng.Next(0, 100) < 25;
+            // Herbs dried properly on the rack: none wilted, and each a little plumper.
+            if (Rack) { wilted = false; potency = Mathf.Min(3, potency + 1); }
             return HerbData.Create(name, element, potency, wilted);
         }
 
@@ -491,6 +556,7 @@ namespace AlchemistsArsenal.Crafting
             _liftHeight = 0f;
             _steadyFor = 0f;
             LiftReady = false;
+            _strikeArmed = true;
             _lift.target = new Vector2(_pestle.position.x, MortarWorld.y + HangAbove);
         }
 
@@ -694,9 +760,12 @@ namespace AlchemistsArsenal.Crafting
                 Changed?.Invoke();
                 return;
             }
-            if (StrikesLeft <= 0) return;
+            if (StrikesLeft <= 0 || !_strikeArmed) return;
 
-            _strikeCooldown = 0.4f;   // the pestle bounces; one strike per blow
+            _strikeArmed = false;     // the next strike needs the next lift
+            _strikeCooldown = 0.4f;
+            LastStrikeWith = $"{(hit.Other != null ? hit.Other.name : "?")} at ({hit.Point.x:0.00}, {hit.Point.y:0.00}), " +
+                             $"pestle v {_pestle.linearVelocity.y:0.00}, {CountInBowl()} leaves in the bowl";
             float band = CurrentBand;
             LastStrikeSpeed = hit.Speed;
             StrikesLeft--;
@@ -733,6 +802,13 @@ namespace AlchemistsArsenal.Crafting
 
             if (StrikesLeft <= 0) FinishMix(order, mix);
             Changed?.Invoke();
+        }
+
+        private int CountInBowl()
+        {
+            int n = 0;
+            foreach (var l in _leaves) if (l.InBowl && l.Body != null) n++;
+            return n;
         }
 
         private void CrushBurst(Vector2 at, int n)

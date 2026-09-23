@@ -41,6 +41,13 @@ namespace AlchemistsArsenal.Combat
             moveSpeed = speed;
         }
 
+        /// <summary>A walker with its archetype's bite.</summary>
+        public void Configure(float speed, int bite)
+        {
+            moveSpeed = speed;
+            contactDamage = Mathf.Max(0, bite);
+        }
+
         /// <summary>A walker that stops further out (a big body) and may or may not bite on contact.</summary>
         public void Configure(float speed, float stopAt, bool contact)
         {

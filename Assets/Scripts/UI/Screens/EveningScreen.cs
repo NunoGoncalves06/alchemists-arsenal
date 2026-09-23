@@ -328,46 +328,103 @@ namespace AlchemistsArsenal.UI
 
         // --------------------------------------------------------------- upgrades
 
+        private string _justBought;
+
+        /// <summary>
+        /// Two shelves of cards: the benches (each rebuilt and working differently the
+        /// next morning, shown as what it will look like) and the road (what the party
+        /// carries). Buying one plays its installation on the card.
+        /// </summary>
         private void ShowUpgrades()
         {
             Clear();
             SelectTab(EveTab.Upgrades);
             RunState s = SaveSystem.Instance.State;
 
-            var card = UIKit.Card(_body, $"Upgrades — permanent, {s.gold} g on hand", out Transform c, spacing: 10f);
+            var card = UIKit.Card(_body, $"Upgrades — permanent, {s.gold} g on hand", out Transform c, spacing: 6f);
             UIFactory.Stretch(card.rectTransform);
 
-            foreach (var up in UpgradeCatalog.All)
+            var benches = new List<UpgradeDefinition>();
+            var road = new List<UpgradeDefinition>();
+            foreach (var up in UpgradeCatalog.All) (up.IsBench ? benches : road).Add(up);
+
+            Shelf(c, "THE BENCHES — each one rebuilt, and working differently from tomorrow", benches, s);
+            Shelf(c, "THE ROAD — what the party carries; the later roads cannot be held without it", road, s);
+            _justBought = null;
+        }
+
+        private void Shelf(Transform parent, string title, List<UpgradeDefinition> ups, RunState s)
+        {
+            var head = UIFactory.Heading(parent, title, UITheme.Candle, UITheme.SizeTiny);
+            UIFactory.FixedHeight(head.gameObject, 18f);
+            for (int i = 0; i < ups.Count; i += 4)
             {
-                Image row = UIKit.Surface(c, out Transform inner, UITheme.SurfaceHi, UITheme.LineSoft, "UpgradeRow");
-                UIFactory.FixedHeight(row.gameObject, 82f);
-
-                var text = UIFactory.VStack(inner, 2f, new RectOffset(16, 16, 12, 12));
-                UIFactory.Place((RectTransform)text.transform, 0f, 0f, 0.72f, 1f);
-                var titleLabel = UIFactory.Label(text.transform, up.DisplayName, UITheme.SizeBody, UITheme.TextHi,
-                    TextAlignmentOptions.TopLeft, true);
-                UIFactory.FixedHeight(titleLabel.gameObject, 24f);
-                var desc = UIFactory.Label(text.transform, up.Description, UITheme.SizeSmall, UITheme.TextLow);
-                UIFactory.Flex(desc.gameObject, 1f, 1f);
-
-                bool owned = s.HasUpgrade(up.Id);
-                bool available = UpgradeCatalog.IsAvailable(up.Id, s);
-                bool canAfford = s.gold >= up.Cost;
-                string id = up.Id; int cost = up.Cost;
-
-                string caption = owned ? "OWNED"
-                    : !available ? "LOCKED"
-                    : $"BUY — {cost} g";
-                var buy = UIFactory.Button(inner, caption,
-                    owned || !available ? (System.Action)null : () => BuyUpgrade(id, cost),
-                    primary: !owned && available);
-                UIFactory.Place(buy.image.rectTransform, 0.74f, 0.18f, 0.97f, 0.82f);
-                buy.interactable = !owned && available && canAfford;
-
-                if (!owned && !available)
-                    desc.text = UpgradeCatalog.UnlockHint(up.Id);
+                var row = UIFactory.HStack(parent, 10f);
+                UIFactory.FixedHeight(row.gameObject, 124f);
+                for (int j = 0; j < 4; j++)
+                {
+                    if (i + j < ups.Count) UpgradeCard(row.transform, ups[i + j], s);
+                    else
+                    {
+                        var gap = UIFactory.Panel(row.transform, new Color(0f, 0f, 0f, 0f), "Gap");
+                        UIFactory.Flex(gap.gameObject, 1f, 1f, minWidth: 200f);
+                    }
+                }
             }
         }
+
+        private void UpgradeCard(Transform row, UpgradeDefinition up, RunState s)
+        {
+            bool owned = s.HasUpgrade(up.Id);
+            bool available = UpgradeCatalog.IsAvailable(up.Id, s);
+            Image card = UIKit.Surface(row, out Transform inner, owned ? UITheme.SurfaceTop : UITheme.SurfaceHi,
+                owned ? UITheme.Ok : UITheme.LineSoft, "UpgradeCard");
+            UIFactory.Flex(card.gameObject, 1f, 1f, minWidth: 200f);
+
+            // What it installs, drawn as it will look.
+            var box = UIFactory.Panel(inner, UITheme.Alpha(UITheme.Ground, 0.6f), "Preview");
+            UIFactory.Place(box.rectTransform, 0.02f, 0.06f, 0.30f, 0.94f);
+            foreach (Sprite sp in Preview(up.Id))
+            {
+                var icon = UIFactory.Icon(box.transform, sp, 64f);
+                icon.preserveAspect = true;
+                UIFactory.Place(icon.rectTransform, 0.04f, 0.04f, 0.96f, 0.96f);
+                if (!owned && !available) icon.color = UITheme.Alpha(Color.white, 0.35f);
+            }
+
+            var name = UIFactory.Label(inner, up.DisplayName, UITheme.SizeBody, owned ? UITheme.Ok : UITheme.TextHi,
+                TextAlignmentOptions.TopLeft, true);
+            UIFactory.Place(name.rectTransform, 0.33f, 0.72f, 0.98f, 0.96f);
+            var desc = UIFactory.Label(inner, !owned && !available ? UpgradeCatalog.UnlockHint(up.Id) : up.Description,
+                UITheme.SizeTiny, UITheme.TextLow, TextAlignmentOptions.TopLeft);
+            UIFactory.Place(desc.rectTransform, 0.33f, 0.30f, 0.98f, 0.72f);
+
+            string id = up.Id; int cost = up.Cost;
+            string caption = owned ? (up.IsBench ? $"INSTALLED · {up.Bench.ToUpperInvariant()}" : "OWNED")
+                : !available ? "LOCKED" : $"BUY — {cost} g";
+            var buy = UIFactory.Button(inner, caption,
+                owned || !available ? (System.Action)null : () => BuyUpgrade(id, cost),
+                primary: !owned && available);
+            UIFactory.Place(buy.image.rectTransform, 0.33f, 0.05f, 0.98f, 0.28f);
+            buy.interactable = !owned && available && s.gold >= cost;
+
+            if (id == _justBought) UpgradeReveal.Play(card.rectTransform);
+        }
+
+        /// <summary>The sprites (back to front) that show what an upgrade installs.</summary>
+        private static Sprite[] Preview(string id) => id switch
+        {
+            UpgradeCatalog.ClockworkStirrer => new[] { Art.ShopArt.PotBack(true), Art.ShopArt.Liquid(ElementType.Nature), Art.ShopArt.PotFront(true) },
+            UpgradeCatalog.DraughtKiln => new[] { Art.MaltArt.Kiln(true) },
+            UpgradeCatalog.SteepingVat => new[] { Art.MaltArt.JarBack(), Art.MaltArt.JarWater(12), Art.MaltArt.JarFront(true) },
+            UpgradeCatalog.DryingRack => new[] { Art.ShopProps.HerbBundle(4) },
+            UpgradeCatalog.BrassMortar => new[] { Art.ShopArt.MortarBack(true), Art.ShopArt.MortarFront(true) },
+            UpgradeCatalog.GlassFunnel => new[] { Art.ShopArt.Funnel() },
+            UpgradeCatalog.HeavierFlasks or UpgradeCatalog.TemperedGlass => new[] { Art.PixelSprites.Flask(ElementType.Fire) },
+            UpgradeCatalog.SpareVials or UpgradeCatalog.Bandolier => new[] { Art.PixelSprites.Flask(ElementType.Water) },
+            UpgradeCatalog.ThickBoots or UpgradeCatalog.HardLeathers => new[] { Art.PixelSprites.Fighter("knight") },
+            _ => new[] { Art.PixelSprites.Star() },
+        };
 
         private void BuyUpgrade(string id, int cost)
         {
@@ -377,7 +434,9 @@ namespace AlchemistsArsenal.UI
             s.ownedUpgrades.Add(id);
             SaveSystem.Instance.MarkDirty();
             AudioManager.Play(Sfx.Coin);
+            AudioManager.Play(Sfx.Chime);
             _gold.text = $"{s.gold} g";
+            _justBought = id;
             ShowUpgrades();
         }
 

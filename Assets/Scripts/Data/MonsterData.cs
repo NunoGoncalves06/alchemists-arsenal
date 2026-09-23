@@ -20,6 +20,8 @@ namespace AlchemistsArsenal.Data
         [Min(1)] [SerializeField] private int maxHealth = 60;
         [Min(0f)] [SerializeField] private float moveSpeed = 2f;
         [Min(0.01f)] [SerializeField] private float mass = 1f;
+        [Tooltip("What one bite takes off a hero. The later roads bite harder: that is what the Boots and Leathers are for.")]
+        [Min(0)] [SerializeField] private int contactDamage = 6;
 
         [Header("Loot (re-added — reviewer X1)")]
         [Min(0)] [SerializeField] private int goldMin = 3;
@@ -34,6 +36,7 @@ namespace AlchemistsArsenal.Data
         public int MaxHealth => maxHealth;
         public float MoveSpeed => moveSpeed;
         public float Mass => mass;
+        public int ContactDamage => contactDamage;
         public int GoldMin => goldMin;
         public int GoldMax => goldMax;
         public string HerbDropId => herbDropId;
@@ -41,9 +44,10 @@ namespace AlchemistsArsenal.Data
 
         /// <summary>Build a monster archetype in code (bootstrap / tests / generators).</summary>
         public static MonsterData Create(string name, ElementType element, int maxHealth, float moveSpeed = 2f,
-            int goldMin = 3, int goldMax = 7, string herbDropId = "", float herbDropChance = 0.35f)
+            int goldMin = 3, int goldMax = 7, string herbDropId = "", float herbDropChance = 0.35f, int contactDamage = 6)
         {
             var m = CreateInstance<MonsterData>();
+            m.contactDamage = Mathf.Max(0, contactDamage);
             m.name = name;
             m.displayName = name;
             m.element = element;

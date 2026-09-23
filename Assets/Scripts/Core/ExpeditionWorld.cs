@@ -223,7 +223,8 @@ namespace AlchemistsArsenal.Core
             // 120 -> 150 base: a single adventurer facing 3+ monsters at once was
             // dying before the AI/movement fixes had a real chance to work
             // (playtest: near-instant losses). Thick Boots still stacks on top.
-            int maxHp = 150 + (s != null && s.HasUpgrade(UpgradeCatalog.ThickBoots) ? 30 : 0);
+            int maxHp = 150 + (s != null && s.HasUpgrade(UpgradeCatalog.ThickBoots) ? 30 : 0)
+                            + (s != null && s.HasUpgrade(UpgradeCatalog.HardLeathers) ? 50 : 0);
 
             int level = hero != null ? hero.level : 1;
             ElementType affinity = hero != null ? hero.affinity : ElementType.Nature;
