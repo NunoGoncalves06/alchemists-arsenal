@@ -107,8 +107,8 @@ namespace AlchemistsArsenal.UI
 
             StationsUnlocked = true;
             _step = Step.Cauldron;
-            Show("All four benches are open. Work them in order: at PREP, crush in the leaves the recipe asks for and grind them — nothing goes in the pot until you do. Then the CAULDRON will let you stir.",
-                "3 / 3", new Vector2(0.08f, 0.797f), fromRight: true);   // the PREP item on the rail
+            Show("The benches are open. Work them in order: at MALTING, pour grain into the jar and steep it — while it sprouts, turn it once, then dry it in the kiln. Then PREP crushes the leaves, and the CAULDRON stirs them.",
+                "3 / 3", new Vector2(0.08f, 0.797f), fromRight: true);   // the MALTING item on the rail
             while (true)
             {
                 var pot = Crafting.PhysicsCauldronManager.Instance;

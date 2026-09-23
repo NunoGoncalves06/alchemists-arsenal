@@ -251,7 +251,7 @@ namespace AlchemistsArsenal.UI.Stations
             if (_fighter == null)
             {
                 string done = State != null && State.contracts != null && State.contracts.Count > 0
-                    ? "Every fighter going out today has ordered. Their flasks are on the benches — Prep is next."
+                    ? "Every fighter going out today has ordered. Their grain goes to the Malting bench first."
                     : "Nobody is going out today.";
                 var label = UIFactory.Label(_offerRow, done, UITheme.SizeBody, UITheme.TextMid, TextAlignmentOptions.Center);
                 UIFactory.Flex(label.gameObject, 1f, 1f);

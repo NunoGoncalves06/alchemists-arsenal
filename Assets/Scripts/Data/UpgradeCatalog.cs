@@ -33,6 +33,10 @@ namespace AlchemistsArsenal.Data
         public const string SpareVials = "ammo1";
         public const string ThickBoots = "hp1";
         public const string QuickHands = "cd1";
+
+        // Station upgrades: each changes how its bench looks and works.
+        public const string SteepingVat = "vat2";
+        public const string DraughtKiln = "kiln2";
         /// <summary>
         /// Retired: party capacity used to be bought here on top of the hire. Hiring
         /// a fighter is all it takes now (see <see cref="Core.RunState.MaxParty"/>).

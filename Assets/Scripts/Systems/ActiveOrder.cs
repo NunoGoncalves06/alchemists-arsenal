@@ -28,6 +28,13 @@ namespace AlchemistsArsenal.Systems
     public enum BrewStage { Malting = 0, Prep = 1, Cauldron = 2, Bottling = 3, Done = 4 }
 
     /// <summary>
+    /// Where an order's grain is at the Malting bench: waiting for the jar, being
+    /// poured, soaking, germinating, green (sprouted, waiting for the kiln), in the
+    /// kiln, or malted. Each step only follows the one before.
+    /// </summary>
+    public enum MaltStep { Waiting = 0, Filling = 1, Soaking = 2, Germinating = 3, Green = 4, Kilning = 5, Malted = 6 }
+
+    /// <summary>
     /// One fighter's potion order. Created only by the Counter (DESIGN.md §7.6.1),
     /// one per fighter who steps up to it, and modified — up and down — by the
     /// benches it passes through, in <see cref="BrewStage"/> order.
@@ -69,6 +76,18 @@ namespace AlchemistsArsenal.Systems
         [NonSerialized] public Data.BrewMixture Mixture;
 
         public bool Finished => stage == BrewStage.Done;
+
+        /// <summary>Where this order's grain is at the Malting bench.</summary>
+        public MaltStep maltStep = MaltStep.Waiting;
+
+        /// <summary>Points the malting has earned (bonuses less charges), for <see cref="MaltQuality01"/>.</summary>
+        public int maltPoints;
+
+        /// <summary>
+        /// How good the malt came out, 0..1. Its enzymes are what break the herbs down
+        /// in the pot: the Cauldron dissolves them faster on good malt.
+        /// </summary>
+        public float MaltQuality01 = 0.5f;
 
         public List<DeductionLog> deductions = new List<DeductionLog>();
 

@@ -22,10 +22,10 @@ namespace AlchemistsArsenal.Core
     {
         public static ShopWorld Instance { get; private set; }
 
-        /// <summary>Bench centres, in rail order: Counter, Prep, Cauldron, Bottling.</summary>
+        /// <summary>Bench centres, in rail order: Counter, Malting, Prep, Cauldron, Bottling.</summary>
         public static readonly Vector2[] BenchCentres =
         {
-            new Vector2(-32f, 0f), new Vector2(-16f, 0f), new Vector2(0f, 0f), new Vector2(16f, 0f),
+            new Vector2(-48f, 0f), new Vector2(-32f, 0f), new Vector2(-16f, 0f), new Vector2(0f, 0f), new Vector2(16f, 0f),
         };
 
         /// <summary>The station column above the HUD strip, as a fraction of the screen.</summary>
@@ -35,6 +35,7 @@ namespace AlchemistsArsenal.Core
         public CameraRig Rig { get; private set; }
         public PhysicsCauldronManager Cauldron { get; private set; }
         public PrepBench Prep { get; private set; }
+        public MaltingBench Malting { get; private set; }
         public BottlingBench Bottling { get; private set; }
 
         private void Awake() => Instance = this;
@@ -64,13 +65,16 @@ namespace AlchemistsArsenal.Core
             VfxWorld.Create(transform, seed: 1000 + day);
 
             BuildRoom();
-            BuildCauldron(BenchCentres[2]);
+            BuildCauldron(BenchCentres[3]);
 
-            Prep = NewBench<PrepBench>("PrepBench", BenchCentres[1]);
+            Malting = NewBench<MaltingBench>("MaltingBench", BenchCentres[1]);
+            Malting.Build(WorldCamera);
+
+            Prep = NewBench<PrepBench>("PrepBench", BenchCentres[2]);
             Prep.Build(WorldCamera);
             Prep.NewDay(day);
 
-            Bottling = NewBench<BottlingBench>("BottlingBench", BenchCentres[3]);
+            Bottling = NewBench<BottlingBench>("BottlingBench", BenchCentres[4]);
             Bottling.Build(WorldCamera);
         }
 
@@ -95,7 +99,7 @@ namespace AlchemistsArsenal.Core
         {
             Sprite wall = ShopArt.Wall();
             float tileW = wall.bounds.size.x * 1.5f, tileH = wall.bounds.size.y * 1.5f;
-            for (float x = BenchCentres[0].x - 8f; x <= BenchCentres[3].x + 8f; x += tileW)
+            for (float x = BenchCentres[0].x - 8f; x <= BenchCentres[BenchCentres.Length - 1].x + 8f; x += tileW)
                 for (int row = 0; row < 2; row++)
                 {
                     var t = new GameObject("Wall");
@@ -132,7 +136,7 @@ namespace AlchemistsArsenal.Core
             // Floorboards under the cauldron, where there is no bench.
             var floor = new GameObject("Floor");
             floor.transform.SetParent(transform, false);
-            floor.transform.position = new Vector3(BenchCentres[2].x, -2.7f, 1f);
+            floor.transform.position = new Vector3(BenchCentres[3].x, -2.7f, 1f);
             PixelArt.AddSprite(floor, ShopArt.Plank(), -5, 12f).color = new Color(0.62f, 0.55f, 0.52f);
         }
 

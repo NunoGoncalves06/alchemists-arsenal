@@ -17,7 +17,26 @@ namespace AlchemistsArsenal.Data
     {
         // ---------------------------------------------------------------- counter
         /// <summary>Taking the job whose element counters the road's main threat.</summary>
-        public const int CounterRead = 5;
+        public const int CounterRead = 4;
+
+        // ---------------------------------------------------------------- malting
+        /// <summary>Good grain in the steep, and what it takes to count as "to the line".</summary>
+        public const int GrainTarget = 18, GrainSlack = 3;
+        /// <summary>Steeped to the line; short of grain; crowded.</summary>
+        public const int MaltFill = 2, MaltShort = 3, MaltOver = 2;
+        /// <summary>Every husk skimmed off the steep; each husk left in it (up to a cap).</summary>
+        public const int MaltSkim = 2, MaltHuskLeft = 1, MaltHuskCap = 4;
+        /// <summary>Turned the germinating bed in time; let the rootlets mat.</summary>
+        public const int MaltTurn = 2, MaltMatted = 3;
+        /// <summary>The kiln pays this much over its drying bar, held in the heat band.</summary>
+        public const int KilnTotal = 6;
+        /// <summary>Per second too hot (the enzymes cook); per two seconds too cool (it keeps sprouting).</summary>
+        public const int KilnScorch = 3, KilnCool = 1;
+        /// <summary>Green malt left waiting for the kiln, every few seconds, up to a cap.</summary>
+        public const int MaltOverModified = 1, MaltOverCap = 4;
+
+        /// <summary>The most a malting can earn: what <see cref="Systems.ActiveOrder.MaltQuality01"/> is out of.</summary>
+        public const int MaltMax = MaltFill + MaltSkim + MaltTurn + KilnTotal;
 
         // ------------------------------------------------------------------- prep
         /// <summary>A leaf on cue pays (base + potency) x wilt; potency is 1..3.</summary>
@@ -28,12 +47,12 @@ namespace AlchemistsArsenal.Data
 
         public const int GrindStrikes = 3;
         /// <summary>A clean strike pays between these, by how close to ideal.</summary>
-        public const int StrikeMin = 2, StrikeMax = 4;
+        public const int StrikeMin = 2, StrikeMax = 3;
         public const int StrikeMiss = 6;
 
         // --------------------------------------------------------------- cauldron
         /// <summary>The whole brew pays this much, spread over its progress bar.</summary>
-        public const int BrewTotal = 22;
+        public const int BrewTotal = 16;
         /// <summary>Charged per second stirring backwards.</summary>
         public const int BrewPenalty = 6;
         /// <summary>
@@ -69,6 +88,7 @@ namespace AlchemistsArsenal.Data
         public static int FlawlessMorning() =>
             Systems.ActiveOrder.StartingQuality
             + CounterRead
+            + MaltMax
             + 3 * LeafOnCue(3, false)
             + GrindStrikes * StrikeMax
             + RecipeBook.QualityDelta(MixOutcome.Perfect)

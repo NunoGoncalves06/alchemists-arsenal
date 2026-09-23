@@ -42,6 +42,9 @@ namespace AlchemistsArsenal.PhysicsKit
 
         public float Radius => radius;
 
+        /// <summary>Scales how fast the herbs give themselves up (the malt's enzymes set it).</summary>
+        public float DissolveMultiplier { get; set; } = 1f;
+
         /// <summary>Signed stir rate this frame (deg/s, positive = anticlockwise). Set in Update.</summary>
         public float SpinDegPerSec { get; set; }
 
@@ -190,7 +193,7 @@ namespace AlchemistsArsenal.PhysicsKit
                 if (StirringCorrectly)
                 {
                     float motion = Mathf.Clamp01(rb.linearVelocity.magnitude / 1.1f);
-                    f.Dissolve01 = Mathf.Min(1f, f.Dissolve01 + dt * dissolvePerSecond * (0.25f + 0.75f * motion));
+                    f.Dissolve01 = Mathf.Min(1f, f.Dissolve01 + dt * dissolvePerSecond * DissolveMultiplier * (0.25f + 0.75f * motion));
                     if (f.Dissolve01 >= 1f)
                     {
                         f.Dissolved = true;

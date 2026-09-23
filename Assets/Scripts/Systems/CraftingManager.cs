@@ -34,8 +34,8 @@ namespace AlchemistsArsenal.Systems
         /// <summary>Today's orders, in the order the fighters were served.</summary>
         public IReadOnlyList<ActiveOrder> Orders => _orders;
 
-        /// <summary>The bench a brand-new order goes to first.</summary>
-        public static BrewStage FirstStage => BrewStage.Prep;
+        /// <summary>The bench a brand-new order goes to first: its grain is malted before anything else.</summary>
+        public static BrewStage FirstStage => BrewStage.Malting;
 
         /// <summary>The most recently accepted order (for the tutorial, tests and old callers).</summary>
         public ActiveOrder CurrentOrder => _orders.Count > 0 ? _orders[_orders.Count - 1] : null;

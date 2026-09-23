@@ -268,10 +268,19 @@ namespace AlchemistsArsenal.Core
                         foreach (var step in Settle($"day{day}_morning_counter_served")) yield return step;
                     }
 
-                    // Prep comes first: the Cauldron will not brew until the recipe's
-                    // leaves are crushed in and ground. Every bench is played for real
-                    // through the scripted pointer, one order after another; each bench
-                    // takes up the next order waiting at it by itself.
+                    // Malting comes first: nothing reaches Prep until its grain has been
+                    // steeped, sprouted and kilned. The driver works every order's
+                    // malting interleaved, as a player would: the next fighter's grain
+                    // is poured while the last one's dries in the kiln.
+                    SwitchMorningTab(morningScreen, "Malting");
+                    foreach (var step in Settle($"day{day}_morning_malting")) yield return step;
+                    foreach (var step in DriveMalting(orders, day)) { if (_errorCount > 0) break; yield return step; }
+                    if (_errorCount > 0) yield break;
+
+                    // Then Prep: the Cauldron will not brew until the recipe's leaves are
+                    // crushed in and ground. Every bench is played for real through the
+                    // scripted pointer, one order after another; each bench takes up the
+                    // next order waiting at it by itself.
                     SwitchMorningTab(morningScreen, "Prep");
                     foreach (var step in Settle($"day{day}_morning_prep")) yield return step;
                     for (int k = 0; k < orders.Count && _errorCount == 0; k++)
@@ -510,6 +519,104 @@ namespace AlchemistsArsenal.Core
 
             /// <summary>Suffix for screenshots of the second and later orders of a morning ("_o2").</summary>
             private string _orderTag = "";
+
+            /// <summary>
+            /// Malt every order of the morning, interleaved: the jar and the kiln each
+            /// work their own order, so the next fighter's grain is poured and steeped
+            /// while the last one's dries. Checks the water really sorts the grain
+            /// (husks float, sound grain sinks) and that every order reaches Prep.
+            /// </summary>
+            private IEnumerable DriveMalting(List<ActiveOrder> orders, int day)
+            {
+                var bench = Crafting.MaltingBench.Instance;
+                if (bench == null) { Fail("No Malting bench."); yield break; }
+
+                float t = 0f, settle = 0f, nextStoke = 0f, nextSkim = 0f;
+                bool pourShot = false, soakShot = false, turnShot = false, kilnShot = false, buoyancyChecked = false;
+                float limit = 70f * orders.Count;
+                while (t < limit && _errorCount == 0)
+                {
+                    bool done = true;
+                    foreach (ActiveOrder o in orders) if (o.stage == BrewStage.Malting) done = false;
+                    if (done) break;
+
+                    ActiveOrder tub = bench.TubOrder;
+                    if (tub != null)
+                    {
+                        switch (tub.maltStep)
+                        {
+                            case MaltStep.Filling:
+                                bool enough = bench.GoodInJar >= QualityBudget.GrainTarget;
+                                bench.PourHeld = !enough;
+                                if (!enough) { settle = 0f; break; }
+                                settle += Time.deltaTime;
+                                if (settle < 1.0f) break;   // what is still in the air lands, and the husks rise
+                                if (!buoyancyChecked) { buoyancyChecked = true; CheckBuoyancy(bench); }
+                                if (!pourShot) { pourShot = true; Capture($"day{day}_morning_malting_pour"); }
+                                bench.Steep();
+                                settle = 0f;
+                                break;
+                            case MaltStep.Soaking:
+                                if (!soakShot && bench.SoakProgress01 > 0.3f) { soakShot = true; Capture($"day{day}_morning_malting_soak"); }
+                                if (bench.HusksInJar > 0 && Time.time >= nextSkim) { bench.SkimNext(); nextSkim = Time.time + 0.25f; }
+                                break;
+                            case MaltStep.Germinating:
+                                if (bench.TurnDue)
+                                {
+                                    if (!turnShot) { turnShot = true; Capture($"day{day}_morning_malting_sprouting"); }
+                                    bench.Turn();
+                                }
+                                break;
+                            case MaltStep.Green:
+                                if (bench.CanLoadKiln) bench.LoadKiln();
+                                break;
+                        }
+                    }
+
+                    // Keep the kiln in its band: a log whenever it drops toward the bottom of it.
+                    if (bench.KilnOrder != null && !bench.Draught && bench.Heat01 < 0.52f && bench.LogsBurning < 3
+                        && bench.CanStoke && Time.time >= nextStoke)
+                    {
+                        bench.Stoke();
+                        nextStoke = Time.time + 1.1f;
+                    }
+                    if (!kilnShot && bench.KilnOrder != null && bench.KilnProgress01 > 0.4f)
+                    {
+                        kilnShot = true;
+                        Capture($"day{day}_morning_malting_kiln");
+                    }
+
+                    t += Time.deltaTime;
+                    yield return null;
+                }
+                bench.PourHeld = false;
+
+                foreach (ActiveOrder o in orders)
+                {
+                    if (o.stage == BrewStage.Malting)
+                        Fail($"{o.heroName}'s malting never finished (step {o.maltStep}) in {limit:0} s.");
+                    else
+                        Log($"Malting: {o.heroName}'s malt done — quality {o.MaltQuality01:P0} ({o.maltPoints} of {QualityBudget.MaltMax}), flask at {o.qualityScore}");
+                }
+            }
+
+            /// <summary>The steep's water must sort the grain: husks float, sound barley sinks.</summary>
+            private void CheckBuoyancy(Crafting.MaltingBench bench)
+            {
+                float huskY = 0f, goodY = 0f; int husks = 0, good = 0;
+                foreach (var g in bench.TubGrains)
+                {
+                    if (g.Body == null || g.Skimmed) continue;
+                    if (g.Husk) { huskY += g.Body.position.y; husks++; }
+                    else { goodY += g.Body.position.y; good++; }
+                }
+                if (husks == 0 || good == 0) { Log("Malting: no husks in this pour to check the water with."); return; }
+                huskY /= husks; goodY /= good;
+                if (huskY < goodY + 0.3f)
+                    Fail($"The steep did not sort the grain: husks sit at {huskY:0.00}, sound grain at {goodY:0.00} (husks must float above it).");
+                else
+                    Log($"Malting: the water sorted the grain — {husks} husks floating at {huskY:0.00}, {good} grains sunk to {goodY:0.00}.");
+            }
 
             private IEnumerable DrivePrep(ActiveOrder order, int day)
             {

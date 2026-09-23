@@ -34,9 +34,10 @@ namespace AlchemistsArsenal.Core
         public static GameLoopManager Instance { get; private set; }
 
         [Header("Morning")]
-        [Min(30f)] [SerializeField] private float morningBudgetSeconds = 150f;
+        [Tooltip("The morning for one fighter's flask, malting to bottling.")]
+        [Min(30f)] [SerializeField] private float morningBudgetSeconds = 230f;
         [Tooltip("Extra morning for each fighter beyond the first: every fighter orders their own flask.")]
-        [Min(0f)] [SerializeField] private float extraSecondsPerFighter = 110f;
+        [Min(0f)] [SerializeField] private float extraSecondsPerFighter = 135f;
 
         public GamePhase Phase { get; private set; } = GamePhase.Boot;
         public float MorningRemaining01 { get; private set; } = 1f;
@@ -67,7 +68,7 @@ namespace AlchemistsArsenal.Core
         private GameObject _expeditionRoot;
         private ExpeditionWorld _expeditionWorld;
         private float _morningRemaining;
-        private float _morningBudget = 150f;
+        private float _morningBudget = 230f;
 
         /// <summary>This morning's whole clock, in seconds (it grows with the party).</summary>
         public float MorningBudgetSeconds => _morningBudget;
