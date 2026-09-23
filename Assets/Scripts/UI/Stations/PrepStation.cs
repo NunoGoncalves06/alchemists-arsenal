@@ -31,10 +31,12 @@ namespace AlchemistsArsenal.UI.Stations
         public override string RailName => "Prep";
         public override Sprite RailIcon => PixelSprites.Mortar();
         public override bool ShowsWorld => true;
-        public override bool Complete => Mix != null && Mix.Ready;
+        public override bool Complete => AllPast(Systems.BrewStage.Prep);
 
-        private static BrewMixture Mix =>
-            Systems.CraftingManager.Instance != null ? Systems.CraftingManager.Instance.Mixture : null;
+        /// <summary>The order on the Prep bench (see <see cref="PrepBench.Working"/>).</summary>
+        protected override Systems.ActiveOrder Order => PrepBench.Instance != null ? PrepBench.Instance.Working : null;
+
+        private BrewMixture Mix => Order?.Mixture;
 
         private TextMeshProUGUI _recipeName, _recipeMethod, _hint, _leafInfo, _reaction, _strikeLabel, _status;
         private Transform _stepRow;
@@ -146,10 +148,10 @@ namespace AlchemistsArsenal.UI.Stations
             if (bench != null && mix != null) bench.EnsureRecipeStock(mix);
 
             _recipeName.text = mix != null
-                ? $"{mix.Recipe.Name}  <size=70%><color=#{ColorUtility.ToHtmlStringRGB(UITheme.TextLow)}>{mix.Recipe.Shorthand}</color></size>"
+                ? $"{mix.Recipe.Name}  <size=70%><color=#{ColorUtility.ToHtmlStringRGB(UITheme.TextLow)}>{mix.Recipe.Shorthand}  ·  for {Order.heroName}</color></size>"
                 : "No recipe yet";
             _recipeMethod.text = mix != null ? mix.Recipe.Method
-                : "Take a job at the Counter — the customer's order decides the recipe.";
+                : "Take a job at the Counter — the fighter's order decides the recipe.";
 
             _hint.text = mix == null ? "Nothing to prep until there is an order."
                 : !mix.AllLeavesIn
@@ -232,7 +234,13 @@ namespace AlchemistsArsenal.UI.Stations
             if (_status == null) return;
             BrewMixture mix = Mix;
             string text; Color color;
-            if (mix == null) { text = "TAKE A JOB AT THE COUNTER FIRST"; color = UITheme.TextLow; }
+            if (mix == null)
+            {
+                bool any = Systems.CraftingManager.Instance != null && Systems.CraftingManager.Instance.Orders.Count > 0;
+                text = any ? "NOTHING WAITING AT THIS BENCH" : "TAKE A JOB AT THE COUNTER FIRST";
+                color = UITheme.TextLow;
+            }
+            else if (mix.Ground && CountAt(Systems.BrewStage.Prep) > 0) { text = "GROUND — THE NEXT ORDER IS COMING UP"; color = UITheme.Ok; }
             else if (!mix.AllLeavesIn) { text = $"PUT THE LEAVES IN THE MORTAR — {mix.Remaining} TO GO"; color = UITheme.TextHi; }
             else if (mix.Ground) { text = "GROUND — ON TO THE CAULDRON"; color = UITheme.Ok; }
             else if (bench.LiftReady) { text = "LET GO WHEN THE SPEED IS IN THE GREEN"; color = UITheme.Candle; }

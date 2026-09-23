@@ -95,12 +95,12 @@ namespace AlchemistsArsenal.UI
         private IEnumerator Run()
         {
             _step = Step.Welcome;
-            Show("Day one. Time is paused while we get you set up.\nYou run the shop in the morning — a customer orders, you brew it — and Rookie carries whatever you made into the afternoon.\n\n<size=75%>(click to continue)</size>",
+            Show("Day one. Time is paused while we get you set up.\nYou run the shop in the morning — your fighter orders a flask at the counter, you brew it — and they carry whatever you made into the afternoon.\n\n<size=75%>(click to continue)</size>",
                 "1 / 3", new Vector2(0.5f, 0.5f));
             yield return WaitForClickOr(8f);
 
             _step = Step.Counter;
-            Show("There's someone at the COUNTER. Read today's road on the right, then TAKE one of the three jobs at the bottom — they pay differently and they want different grades.",
+            Show("Rookie is at the COUNTER — the fighter orders their own flask. Read today's road on the right, then TAKE one of the three jobs at the bottom — they pay differently and want different grades.",
                 "2 / 3", new Vector2(0.30f, 0.33f));
             while (CraftingManager.Instance == null || CraftingManager.Instance.CurrentOrder == null)
                 yield return null;

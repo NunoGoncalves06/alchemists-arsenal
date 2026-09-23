@@ -18,9 +18,12 @@ namespace AlchemistsArsenal.UI.Stations
         public override string RailName => "Bottling";
         public override Sprite RailIcon => PixelSprites.Flask(ElementType.Nature);
         public override bool ShowsWorld => true;
-        public override bool Complete => Bench != null && Bench.Current == BottlingBench.Step.Done;
+        public override bool Complete => AllPast(Systems.BrewStage.Bottling);
 
         private static BottlingBench Bench => BottlingBench.Instance;
+
+        /// <summary>The order on the bottling bench (see <see cref="BottlingBench.Working"/>).</summary>
+        protected override Systems.ActiveOrder Order => Bench != null ? Bench.Working : null;
 
         private Image _fill, _pourCard, _sealCard, _labelCard, _sealBand, _sealNeedle;
         private TextMeshProUGUI _fillText, _pourHint, _sealHint, _labelHint, _banner;
@@ -142,10 +145,15 @@ namespace AlchemistsArsenal.UI.Stations
 
             if (has) _fill.color = UITheme.Element(order.element);
 
-            _banner.text = !has ? "TAKE A JOB AT THE COUNTER FIRST"
-                : step == BottlingBench.Step.Pour ? "HOLD ON THE LADLE TO TIP IT — LET GO AT THE LINE"
+            string who = has && !string.IsNullOrEmpty(order.heroName) ? order.heroName.ToUpperInvariant() + "'S " : "";
+            _banner.text = !has
+                    ? (Systems.CraftingManager.Instance != null && Systems.CraftingManager.Instance.Orders.Count > 0
+                        ? "NOTHING BREWED YET — IT COMES HERE FROM THE CAULDRON"
+                        : "TAKE A JOB AT THE COUNTER FIRST")
+                : step == BottlingBench.Step.Pour ? $"POUR {who}FLASK — HOLD ON THE LADLE, LET GO AT THE LINE"
                 : step == BottlingBench.Step.Seal ? "SEAL IT ON THE BEAT"
-                : step == BottlingBench.Step.Label ? $"LABEL IT — THIS IS A {order.element.ToString().ToUpperInvariant()} FLASK"
+                : step == BottlingBench.Step.Label ? $"LABEL IT — THIS IS {who}{order.element.ToString().ToUpperInvariant()} FLASK"
+                : CountAt(Systems.BrewStage.Bottling) > 0 ? "SEALED — THE NEXT FLASK IS COMING UP"
                 : "SEALED AND LABELLED — READY TO SEND";
 
             _sealHint.text = !has ? "" : step == BottlingBench.Step.Seal

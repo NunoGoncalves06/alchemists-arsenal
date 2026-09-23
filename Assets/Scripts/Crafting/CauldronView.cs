@@ -183,11 +183,7 @@ namespace AlchemistsArsenal.Crafting
 
         // ------------------------------------------------------------------ frame
 
-        private ElementType BrewElement()
-        {
-            var order = Systems.CraftingManager.Instance != null ? Systems.CraftingManager.Instance.CurrentOrder : null;
-            return order != null ? order.element : ElementType.Nature;
-        }
+        private ElementType BrewElement() => _pot != null ? _pot.BrewElement : ElementType.Nature;
 
         private void LateUpdate()
         {

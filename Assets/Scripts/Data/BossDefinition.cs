@@ -50,7 +50,7 @@ namespace AlchemistsArsenal.Data
         /// </summary>
         // Measured, not guessed (the harness's grade sweep): with these a Great
         // flask beats the Matriarch at any party size and an Okay one does not.
-        public static readonly float[] PartyHealthScale = { 0.32f, 0.66f, 1f };
+        public static readonly float[] PartyHealthScale = { 0.32f, 0.66f, 1f, 1.3f };
 
         /// <summary>The health this guardian has against a party of <paramref name="partySize"/>.</summary>
         public int HealthFor(int partySize) =>

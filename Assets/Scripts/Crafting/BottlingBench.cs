@@ -110,7 +110,26 @@ namespace AlchemistsArsenal.Crafting
 
         public event Action Changed;
 
-        private static ActiveOrder Order => CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
+        /// <summary>
+        /// The order on the bench — being bottled, or sealed and still showing until the
+        /// next one waiting at Bottling is taken up (see <see cref="CraftingManager"/>).
+        /// </summary>
+        public ActiveOrder Working { get; private set; }
+
+        /// <summary>The order the bench can still act on: <see cref="Working"/>, while it is at Bottling.</summary>
+        private ActiveOrder Order => Working != null && Working.stage == BrewStage.Bottling ? Working : null;
+        private float _lingerUntil;
+
+        /// <summary>Take up the next brewed order: a clean flask, the ladle back, the cork on its rest.</summary>
+        private void BindNext()
+        {
+            var cm = CraftingManager.Instance;
+            if (cm == null || Order != null || Time.time < _lingerUntil) return;
+            ActiveOrder next = cm.Waiting(BrewStage.Bottling);
+            if (next == null || next == Working) return;
+            Working = next;
+            ResetBench();
+        }
 
         private void Awake()
         {
@@ -281,6 +300,13 @@ namespace AlchemistsArsenal.Crafting
 
         public void NewDay()
         {
+            Working = null;
+            ResetBench();
+        }
+
+        /// <summary>A clean flask for the next order.</summary>
+        private void ResetBench()
+        {
             Current = Step.Pour;
             SealsLeft = QualityBudget.SealAttempts;
             SealHalfWidth = 0.09f;
@@ -315,10 +341,11 @@ namespace AlchemistsArsenal.Crafting
 
         private void Update()
         {
+            BindNext();
             var order = Order;
-            if (order != null)
+            if (Working != null)
             {
-                _brewColor = PixelArt.Element(order.element);
+                _brewColor = PixelArt.Element(Working.element);
                 if (_stream != null) _stream.SetColor(_brewColor);
             }
 
@@ -578,7 +605,8 @@ namespace AlchemistsArsenal.Crafting
             }
 
             Current = Step.Done;
-            if (CraftingManager.Instance != null) CraftingManager.Instance.CompleteActiveOrder();
+            if (CraftingManager.Instance != null) CraftingManager.Instance.Advance(order);
+            _lingerUntil = Time.time + 2f;   // the sealed flask stays up for a moment
             Changed?.Invoke();
         }
     }

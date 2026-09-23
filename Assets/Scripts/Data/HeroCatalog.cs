@@ -126,9 +126,13 @@ namespace AlchemistsArsenal.Data
             // Nobody already on the roster: two "Ser Halden"s side by side read as a
             // bug, and the notice board is meant to be filling a set.
             var pool = new List<CustomerDefinition>();
+            // Sister Veil is the Coven's envoy, not a sword for hire: she visits the
+            // shop (and the story needs her to), she never signs on.
             foreach (CustomerDefinition c in CustomerCatalog.All)
-                if (!OnRoster(roster, c.DisplayName)) pool.Add(c);
-            if (pool.Count == 0) pool.AddRange(CustomerCatalog.All);
+                if (c.Id != "envoy" && !OnRoster(roster, c.DisplayName)) pool.Add(c);
+            if (pool.Count == 0)
+                foreach (CustomerDefinition c in CustomerCatalog.All)
+                    if (c.Id != "envoy") pool.Add(c);
             CustomerDefinition who = pool[rng.Next(0, pool.Count)];
 
             var arch = HeroPerks.Archetypes[rng.Next(0, HeroPerks.Archetypes.Length)];

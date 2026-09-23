@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -11,37 +12,71 @@ using AlchemistsArsenal.Data;
 namespace AlchemistsArsenal.UI.Stations
 {
     /// <summary>
-    /// The Counter — where the morning actually starts now. A customer is standing
-    /// there: portrait, name, a line of their own, and three jobs on the board. The
-    /// old screen auto-picked the element and offered one ACCEPT button; the choice
-    /// now is which job to take, and the jobs disagree — the safe standing order,
-    /// the commission that pays double but refuses a sloppy flask, and whatever the
-    /// customer personally wants, which is often the wrong element for today's road.
+    /// The Counter — where the morning starts. The fighters come to it themselves,
+    /// one after another in roster order: each is the one who will carry the flask
+    /// out of the shop, so each orders their own. The one at the counter shows their
+    /// portrait, name and perk, says their piece, and has three jobs on the board to
+    /// choose between (see <see cref="ContractBoard.Offers"/>): the safe standing
+    /// order, a guild commission that pays double but refuses a sloppy flask, and
+    /// their own element, which they hit harder with but may be the wrong call for
+    /// the road.
+    ///
+    /// <para>It used to be a paying customer who changed every day while the same
+    /// fighter walked the road; the customer and the fighter are one person now. The
+    /// day's visitor (a patron who backs the commission, and in whom the story
+    /// speaks) still drops by, in the bubble under the fighter's own line.</para>
+    ///
+    /// <para>A fighter hired last night steps up after everyone who was here before
+    /// them. Once all are served the board is done for the day.</para>
     /// </summary>
     public class CounterStation : StationPanel
     {
         public override string RailName => "Counter";
         public override Sprite RailIcon => PixelSprites.Bell();
-        public override bool Complete => HasOrder;
+        public override bool Complete => AllServed;
 
         private Transform _buyerBox, _roadBox, _offerRow;
-        private TextMeshProUGUI _speech, _buyerName, _buyerTitle, _recommendation;
+        private TextMeshProUGUI _speech, _buyerName, _buyerTitle, _recommendation, _queue;
         private Image _portrait;
 
-        private CustomerDefinition _buyer;
+        private HeroRecord _fighter;
+        private CustomerDefinition _visitor;
         private List<ContractRecord> _offers = new List<ContractRecord>();
         private readonly List<Button> _offerButtons = new List<Button>();
+        private int _day = 1, _biome;
+
+        /// <summary>The order of whoever was served last (for the dock and the rail).</summary>
+        protected override Systems.ActiveOrder Order =>
+            Systems.CraftingManager.Instance != null ? Systems.CraftingManager.Instance.CurrentOrder : null;
+
+        private static RunState State => SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+
+        /// <summary>The next fighter going out today who has not ordered yet, or null.</summary>
+        public static HeroRecord NextFighter
+        {
+            get
+            {
+                RunState s = State;
+                if (s == null) return null;
+                foreach (HeroRecord h in s.DeployedParty())
+                    if (s.ContractFor(h.id) == null) return h;
+                return null;
+            }
+        }
+
+        /// <summary>Every fighter going out today has ordered.</summary>
+        public static bool AllServed => State != null && State.contracts != null && State.contracts.Count > 0 && NextFighter == null;
 
         protected override void BuildContent(RectTransform root)
         {
-            // --- the customer ------------------------------------------------
+            // --- the fighter at the counter ------------------------------------
             var buyerCard = UIKit.Card(root, "At the counter", out Transform buyer);
             UIFactory.Place(buyerCard.rectTransform, 0f, 0.44f, 0.34f, 1f);
             _buyerBox = buyer;
 
-            _portrait = UIKit.Portrait(buyer, PixelSprites.Buyer("rookie"), 132f);
+            _portrait = UIKit.Portrait(buyer, PixelSprites.Buyer("rookie"), 120f);
             var frame = _portrait.transform.parent.parent.gameObject;  // Portrait > Mat > Frame
-            UIFactory.Flex(frame, 1f, 0f, minHeight: 132f);
+            UIFactory.Flex(frame, 1f, 0f, minHeight: 120f);
 
             _buyerName = UIFactory.Title(buyer, "", UITheme.SizeHeading + 4, UITheme.TextHi);
             UIFactory.Flex(_buyerName.gameObject, 1f, 0f, minHeight: 30f);
@@ -50,8 +85,11 @@ namespace AlchemistsArsenal.UI.Stations
 
             var bubble = UIFactory.Panel(buyer, UITheme.Parchment, "Bubble");
             UIFactory.Flex(bubble.gameObject, 1f, 1f, minHeight: 96f);
-            _speech = UIFactory.Label(bubble.transform, "", UITheme.SizeBody, UITheme.Ink900);
-            UIFactory.Stretch(_speech.rectTransform, 12f);
+            _speech = UIFactory.Label(bubble.transform, "", UITheme.SizeSmall, UITheme.Ink900);
+            UIFactory.Stretch(_speech.rectTransform, 10f);
+
+            _queue = UIFactory.Label(buyer, "", UITheme.SizeTiny, UITheme.TextMid, TextAlignmentOptions.TopLeft);
+            UIFactory.Flex(_queue.gameObject, 1f, 0f, minHeight: 34f);
 
             // --- today's road ------------------------------------------------
             var roadCard = UIKit.Card(root, "Today's road — what they will meet out there", out Transform road);
@@ -73,34 +111,88 @@ namespace AlchemistsArsenal.UI.Stations
 
         public override void NewDay()
         {
-            RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
-            int day = s != null ? s.day : 1;
-            int biome = s != null ? s.TargetBiomeIndex : 0;
+            RunState s = State;
+            _day = s != null ? s.day : 1;
+            _biome = s != null ? s.TargetBiomeIndex : 0;
+            _visitor = CustomerCatalog.Visitor(_day, s);
 
-            _buyer = CustomerCatalog.ForDay(day);
-            _offers = ContractBoard.Offers(day, biome);
-
-            _portrait.sprite = PixelSprites.Buyer(_buyer.PortraitId);
-            _buyerName.text = _buyer.DisplayName;
-            _buyerTitle.text = _buyer.Title;
-            // Once the story has moved on, the people in it say so.
-            _speech.text = Story.StoryDirector.CounterLine(_buyer, s)
-                           ?? (_buyer.Greetings != null && _buyer.Greetings.Length > 0
-                               ? _buyer.Greetings[(day - 1) % _buyer.Greetings.Length]
-                               : "");
-
-            BuildRoad(biome);
-            BuildOffers();
+            BuildRoad(_biome);
+            StepUp();
         }
 
         public override void OnEnter()
         {
-            if (_buyer == null) NewDay();
-            // The customer speaks when you step up to the counter (cat 7).
-            if (!HasOrder && _buyer != null) AudioManager.Speak(_buyer.Speech, 1.05f);
+            if (_offers == null || _offers.Count == 0) NewDay();
+            // The fighter speaks when you step up to the counter (cat 7).
+            if (_fighter != null) AudioManager.Speak(CustomerCatalog.ForHero(_fighter).Speech, 1.05f);
         }
 
-        public override void Refresh() => BuildOffers();
+        public override void Refresh() => StepUp();
+
+        /// <summary>Whoever is next in line comes to the counter (or nobody, once all are served).</summary>
+        private void StepUp()
+        {
+            RunState s = State;
+            _fighter = NextFighter;
+            HeroRecord shown = _fighter;
+            if (shown == null && s != null)
+            {
+                // Everyone is served: keep the last one in view.
+                var party = s.DeployedParty();
+                if (party.Count > 0) shown = party[party.Count - 1];
+            }
+
+            CustomerDefinition voice = CustomerCatalog.ForHero(shown);
+            _portrait.sprite = PixelSprites.Buyer(shown != null ? shown.portraitId : "rookie");
+            _buyerName.text = shown != null ? shown.displayName : "Rookie";
+            _buyerTitle.text = shown != null ? shown.Subtitle : "";
+
+            var speech = new StringBuilder();
+            if (_fighter == null)
+                speech.Append("Everyone going out today has their order in. To the benches.");
+            else if (voice.Greetings != null && voice.Greetings.Length > 0)
+                speech.Append(voice.Greetings[(_day - 1 + _fighter.level) % voice.Greetings.Length]);
+
+            // The day's visitor, and whatever the story has them say.
+            if (_visitor != null)
+            {
+                string line = Story.StoryDirector.CounterLine(_visitor, s)
+                              ?? (_visitor.Greetings != null && _visitor.Greetings.Length > 0
+                                  ? _visitor.Greetings[(_day - 1) % _visitor.Greetings.Length] : null);
+                if (!string.IsNullOrEmpty(line))
+                    speech.Append($"\n\n<size=90%><color=#{ColorUtility.ToHtmlStringRGB(UITheme.WoodDark)}>" +
+                                  $"<b>{_visitor.DisplayName}</b>, {_visitor.Title}, at the door: {line}</color></size>");
+            }
+            _speech.text = speech.ToString();
+
+            _queue.text = QueueLine(s);
+            _offers = _fighter != null ? ContractBoard.Offers(_day, _biome, _fighter, _visitor) : new List<ContractRecord>();
+            BuildOffers();
+        }
+
+        /// <summary>"Served: Rookie (Fire) · Waiting: Mira Thorn, Otho Vance".</summary>
+        private string QueueLine(RunState s)
+        {
+            if (s == null) return "";
+            var served = new List<string>();
+            var waiting = new List<string>();
+            foreach (HeroRecord h in s.DeployedParty())
+            {
+                if (h == _fighter) continue;
+                ContractRecord c = s.ContractFor(h.id);
+                if (c != null)
+                    served.Add($"{h.displayName} (<color=#{ColorUtility.ToHtmlStringRGB(UITheme.Element(c.element))}>{c.element}</color>)");
+                else waiting.Add(h.displayName);
+            }
+            var sb = new StringBuilder();
+            if (served.Count > 0) sb.Append("Served: ").Append(string.Join(", ", served));
+            if (waiting.Count > 0)
+            {
+                if (sb.Length > 0) sb.Append("\n");
+                sb.Append("Waiting in line: ").Append(string.Join(", ", waiting));
+            }
+            return sb.ToString();
+        }
 
         // ------------------------------------------------------------------ road
 
@@ -155,26 +247,25 @@ namespace AlchemistsArsenal.UI.Stations
         {
             Clear(_offerRow);
             _offerButtons.Clear();
-            if (_offers == null) return;
 
-            ContractRecord taken = SaveSystem.Instance != null && SaveSystem.Instance.State != null
-                ? SaveSystem.Instance.State.contract : null;
-            bool anyTaken = HasOrder;
+            if (_fighter == null)
+            {
+                string done = State != null && State.contracts != null && State.contracts.Count > 0
+                    ? "Every fighter going out today has ordered. Their flasks are on the benches — Prep is next."
+                    : "Nobody is going out today.";
+                var label = UIFactory.Label(_offerRow, done, UITheme.SizeBody, UITheme.TextMid, TextAlignmentOptions.Center);
+                UIFactory.Flex(label.gameObject, 1f, 1f);
+                return;
+            }
 
             foreach (ContractRecord offer in _offers)
-            {
-                bool isTaken = anyTaken && taken != null && taken.accepted
-                               && taken.title == offer.title && taken.element == offer.element;
-                BuildOfferCard(offer, anyTaken, isTaken);
-            }
+                BuildOfferCard(offer);
         }
 
-        private void BuildOfferCard(ContractRecord offer, bool anyTaken, bool isTaken)
+        private void BuildOfferCard(ContractRecord offer)
         {
             Color accent = UITheme.Element(offer.element);
-            Image card = UIKit.Surface(_offerRow, out Transform inner,
-                isTaken ? UITheme.SurfaceTop : UITheme.Surface,
-                isTaken ? UITheme.Candle : UITheme.Line, "Offer");
+            Image card = UIKit.Surface(_offerRow, out Transform inner, UITheme.Surface, UITheme.Line, "Offer");
             UIFactory.Flex(card.gameObject, 1f, 1f, minWidth: 180f);
 
             // The button is anchored to the card, NOT stacked inside it. A layout
@@ -208,66 +299,47 @@ namespace AlchemistsArsenal.UI.Stations
             UIFactory.Flex(note.gameObject, 1f, 1f, minHeight: 28f);
 
             ContractRecord captured = offer;
-            var button = UIFactory.Button(inner,
-                isTaken ? "TAKEN" : anyTaken ? "—" : "TAKE THIS JOB",
-                isTaken || anyTaken ? (System.Action)null : () => Accept(captured),
-                primary: !anyTaken);
+            var button = UIFactory.Button(inner, "TAKE THIS JOB", () => Accept(captured), primary: true);
             UIFactory.Place(button.image.rectTransform, 0.06f, 0.04f, 0.94f, 0.21f);
-            button.interactable = !anyTaken;
-            if (isTaken) UIFactory.TintButton(button, UITheme.Candle, UITheme.CandleHot, UITheme.TextOnGold);
             _offerButtons.Add(button);
         }
 
         /// <summary>
-        /// Take the first job on the board, exactly as clicking it would. The
-        /// single entry point for anything that needs to accept without a click
-        /// (the headless playtest driver, and MorningScreen.AcceptOrder).
+        /// Take the first job on the board for whoever is at the counter, exactly as
+        /// clicking it would. The single entry point for anything that needs to
+        /// accept without a click (the headless playtest driver, and
+        /// MorningScreen.AcceptOrder). Returns false once everyone is served.
         /// </summary>
         public bool AcceptFirstOffer()
         {
-            // Normally NewDay has already stocked the board. Re-stock if a caller
-            // reaches here first, so this can never silently no-op.
-            if (_offers == null || _offers.Count == 0)
-            {
-                RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
-                _offers = ContractBoard.Offers(s != null ? s.day : 1, s != null ? s.TargetBiomeIndex : 0);
-            }
-            if (_offers.Count == 0) return false;
-
-            Accept(_offers[0]);   // Accept clones before handing it to the loop
-            return HasOrder;
+            if (_fighter == null || _offers == null || _offers.Count == 0) StepUp();
+            if (_fighter == null || _offers.Count == 0) return false;
+            return Accept(_offers[0]);
         }
 
-        private void Accept(ContractRecord offer)
+        private bool Accept(ContractRecord offer)
         {
-            if (HasOrder || GameLoopManager.Instance == null) return;
+            if (_fighter == null || GameLoopManager.Instance == null) return false;
 
-            GameLoopManager.Instance.AcceptContract(offer.Clone());
+            Systems.ActiveOrder order = GameLoopManager.Instance.AcceptContract(offer.Clone());
             AudioManager.Play(Sfx.Confirm);
 
-            // Reward reading the road: a job whose element counters today's
-            // dominant threat starts the flask above the floor. Deliberately
-            // small - it is a head start, not a shortcut past the three
-            // stations that actually make the potion.
-            var order = Order;
+            // Reward reading the road: a job whose element counters today's dominant
+            // threat starts the flask above the floor. Deliberately small — a head
+            // start, not a shortcut past the benches that actually make the potion.
             if (order != null)
             {
-                BiomeData road = BiomeLibrary.Get(SaveSystem.Instance != null
-                    ? SaveSystem.Instance.State.TargetBiomeIndex : 0);
+                BiomeData road = BiomeLibrary.Get(_biome);
                 ElementType dominant = ContractBoard.Dominant(ContractBoard.ThreatCounts(road));
                 if (offer.element == ContractBoard.Counter(dominant))
                     order.ApplyBonus(QualityBudget.CounterRead, "Counter",
                         $"Took the {offer.element} job against a {dominant} road");
             }
 
-            // The pot is cold again and today's recipe direction is set here, not
-            // wherever the cauldron happened to be left from yesterday.
-            var pot = Crafting.PhysicsCauldronManager.Instance;
-            if (pot != null) pot.BeginBrew(SaveSystem.Instance != null ? SaveSystem.Instance.State.day : 1);
-
-
-            BuildOffers();
+            StepUp();   // the next fighter comes to the counter
+            if (_fighter != null) AudioManager.Speak(CustomerCatalog.ForHero(_fighter).Speech, 1.05f);
             Changed?.Invoke();
+            return order != null;
         }
     }
 }

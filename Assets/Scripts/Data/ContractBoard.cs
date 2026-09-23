@@ -18,8 +18,16 @@ namespace AlchemistsArsenal.Data
     public class ContractRecord
     {
         public bool accepted;
+        /// <summary>Portrait key and name of whoever stood at the Counter — the fighter, since fighters order their own flasks.</summary>
         public string buyerId = "";
         public string buyerName = "";
+
+        /// <summary>The fighter this flask is for (a roster id), and their name.</summary>
+        public string heroId = "";
+        public string heroName = "";
+
+        /// <summary>Who is backing a guild commission, if anyone (the day's visitor).</summary>
+        public string sponsor = "";
         public string title = "";
         public string note = "";
         public ElementType element = ElementType.Fire;
@@ -76,71 +84,62 @@ namespace AlchemistsArsenal.Data
             return (ElementType)best;
         }
 
-        /// <summary>The three jobs on the board for this day, best-matchup first.</summary>
-        public static List<ContractRecord> Offers(int day, int biomeIndex)
+        /// <summary>
+        /// The three jobs on the board for <paramref name="hero"/> this day, best
+        /// matchup first. The fighter at the Counter is the one who carries the
+        /// flask, so the jobs are theirs to choose between:
+        /// <list type="bullet">
+        /// <item><b>Standing order</b> — the element that counters today's road. Safe.</item>
+        /// <item><b>Guild commission</b> — the same element, nearly double the pay,
+        /// backed by the day's visitor (<paramref name="patron"/>), who refuses a
+        /// sloppy flask.</item>
+        /// <item><b>Their own element</b> — the fighter's attunement: they hit 20%
+        /// harder with it, whatever the road holds. Their gold and their perk
+        /// against the matchup is the actual decision.</item>
+        /// </list>
+        /// </summary>
+        public static List<ContractRecord> Offers(int day, int biomeIndex, HeroRecord hero, CustomerDefinition patron = null)
         {
-            CustomerDefinition buyer = CustomerCatalog.ForDay(day);
             BiomeData biome = BiomeLibrary.Get(biomeIndex);
             int[] counts = ThreatCounts(biome);
             ElementType dominant = Dominant(counts);
             ElementType best = Counter(dominant);
 
-            float mult = Mathf.Max(0.5f, buyer.FeeMultiplier);
-            int Fee(int b, int perDay) => Mathf.RoundToInt((b + perDay * Mathf.Min(day, 12)) * mult);
+            string heroId = hero != null ? hero.id : "";
+            string heroName = hero != null ? hero.displayName : CustomerCatalog.Rookie.DisplayName;
+            string portrait = hero != null ? hero.portraitId : CustomerCatalog.Rookie.PortraitId;
+            ElementType own = hero != null ? hero.affinity : CustomerCatalog.Rookie.Favourite;
 
-            // Fussy buyers demand one band better before they'll pay in full.
-            int Req(PotionGrade g) => Mathf.Clamp((int)g - buyer.Fussiness, 0, 3);
+            float patronMult = patron != null ? Mathf.Max(0.5f, patron.FeeMultiplier) : 1f;
+            int Fee(int b, int perDay, float mult) => Mathf.RoundToInt((b + perDay * Mathf.Min(day, 12)) * mult);
+
+            // A fussy patron demands one band better before they'll pay in full.
+            int Req(PotionGrade g, int fussiness) => Mathf.Clamp((int)g - fussiness, 0, 3);
+
+            ContractRecord Job(string title, string note, ElementType element, int required, int fee, int bonus,
+                string sponsor = "") => new ContractRecord
+            {
+                buyerId = portrait, buyerName = heroName, heroId = heroId, heroName = heroName, sponsor = sponsor,
+                title = title, note = note, element = element, requiredGrade = required, fee = fee, bonus = bonus,
+            };
 
             var offers = new List<ContractRecord>
             {
-                new ContractRecord
-                {
-                    buyerId = buyer.Id, buyerName = buyer.DisplayName,
-                    title = "Standing order",
-                    note = $"Counters the {dominant} out there today. The safe job.",
-                    element = best,
-                    requiredGrade = Req(PotionGrade.Okay),
-                    fee = Fee(42, 4), bonus = 12,
-                },
-                new ContractRecord
-                {
-                    buyerId = buyer.Id, buyerName = buyer.DisplayName,
-                    title = "Guild commission",
-                    note = "Nearly double the pay — but a sloppy flask pays half.",
-                    element = best,
-                    requiredGrade = Req(PotionGrade.Great),
-                    fee = Fee(66, 6), bonus = 34,
-                },
+                Job("Standing order", $"Counters the {dominant} out there today. The safe job.",
+                    best, Req(PotionGrade.Okay, 0), Fee(42, 4, 1f), 12),
+                Job("Guild commission",
+                    patron != null
+                        ? $"Backed by {patron.DisplayName}. Nearly double the pay — a sloppy flask pays half."
+                        : "Nearly double the pay — but a sloppy flask pays half.",
+                    best, Req(PotionGrade.Great, patron != null ? patron.Fussiness : 0), Fee(66, 6, patronMult), 34,
+                    patron != null ? patron.DisplayName : ""),
+                Job("Their own element",
+                    own == best
+                        ? $"{heroName}'s own element — and it matches the road as well."
+                        : $"{heroName} hits 20% harder with {own}, whatever is out there.",
+                    own, Req(PotionGrade.Okay, 0), Fee(58, 5, 1f), 22),
             };
-
-            // Something they want for themselves — often the wrong call for today's
-            // road, which is the actual decision: their gold against your party's odds.
-            ElementType personal = buyer.Favourite != best ? buyer.Favourite : Counter(SecondThreat(counts, dominant));
-            if (personal == best) personal = ElementType.Arcane;
-            offers.Add(new ContractRecord
-            {
-                buyerId = buyer.Id, buyerName = buyer.DisplayName,
-                title = "Personal request",
-                note = personal == best
-                    ? "Happens to match the road as well."
-                    : $"They want {personal}, whatever's out there — and it's what your party will carry.",
-                element = personal,
-                requiredGrade = Req(PotionGrade.Okay),
-                fee = Fee(58, 5), bonus = 22,
-            });
-
             return offers;
-        }
-
-        private static ElementType SecondThreat(int[] counts, ElementType dominant)
-        {
-            int best = -1;
-            for (int i = 0; i < counts.Length; i++)
-            {
-                if ((ElementType)i == dominant || counts[i] <= 0) continue;
-                if (best < 0 || counts[i] > counts[best]) best = i;
-            }
-            return best < 0 ? dominant : (ElementType)best;
         }
     }
 }
