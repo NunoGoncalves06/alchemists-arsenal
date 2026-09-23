@@ -284,7 +284,9 @@ namespace AlchemistsArsenal.Crafting
         {
             var rack = new GameObject("DryingRack");
             rack.transform.SetParent(transform, false);
-            rack.transform.localPosition = new Vector2(-2.6f, 2.35f);
+            // On the open wall under the recipe card, above the leaves: hung any higher,
+            // the card covered it and the upgrade could not be seen at all.
+            rack.transform.localPosition = new Vector2(-2.6f, 0.15f);
             AddArt(rack.transform, ShopArt.DryingRack(), -11, "Bar").transform.localScale = Vector3.one * 1.1f;
             for (int i = 0; i < 5; i++)
             {

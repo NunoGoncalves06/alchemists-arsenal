@@ -299,6 +299,8 @@ namespace AlchemistsArsenal.Core
                     {
                         _orderTag = k == 0 ? "" : $"_o{k + 1}";
                         foreach (var step in DrivePrep(orders[k], day)) { if (_errorCount > 0) break; yield return step; }
+                        if (k == 0 && orders.Count > 1 && Crafting.PhysicsCauldronManager.AutoStir && _errorCount == 0)
+                            foreach (var step in PeekAtClockwork(morningScreen, day)) yield return step;
                     }
                     if (_errorCount > 0) yield break;
 
@@ -729,6 +731,25 @@ namespace AlchemistsArsenal.Core
                 PhysicsKit.Pointer.Scripted = null;
                 if (!mix.Ready) Fail("Prep did not finish: the mixture is not ready after three strikes.");
                 Log($"Prep: {mix.Recipe.Name} ({mix.Recipe.Shorthand}) -> {mix.Evaluate()} mix, quality {order.qualityScore}");
+            }
+
+            /// <summary>
+            /// With the clockwork stirrer, the first fighter's flask brews by itself
+            /// while the next is at Prep: look in on the pot once, mid-brew, and go back.
+            /// </summary>
+            private IEnumerable PeekAtClockwork(object morningScreen, int day)
+            {
+                var pot = Crafting.PhysicsCauldronManager.Instance;
+                if (pot == null) yield break;
+                foreach (var step in WaitUntil(() => pot.ClockworkTurning && pot.BrewProgress01 > 0.2f, 10f,
+                             "the clockwork paddle brewing on its own"))
+                    yield return step;
+                if (_errorCount > 0) yield break;
+                SwitchMorningTab(morningScreen, "Cauldron");
+                foreach (var f in Frames(20)) yield return f;
+                Capture($"day{day}_morning_cauldron_clockwork");
+                SwitchMorningTab(morningScreen, "Prep");
+                foreach (var f in Frames(2)) yield return f;
             }
 
             private IEnumerable DriveCauldron(ActiveOrder order, int day)

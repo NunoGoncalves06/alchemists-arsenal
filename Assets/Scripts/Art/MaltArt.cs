@@ -164,8 +164,10 @@ namespace AlchemistsArsenal.Art
 
         /// <summary>
         /// The kiln: a brick firebox under a perforated iron drying tray, with a chimney
-        /// at the back. The draught kiln has a taller copper-cowled chimney and a damper
-        /// with a thermometer on its face.
+        /// at the back. The draught kiln is rebuilt so it reads as a different machine: a
+        /// taller copper-clad flue under a wide draught cowl, copper corner posts and a
+        /// riveted band round the brickwork, and a heat dial on its face. The tray and
+        /// the firebox arch stay where they were: the bench's physics depends on them.
         /// </summary>
         public static Sprite Kiln(bool upgraded = false)
         {
@@ -174,8 +176,10 @@ namespace AlchemistsArsenal.Art
             var c = new PixelCanvas(KilnW, KilnH);
             int chimTop = upgraded ? 0 : 3;
             c.Fill((x, y) => x >= 33 && x <= 38 && y >= chimTop && y < 12, (x, y) =>
-                upgraded && y < chimTop + 3 ? S(Copper, 0.8f - (x - 33) * 0.1f, x, y)
+                upgraded ? S(Copper, (y % 4 == 3 ? 0.3f : 0.8f) - (x - 33) * 0.08f, x, y)
                     : S(Brick, 0.55f - (x - 33) * 0.06f + (y % 3 == 0 ? -0.15f : 0f), x, y));
+            if (upgraded)   // the draught cowl: a wide copper hat on the flue
+                c.Fill((x, y) => y <= 1 && x >= 30 && x <= 41, (x, y) => S(Copper, y == 0 ? 0.95f : 0.45f, x, y));
             // Brickwork: courses of 6 x 3, offset every other course.
             c.Fill(KilnBody, (x, y) =>
             {
@@ -191,8 +195,18 @@ namespace AlchemistsArsenal.Art
                 y == KilnTrayY && x % 3 == 0 ? X(0x140c0a) : S(Iron, y == KilnTrayY ? 0.75f : 0.4f, x, y));
             c.Fill((x, y) => y >= KilnTrayY - 3 && y < KilnTrayY && (x == 2 || x == 41), (x, y) => S(Iron, 0.6f, x, y));
             if (upgraded)
-                c.Fill((x, y) => x >= 6 && x <= 10 && y >= 15 && y <= 23, (x, y) =>
-                    x == 8 && y >= 17 && y <= 22 ? (y >= 20 ? X(0xd64550) : X(0xe8e0d0)) : S(Copper, 0.7f, x, y));
+            {
+                // Copper corner posts, and a riveted band round the brickwork.
+                c.Fill((x, y) => y >= 12 && (x == 4 || x == 5 || x == 38 || x == 39), (x, y) =>
+                    S(Copper, x == 5 || x == 39 ? 0.45f : 0.85f, x, y));
+                c.Fill((x, y) => x >= 4 && x <= 39 && (y == 22 || y == 23), (x, y) =>
+                    y == 22 && x % 4 == 1 ? X(0xf0c080) : S(Copper, y == 22 ? 0.8f : 0.4f, x, y));
+                // The heat dial: a copper rim, a cream face, a red needle in the band.
+                c.Fill((x, y) => PixelCanvas.InEllipse(x, y, 11.5f, 17.5f, 3.6f, 3.6f), (x, y) =>
+                    PixelCanvas.InEllipse(x, y, 11.5f, 17.5f, 2.4f, 2.4f)
+                        ? ((x == 12 && y >= 15 && y <= 17) || (x == 11 && y == 17) ? X(0xd64550) : X(0xe8e0d0))
+                        : S(Copper, 0.75f, x, y));
+            }
             c.Outline(K);
             return c.Bake(key, PPU, new Vector2(0.5f, 0f));
         }
