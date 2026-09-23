@@ -59,6 +59,22 @@ namespace AlchemistsArsenal.UI.Stations
         /// <summary>Redraw anything that reflects the order (called when quality changes).</summary>
         public virtual void Refresh() { }
 
+        private ActiveOrder _drawnFor;
+
+        /// <summary>
+        /// Per-frame, for the open tab: redraw when the bench has taken up another
+        /// flask since the panel was last drawn. The benches move on by themselves (and
+        /// the clockwork paddle brews while you are elsewhere), so without this the
+        /// panel kept naming the fighter whose flask had already left.
+        /// </summary>
+        public void FollowOrder()
+        {
+            ActiveOrder now = Order;
+            if (now == _drawnFor) return;
+            _drawnFor = now;
+            Refresh();
+        }
+
         /// <summary>
         /// The order this station is showing. Each bench works its own order (the
         /// oldest one waiting at its stage), so the benches override this with theirs;

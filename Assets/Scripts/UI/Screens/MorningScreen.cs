@@ -499,7 +499,7 @@ namespace AlchemistsArsenal.UI
         private void Update()
         {
             StationPanel active = _stations[(int)_activeTab];
-            if (active != null) active.Tick();
+            if (active != null) { active.FollowOrder(); active.Tick(); }
 
             if (_newBanner != null && _newBanner.gameObject.activeSelf && Time.unscaledTime - _newShownAt > 3.5f)
                 _newBanner.gameObject.SetActive(false);

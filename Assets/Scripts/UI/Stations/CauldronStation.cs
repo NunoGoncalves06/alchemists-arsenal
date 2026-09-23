@@ -175,7 +175,9 @@ namespace AlchemistsArsenal.UI.Stations
 
             if (_spinNeedle != null)
             {
-                float x = Mathf.Clamp(-pot.Spin01, -1f, 1f) * 0.48f; // negative spin = clockwise = left
+                // Negative spin is clockwise, and the clockwise half is the left one. (This
+                // used to negate it, so a correct clockwise stir sat on the red half.)
+                float x = Mathf.Clamp(pot.Spin01, -1f, 1f) * 0.48f;
                 var a = new Vector2(0.5f + x, 0.5f);
                 _spinNeedle.rectTransform.anchorMin = _spinNeedle.rectTransform.anchorMax = a;
                 _spinNeedle.color = pot.StirringCorrectly ? UITheme.Ok
@@ -200,6 +202,10 @@ namespace AlchemistsArsenal.UI.Stations
             else if (pot.Burning)
             {
                 SetStatus("BURNING ON THE BOTTOM — STIR FASTER", UITheme.Danger);
+            }
+            else if (pot.ClockworkTurning)
+            {
+                SetStatus("CLOCKWORK BREWING — A HAND STIRS IT BETTER", UITheme.Ok);
             }
             else if (!pot.MouseOverCauldron)
             {
