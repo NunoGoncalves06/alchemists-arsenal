@@ -84,6 +84,9 @@ namespace AlchemistsArsenal.Combat
                         // Counter steers you to a Fire flask, which Water halves. That is
                         // the intended lesson — one flask cannot cover a whole road.
                         BiomeData.MakeWave(MonsterData.Create("Mossback", ElementType.Water, 46, 1.9f, 4, 8, "Frostmoss", 0.3f), 3, 0.6f, 1.4f),
+                        // A last straggle of Thornlings before the Woodwose: a longer road,
+                        // not a harder one.
+                        BiomeData.MakeWave(MonsterData.Create("Thornling", ElementType.Nature, 34, 2.6f, 2, 5, ""), 2, 1.0f, 1.4f),
                     }, DefaultExpeditionData.Woodwose());
                     break;
 
@@ -93,6 +96,7 @@ namespace AlchemistsArsenal.Combat
                         BiomeData.MakeWave(MonsterData.Create("Emberling", ElementType.Fire, 40, 2.8f, 4, 8, "Cinder Heart", 0.15f), 4, 0.5f, 1f),
                         BiomeData.MakeWave(MonsterData.Create("Cinder Hound", ElementType.Fire, 55, 3.2f, 5, 10, ""), 3, 0.6f, 1.5f),
                         BiomeData.MakeWave(MonsterData.Create("Bark Treant", ElementType.Nature, 60, 1.6f, 4, 8, ""), 2, 0.7f, 1.5f),
+                        BiomeData.MakeWave(MonsterData.Create("Emberling", ElementType.Fire, 40, 2.8f, 4, 8, ""), 3, 0.6f, 1.4f),
                     }, null);
                     break;
 
@@ -107,6 +111,7 @@ namespace AlchemistsArsenal.Combat
                         BiomeData.MakeWave(MonsterData.Create("Rimebeast", ElementType.Water, 180, 1.7f, 7, 13, "", contactDamage: 11), 5, 0.7f, 1.4f),
                         BiomeData.MakeWave(MonsterData.Create("Rime Wraith", ElementType.Arcane, 120, 2.6f, 6, 11, "", contactDamage: 9), 7, 0.45f, 1.4f),
                         BiomeData.MakeWave(MonsterData.Create("Frost Troll", ElementType.Water, 390, 1.3f, 10, 18, "", contactDamage: 15), 3, 1.1f, 1.6f),
+                        BiomeData.MakeWave(MonsterData.Create("Frostkin", ElementType.Water, 105, 2.2f, 5, 10, "", contactDamage: 8), 5, 0.5f, 1.4f),
                     }, null);
                     break;
 
@@ -119,6 +124,7 @@ namespace AlchemistsArsenal.Combat
                         BiomeData.MakeWave(MonsterData.Create("Mire Leech", ElementType.Poison, 120, 2.8f, 5, 9, "", contactDamage: 9), 10, 0.3f, 1.4f),
                         BiomeData.MakeWave(MonsterData.Create("Bog Brute", ElementType.Poison, 630, 1.2f, 14, 24, "", contactDamage: 18), 3, 1.2f, 1.6f),
                         BiomeData.MakeWave(MonsterData.Create("Blight Maw", ElementType.Poison, 195, 2.3f, 8, 14, "", contactDamage: 12), 8, 0.4f, 1.4f),
+                        BiomeData.MakeWave(MonsterData.Create("Mire Leech", ElementType.Poison, 120, 2.8f, 5, 9, "", contactDamage: 9), 6, 0.35f, 1.4f),
                     }, null);
                     break;
 
@@ -129,6 +135,7 @@ namespace AlchemistsArsenal.Combat
                         BiomeData.MakeWave(MonsterData.Create("Warded Effigy", ElementType.Poison, 180, 1.5f, 12, 22, "Coven Sigil", 0.5f, contactDamage: 16), 4, 0.8f, 1.6f),
                         BiomeData.MakeWave(MonsterData.Create("Coven Hexling", ElementType.Arcane, 70, 3.0f, 8, 14, "", contactDamage: 10), 8, 0.3f, 1.4f),
                         BiomeData.MakeWave(MonsterData.Create("Coven Warden", ElementType.Arcane, 300, 1.3f, 16, 28, "", contactDamage: 20), 2, 1.2f, 1.6f),
+                        BiomeData.MakeWave(MonsterData.Create("Coven Hexling", ElementType.Arcane, 70, 3.0f, 8, 14, "", contactDamage: 10), 5, 0.35f, 1.4f),
                     }, DefaultExpeditionData.Matriarch());
                     break;
             }

@@ -1051,3 +1051,50 @@ The canon is the doc comment on `Story/StoryScript.cs`. The rules:
   `GameLoopSimulationTest.TestCurveIsAffordable` checks the other half: a player
   who wins every road with Great flasks can pay for that kit with at most two
   replay days before any road.
+
+### 12.7 The morning by hand, a guided ramp, and longer roads (2026-09-29)
+- **No footers.** The button bars under the benches are gone. Each bench is worked
+  by touching it, and says what it wants next in one short parchment caption at
+  the bottom of the view. The instruments are drawn on the benches themselves
+  (`Crafting/BenchGauge`): a stir gauge beside the cauldron, a strike dial on the
+  mortar, a thermometer on the kiln and a grain gauge over the steeping jar.
+- **Real hand work.**
+
+  | Bench | What the hand does |
+  |---|---|
+  | Counter | Drags a job tag onto the order book (a click still takes it) |
+  | Malting | Holds the sack to pour, carries the lid onto the jar, clicks husks out, clicks the jar to turn the bed, carries the malt to the kiln tray, carries logs to the firebox |
+  | Prep | Throws leaves into the bowl, presses and releases the pestle |
+  | Cauldron | Circles over the pot in the day's direction |
+  | Bottling | Drags the ladle down to pour, carries the cork from its dish to the neck, drags the matching label tag onto the flask |
+
+- **Level is the road, not the day.** `Data/Complexity.Level` is the target
+  road's index, so replaying a road keeps its complexity and only the next road
+  adds more.
+
+  | Level | Benches | Recipes | Also |
+  |---|---|---|---|
+  | 0 (Woods) | Counter, Prep, Cauldron, Bottling | 2 leaves | one job on the board, malt comes from the miller, labels are pre-stuck |
+  | 1 (Peaks) | + Malting, + labels | 3 leaves | two jobs, no husks, the bed turns itself |
+  | 2 (Caverns) | everything | 3 leaves | three jobs, husks to skim, the bed to turn, the stir can run counter-clockwise |
+  | 3, 4 | everything | 4 and 5 leaves | a longer morning (+40 s per level) |
+
+  A step that is not taught yet pays its points automatically, so scores compare
+  across levels. Each element has four recipes, one per tier
+  (`RecipeBook.Tiers`).
+- **The spotlight tutorial.** `UI/TutorialScript` lists the lessons as data: the
+  bench, when the lesson applies, where to look, one short line, and when it is
+  learnt. `TutorialManager` shows each once (`RunState.seenLessons`) through
+  `UI/Spotlight`: the screen darkens except a circle that starts wide at the
+  centre and closes in on the target, then a gold ring pulses round it. Only the
+  circle takes clicks; three clicks on the dark skip the lesson. If the lesson's
+  bench is not open, the circle first points at it on the rail. While a lesson is
+  up the morning clock runs at a third of its speed. Day one teaches the job, the
+  leaves, the pestle, the stir, the pour, the cork and the send; day two the sack,
+  the lid, the kiln, the logs and the label; day three skimming, turning and the
+  reversed stir.
+- **The party waits for every flask.** Send to expedition stays locked until every
+  order is sealed and labelled (`MorningScreen.ReadyToSend`). When the clock runs
+  out the party still leaves with whatever is ready.
+- **Longer roads.** Each road has one more wave, reusing its own monsters: 4, 4, 5,
+  6 and 5 waves.
