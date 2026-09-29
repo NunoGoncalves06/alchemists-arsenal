@@ -227,9 +227,31 @@ namespace AlchemistsArsenal.Crafting
 
         private ElementType BrewElement() => _pot != null ? _pot.BrewElement : ElementType.Nature;
 
+        private BenchGauge _stirGauge;
+
+        /// <summary>
+        /// The stir gauge on the bench beside the pot: the band of good stir speeds
+        /// (it drifts), the needle at the stir, green when it is in the band and the
+        /// right way round, red when it is backwards. The brew's progress in chalk.
+        /// </summary>
+        private void DrawStirGauge()
+        {
+            if (_stirGauge == null)
+                _stirGauge = BenchGauge.Create(transform, MouthCentre + new Vector2(3.15f, -1.5f), 2.4f, true, 40, name: "StirGauge");
+            bool show = _pot.Working != null && _pot.MixtureReady && !_pot.IsBrewComplete;
+            _stirGauge.SetVisible(show);
+            if (!show) return;
+            _stirGauge.SetBand(_pot.MinOptimalStir, _pot.MaxOptimalStir);
+            Color c = _pot.StirringBackwards ? new Color(0.84f, 0.27f, 0.31f)
+                : _pot.InBand ? new Color(0.45f, 0.85f, 0.45f) : new Color(0.96f, 0.85f, 0.45f);
+            _stirGauge.SetValue(_pot.StirPower01, c);
+            _stirGauge.SetText($"brew {Mathf.RoundToInt(_pot.BrewProgress01 * 100f)}%");
+        }
+
         private void LateUpdate()
         {
             if (_pot == null) return;
+            DrawStirGauge();
             float dt = Time.deltaTime;
             float power = _pot.StirPower01;
             float scorch = _pot.Scorch01, slosh = _pot.Slosh01;

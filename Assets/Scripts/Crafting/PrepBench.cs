@@ -101,6 +101,39 @@ namespace AlchemistsArsenal.Crafting
         /// <summary>The drying rack: no wilted leaves, and each one a little plumper.</summary>
         public static bool Rack => HasUpgrade(UpgradeCatalog.DryingRack);
         public string Reaction { get; private set; } = "";
+
+        private BenchGauge _strikeDial;
+        private const float DialMax = 8f;   // m/s at the top of the dial
+
+        private void DrawStrikeDial()
+        {
+            if (_strikeDial == null) return;
+            BrewMixture mix = Mix;
+            bool show = Order != null && mix != null && mix.AllLeavesIn && !mix.Ground;
+            _strikeDial.SetVisible(show);
+            if (!show) return;
+            float band = CurrentBand;
+            _strikeDial.SetBand((IdealStrike - band) / DialMax, (IdealStrike + band) / DialMax);
+            float v = LiftReady ? PredictedStrikeSpeed : Mathf.Max(0f, LastStrikeSpeed);
+            bool clean = Mathf.Abs(v - IdealStrike) <= band;
+            _strikeDial.SetValue(v / DialMax, LiftReady ? (clean ? new Color(0.45f, 0.85f, 0.45f) : new Color(0.96f, 0.85f, 0.45f)) : new Color(0.95f, 0.91f, 0.81f));
+            _strikeDial.SetText(LiftReady || LastStrikeSpeed >= 0f ? $"{v:0.0} m/s" : $"{StrikesLeft} strikes");
+        }
+
+        /// <summary>A short line about what the bench wants next, for the station's caption.</summary>
+        public string Hint
+        {
+            get
+            {
+                BrewMixture mix = Mix;
+                if (Order == null || mix == null) return "";
+                if (!mix.AllLeavesIn) return $"Drag or click a {mix.NextStep} leaf into the mortar. {mix.Remaining} to go.";
+                if (mix.Ground) return "Ground. It goes to the cauldron.";
+                if (LiftReady) return "Let go when the needle is in the green.";
+                if (Lifting) return "Hold. The pestle is rising.";
+                return "Press and hold on the bowl, then let go to smash the leaves.";
+            }
+        }
         public Color ReactionColor { get; private set; } = Color.white;
         public Leaf Hovered { get; private set; }
 
@@ -251,6 +284,9 @@ namespace AlchemistsArsenal.Crafting
             AddArt(m.transform, ShopArt.MortarBack(Brass), 8, "Back");
             AddArt(m.transform, ShopArt.MortarFront(Brass), 14, "Front");
             if (Rack) BuildRack();
+            // The strike dial, on the bench beside the mortar: the clean band around the
+            // ideal speed; while the pestle is lifted the needle shows where it would land.
+            _strikeDial = BenchGauge.Create(transform, (Vector2)transform.position + new Vector2(0.55f, -0.75f), 2.1f, true, 30, name: "StrikeDial");
 
             // The bowl, as one solid lip-to-lip line (in the sprite's local units).
             var edge = m.AddComponent<EdgeCollider2D>();
@@ -500,6 +536,7 @@ namespace AlchemistsArsenal.Crafting
             _strikeCooldown -= dt;
             BindNext();
             UpdatePressHint();
+            DrawStrikeDial();
             if (!Attended) { EndLift(); Hovered = null; return; }
 
             Vector2 p = Pointer.World(_cam);

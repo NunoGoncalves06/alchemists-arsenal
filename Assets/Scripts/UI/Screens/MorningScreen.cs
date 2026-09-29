@@ -46,7 +46,18 @@ namespace AlchemistsArsenal.UI
         private readonly UIKit.RailTab[] _tabs = new UIKit.RailTab[5];
 
         private StationTab _activeTab = StationTab.Counter;
-        private bool _everSwitched;
+        private bool _everSwitched, _counterWasServed;
+
+        // --- what the tutorial and the harness look at --------------------------
+        public CounterStation Counter => (CounterStation)_stations[(int)StationTab.Counter];
+        /// <summary>0 Counter, 1 Malting, 2 Prep, 3 Cauldron, 4 Bottling.</summary>
+        public int ActiveTabIndex => (int)_activeTab;
+        public RectTransform RailTabRect(int index) =>
+            index >= 0 && index < _tabs.Length && _tabs[index] != null && _tabs[index].Button != null
+                ? (RectTransform)_tabs[index].Button.transform : null;
+        public RectTransform SendButtonRect => _sendBtn != null ? (RectTransform)_sendBtn.transform : null;
+        /// <summary>Show a bench, as its rail icon would (the tutorial never needs this; the harness may).</summary>
+        public void ShowTab(int index) => SwitchTab((StationTab)Mathf.Clamp(index, 0, 4));
         private int _builtForDay = -1;
 
         private Image _bg;
@@ -108,7 +119,7 @@ namespace AlchemistsArsenal.UI
             }
             if (names.Count == 0) return;
             SaveSystem.Instance.MarkDirty();
-            _newText.text = $"<b>NEW</b> — {string.Join(" and ", names)} installed";
+            _newText.text = $"<b>New here:</b> {string.Join(" and ", names)}";
             _newBanner.gameObject.SetActive(true);
             _newShownAt = Time.unscaledTime;
             if (Vfx.VfxWorld.Active != null && (int)tab < ShopWorld.BenchCentres.Length)
@@ -300,9 +311,18 @@ namespace AlchemistsArsenal.UI
         {
             var cm = CraftingManager.Instance;
             bool unlocked = TutorialManager.StationsUnlocked || (cm != null && cm.Orders.Count > 0);
+            // A bench the road has not reached yet is not on the rail at all (Malting on level 0).
+            bool malting = Data.Complexity.MaltingOn(Data.Complexity.Level());
+            int shown = 0;
             for (int i = 0; i < _tabs.Length; i++)
             {
                 if (_tabs[i] == null) continue;
+                bool visible = i != (int)StationTab.Malting || malting;
+                GameObject tabGo = _tabs[i].Button != null ? _tabs[i].Button.gameObject : null;
+                if (tabGo != null && tabGo.activeSelf != visible) tabGo.SetActive(visible);
+                if (!visible) continue;
+                shown++;
+                if (_tabs[i].Step != null) _tabs[i].Step.text = shown.ToString();
                 bool locked = i != (int)StationTab.Counter && !unlocked;
                 _tabs[i].SetState(i == (int)_activeTab, locked, _stations[i].Complete);
                 _tabs[i].SetCount(WaitingAt((StationTab)i));
@@ -355,6 +375,11 @@ namespace AlchemistsArsenal.UI
         {
             RefreshDock();
             RefreshRail();
+            // The last job dropped in the order book: walk the player to the first bench.
+            bool served = CounterStation.AllServed;
+            if (served && !_counterWasServed && _activeTab == StationTab.Counter)
+                SwitchTab(CraftingManager.FirstStage == BrewStage.Malting ? StationTab.Malting : StationTab.Prep);
+            _counterWasServed = served;
         }
 
         // --- the dock ---

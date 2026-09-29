@@ -11,9 +11,9 @@ namespace AlchemistsArsenal.Core
     /// Counter, the Prep bench, the Cauldron and the Bottling bench — and a camera
     /// that glides to whichever one the player is working at.
     ///
-    /// The camera draws into the station column only (a viewport rect above the
-    /// HUD strip), so the station HUDs sit beside the world instead of on top of it.
-    /// That is what finally stops the gauge deck covering the pot's legs and belly.
+    /// The camera draws into the whole station column: there is no HUD strip under
+    /// the benches any more (everything is done on the bench itself), so the world
+    /// runs to the bottom of the screen, framed a little low so the bench sits there.
     ///
     /// Everything lives under this loop-owned root; destroying it tears the shop down
     /// (DESIGN.md §11).
@@ -28,8 +28,11 @@ namespace AlchemistsArsenal.Core
             new Vector2(-48f, 0f), new Vector2(-32f, 0f), new Vector2(-16f, 0f), new Vector2(0f, 0f), new Vector2(16f, 0f),
         };
 
-        /// <summary>The station column above the HUD strip, as a fraction of the screen.</summary>
-        public static readonly Rect WorldViewport = new Rect(0.085f, 0.235f, 0.615f, 0.70f);
+        /// <summary>The station column, top bar to the bottom of the screen, as a fraction of the screen.</summary>
+        public static readonly Rect WorldViewport = new Rect(0.085f, 0f, 0.615f, 0.935f);
+
+        /// <summary>How far below a bench's centre the camera looks (negative: above, so the bench sits low in the view, just over the caption).</summary>
+        public const float ViewDrop = -0.35f;
 
         public Camera WorldCamera { get; private set; }
         public CameraRig Rig { get; private set; }
@@ -53,13 +56,14 @@ namespace AlchemistsArsenal.Core
             camGo.transform.SetParent(transform, false);
             WorldCamera = camGo.AddComponent<Camera>();
             WorldCamera.orthographic = true;
-            WorldCamera.orthographicSize = 3.4f;
+            // As wide as before the HUD strip went; the extra height is more of the room.
+            WorldCamera.orthographicSize = 3.4f * 0.935f / 0.70f;
             WorldCamera.clearFlags = CameraClearFlags.SolidColor;
             WorldCamera.backgroundColor = new Color(0.07f, 0.05f, 0.09f);
             WorldCamera.depth = -1;
             WorldCamera.rect = WorldViewport;
             Rig = camGo.AddComponent<CameraRig>();
-            Rig.Configure(new Vector3(BenchCentres[0].x, BenchCentres[0].y, -10f));
+            Rig.Configure(new Vector3(BenchCentres[0].x, BenchCentres[0].y - ViewDrop, -10f));
 
             int day = SaveSystem.Instance != null && SaveSystem.Instance.State != null ? SaveSystem.Instance.State.day : 1;
             VfxWorld.Create(transform, seed: 1000 + day);
@@ -83,7 +87,7 @@ namespace AlchemistsArsenal.Core
         {
             if (Rig == null || index < 0 || index >= BenchCentres.Length) return;
             Vector2 c = BenchCentres[index];
-            Rig.PanTo(new Vector3(c.x, c.y, -10f), instant || Application.isBatchMode ? 0f : 0.45f);
+            Rig.PanTo(new Vector3(c.x, c.y - ViewDrop, -10f), instant || Application.isBatchMode ? 0f : 0.45f);
         }
 
         private T NewBench<T>(string name, Vector2 centre) where T : Component

@@ -91,6 +91,45 @@ namespace AlchemistsArsenal.Crafting
         private bool _turned, _pointerPour;
         private float _kilnLinger = -1f;
 
+        // Hands on the bench: the lid, a scoop of green malt, a log.
+        private enum Carry { None, Lid, Malt, Log }
+        private Carry _carry;
+        /// <summary>The lid, the malt or a log is in the hand.</summary>
+        public bool Carrying => _carry != Carry.None;
+        private Transform _lid;
+        private SpriteRenderer _carryArt;
+        private BenchGauge _jarGauge, _thermo;
+
+        /// <summary>Where the lid waits beside the jar, and where it sits when the jar is steeping.</summary>
+        public Vector2 LidHomeWorld => (Vector2)transform.position + new Vector2(-4.05f, BenchTopY + 0.02f);
+        public Vector2 JarMouthWorld => _jar != null ? JP(MaltArt.JarW * 0.5f, 1f) : (Vector2)transform.position;
+        public Vector2 LidWorld => _lid != null ? (Vector2)_lid.position : LidHomeWorld;
+        public Vector2 KilnTrayWorld => _kilnT != null ? KP(22f, MaltArt.KilnTrayY - 1f) : (Vector2)transform.position;
+        public Vector2 FireboxWorld => _kilnT != null ? ArchCentre : (Vector2)transform.position;
+
+        /// <summary>A short line about what the bench wants next, for the station's caption.</summary>
+        public string Hint
+        {
+            get
+            {
+                ActiveOrder tub = TubOrder, kiln = KilnOrder;
+                MaltStep step = tub != null ? tub.maltStep : MaltStep.Waiting;
+                if (TurnDue) return "The bed is matting. Click the jar to turn it.";
+                if (kiln != null && Heat01 > HeatHigh) return "Too hot. Let the fire burn down.";
+                if (kiln != null && Heat01 < HeatLow && !Draught) return "The kiln is cooling. Drag a log into the fire.";
+                if (CanLoadKiln) return "Sprouted. Drag the malt from the jar onto the kiln.";
+                if (tub != null && step == MaltStep.Filling)
+                    return GoodInJar < QualityBudget.GrainTarget - QualityBudget.GrainSlack
+                        ? "Hold on the sack to pour grain into the jar."
+                        : "That's the line. Drag the lid onto the jar.";
+                if (tub != null && step == MaltStep.Soaking)
+                    return HusksInJar > 0 ? "Click the floating husks to skim them." : "Soaking.";
+                if (tub != null && step == MaltStep.Germinating) return "Sprouting. Go work another bench.";
+                if (kiln != null) return "Drying. Keep the heat in the green.";
+                return "";
+            }
+        }
+
         public bool Attended { get; set; }
         public bool PourHeld { get; set; }
 
@@ -160,6 +199,22 @@ namespace AlchemistsArsenal.Crafting
             pile.transform.SetParent(transform, false);
             pile.transform.localPosition = PileLocal;
             AddArt(pile.transform, MaltArt.LogPile(), 10, 1f);
+
+            var lid = new GameObject("JarLid");
+            lid.transform.SetParent(transform, false);
+            lid.transform.position = LidHomeWorld;
+            AddArt(lid.transform, MaltArt.JarLid(), OrderFront + 1, JarScale);
+            _lid = lid.transform;
+
+            var carry = new GameObject("Carried");
+            carry.transform.SetParent(transform, false);
+            _carryArt = AddArt(carry.transform, MaltArt.Grain(false, 3), 30, 2.4f);
+            _carryArt.enabled = false;
+
+            // The instruments: grain against the line above the jar, a thermometer by the kiln.
+            _jarGauge = BenchGauge.Create(transform, JP(MaltArt.JarW * 0.5f, 1f) + new Vector2(0f, 0.75f), 2.2f, false, 30, name: "JarGauge");
+            _thermo = BenchGauge.Create(transform, KP(MaltArt.KilnW + 5f, MaltArt.KilnH * 0.45f), 2.2f, true, 30, fillMode: true, name: "Thermometer");
+            _thermo.SetBand(HeatLow, HeatHigh);
         }
 
         /// <summary>Jar art pixel (x right, y down from its top) to world.</summary>
@@ -321,6 +376,15 @@ namespace AlchemistsArsenal.Crafting
             SoakProgress01 = GerminateProgress01 = 0f;
             SetWater(WaterRow);
             if (_steepCollider != null) _steepCollider.enabled = true;
+            LidOn(false);
+        }
+
+        /// <summary>The lid on the jar (steeping) or back beside it.</summary>
+        private void LidOn(bool on)
+        {
+            if (_lid == null) return;
+            _lid.position = on ? JarMouthWorld : LidHomeWorld;
+            if (_carry == Carry.Lid) _carry = Carry.None;
         }
 
         private void SetWater(int level)
@@ -359,23 +423,115 @@ namespace AlchemistsArsenal.Crafting
             {
                 Vector2 p = Pointer.World(_cam);
                 if (Pointer.PressedThisFrame && !Pointer.OverUI) Click(p);
+                if (_carry != Carry.None)
+                {
+                    if (Pointer.Held) MoveCarried(p);
+                    else Drop(p);
+                }
                 if (!Pointer.Held) _pointerPour = false;
             }
-            else _pointerPour = false;
+            else { _pointerPour = false; CancelCarry(); }
 
             UpdateJar(dt);
             UpdateKiln(dt);
             DrawKiln(dt);
+            DrawGauges();
+        }
+
+        private void MoveCarried(Vector2 p)
+        {
+            if (_carry == Carry.Lid && _lid != null) _lid.position = p;
+            else if (_carryArt != null) _carryArt.transform.parent.position = p;
+        }
+
+        /// <summary>Let go of what the hand carries: where it lands decides what happens.</summary>
+        private void Drop(Vector2 p)
+        {
+            Carry what = _carry;
+            _carry = Carry.None;
+            if (_carryArt != null) _carryArt.enabled = false;
+            switch (what)
+            {
+                case Carry.Lid:
+                    if (Vector2.Distance(p, JarMouthWorld) < 1.1f && CanSteep) Steep();
+                    else LidOn(false);
+                    break;
+                case Carry.Malt:
+                    if (Vector2.Distance(p, KilnTrayWorld) < 1.8f) LoadKiln();
+                    break;
+                case Carry.Log:
+                    if (Vector2.Distance(p, FireboxWorld) < 1.4f) Stoke(p);
+                    break;
+            }
+        }
+
+        private void CancelCarry()
+        {
+            if (_carry == Carry.Lid) LidOn(TubOrder != null && TubOrder.maltStep == MaltStep.Soaking);
+            _carry = Carry.None;
+            if (_carryArt != null) _carryArt.enabled = false;
+        }
+
+        private void StartCarry(Carry what, Sprite art, float scale, Vector2 at)
+        {
+            _carry = what;
+            if (what == Carry.Lid || _carryArt == null) return;
+            _carryArt.sprite = art;
+            _carryArt.sharedMaterial = SpriteMaterials.For(art);
+            _carryArt.transform.localScale = Vector3.one * scale;
+            _carryArt.transform.parent.position = at;
+            _carryArt.enabled = true;
+        }
+
+        /// <summary>The instruments follow the jar and the kiln.</summary>
+        private void DrawGauges()
+        {
+            ActiveOrder tub = TubOrder;
+            MaltStep step = tub != null ? tub.maltStep : MaltStep.Waiting;
+            if (_jarGauge != null)
+            {
+                _jarGauge.SetVisible(tub != null);
+                if (tub != null && step == MaltStep.Filling)
+                {
+                    float target = QualityBudget.GrainTarget, slack = QualityBudget.GrainSlack, full = target * 1.6f;
+                    _jarGauge.SetBand((target - slack) / full, (target + slack * 2f) / full);
+                    bool inBand = GoodInJar >= target - slack && GoodInJar <= target + slack * 2f;
+                    _jarGauge.SetValue(GoodInJar / full, inBand ? new Color(0.45f, 0.85f, 0.45f) : new Color(0.96f, 0.85f, 0.45f));
+                    _jarGauge.SetText($"{GoodInJar} / {QualityBudget.GrainTarget}");
+                }
+                else if (tub != null)
+                {
+                    float t = step == MaltStep.Soaking ? SoakProgress01 : GerminateProgress01;
+                    _jarGauge.SetBand(0f, 0f);
+                    _jarGauge.SetValue(t, new Color(0.96f, 0.85f, 0.45f));
+                    _jarGauge.SetText(step == MaltStep.Soaking ? "soaking" : step == MaltStep.Germinating ? "sprouting" : "sprouted");
+                }
+            }
+            if (_thermo != null)
+            {
+                _thermo.SetValue(Heat01, Heat01 > HeatHigh ? new Color(0.84f, 0.27f, 0.31f)
+                    : Heat01 < HeatLow ? new Color(0.25f, 0.56f, 0.82f) : new Color(0.31f, 0.68f, 0.35f));
+                _thermo.SetText(KilnOrder != null ? $"dry {Mathf.RoundToInt(KilnProgress01 * 100f)}%" : "");
+            }
         }
 
         private void Click(Vector2 p)
         {
+            if (_lid != null && CanSteep && Vector2.Distance(p, (Vector2)_lid.position + new Vector2(0f, 0.15f)) < 0.9f)
+            {
+                StartCarry(Carry.Lid, null, 1f, p);
+                return;
+            }
             if (Vector2.Distance(p, SackWorld) < 1.0f && TubOrder != null && TubOrder.maltStep == MaltStep.Filling)
             {
                 _pointerPour = true;
                 return;
             }
-            if (Vector2.Distance(p, PileWorld) < 1.0f) { Stoke(); return; }
+            if (Vector2.Distance(p, PileWorld) < 1.0f)
+            {
+                if (CanStoke) StartCarry(Carry.Log, MaltArt.Log(), 1.2f, p);
+                return;
+            }
 
             // A husk under the pointer: skim it.
             foreach (var g in _tub)
@@ -388,7 +544,7 @@ namespace AlchemistsArsenal.Crafting
             bool onJar = Mathf.Abs(p.x - JarWorld.x) < 1.4f && p.y < JP(0f, 1f).y && p.y > JP(0f, MaltArt.JarH).y;
             if (!onJar) return;
             if (TurnDue) Turn();
-            else if (CanLoadKiln) LoadKiln();
+            else if (CanLoadKiln) StartCarry(Carry.Malt, MaltArt.Grain(false, 3), 2.6f, p);
         }
 
         private bool Pouring => TubOrder != null && TubOrder.maltStep == MaltStep.Filling && (PourHeld || _pointerPour);
@@ -488,6 +644,7 @@ namespace AlchemistsArsenal.Crafting
                 Charge(o, QualityBudget.MaltOver, $"Crowded the steep ({good} for {target})");
             else
                 Pay(o, QualityBudget.MaltFill, $"Steeped to the line ({good} grains)");
+            LidOn(true);
             AudioManager.Play(Sfx.Confirm);
             Changed?.Invoke();
         }
@@ -502,8 +659,11 @@ namespace AlchemistsArsenal.Crafting
                     $"{left} husk{(left == 1 ? "" : "s")} left in the steep");
             else if (husksPoured > 0)
                 Pay(o, QualityBudget.MaltSkim, "Skimmed the steep clean");
+            else if (!Data.Complexity.HusksOn(Data.Complexity.Level()))
+                Pay(o, QualityBudget.MaltSkim, "A clean steep");   // before the road teaches skimming
 
             // Drain it: the water goes, and the grain is left to sprout.
+            LidOn(false);
             if (_steepCollider != null) _steepCollider.enabled = false;
             _drainT = 0f;
             o.maltStep = MaltStep.Germinating;
@@ -585,13 +745,15 @@ namespace AlchemistsArsenal.Crafting
             Changed?.Invoke();
         }
 
-        /// <summary>Throw a log from the pile into the firebox.</summary>
-        public void Stoke()
+        /// <summary>Throw a log from the pile into the firebox (the draught kiln's stoker, and the playtest).</summary>
+        public void Stoke() => Stoke(PileWorld + new Vector2(-0.2f, 0.3f));
+
+        /// <summary>A log let go at <paramref name="from"/> drops into the firebox.</summary>
+        public void Stoke(Vector2 from)
         {
             if (!CanStoke) return;
             var go = new GameObject("Log");
             go.transform.SetParent(transform, false);
-            Vector2 from = PileWorld + new Vector2(-0.2f, 0.3f);
             go.transform.position = from;
             var rb = go.AddComponent<Rigidbody2D>();
             rb.mass = 0.6f;
@@ -600,7 +762,7 @@ namespace AlchemistsArsenal.Crafting
             AddArt(go.transform, MaltArt.Log(), OrderFire + 1, 1f);
             GameLayers.Assign(go, GameLayers.ShopProp);
             col.excludeLayers = ~0;   // it flies clean into the arch
-            rb.linearVelocity = Launch(from, ArchCentre, 0.7f);
+            rb.linearVelocity = Launch(from, ArchCentre, Mathf.Clamp(Vector2.Distance(from, ArchCentre) * 0.18f, 0.25f, 0.7f));
             rb.angularVelocity = 360f;
             _flyingLogs.Add(rb);
             AudioManager.Play(Sfx.Tab);

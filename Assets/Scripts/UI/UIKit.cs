@@ -270,6 +270,52 @@ namespace AlchemistsArsenal.UI
             return view;
         }
 
+        // --------------------------------------------------------------- caption
+
+        /// <summary>
+        /// A parchment strip with one short line of ink, pinned beside what it talks
+        /// about. The only text a bench shows: what it wants next, in sentence case.
+        /// It hides itself when there is nothing to say.
+        /// </summary>
+        public class CaptionView
+        {
+            public Image Root;
+            public TextMeshProUGUI Text;
+            private string _last;
+
+            public void Set(string text)
+            {
+                bool show = !string.IsNullOrEmpty(text);
+                if (Root != null && Root.gameObject.activeSelf != show) Root.gameObject.SetActive(show);
+                if (!show || text == _last) return;
+                _last = text;
+                if (Text != null) Text.text = text;
+            }
+        }
+
+        public static CaptionView Caption(Transform parent, string name = "Caption")
+        {
+            var view = new CaptionView();
+            view.Root = UIFactory.Panel(parent, UITheme.Parchment, name);
+            view.Root.raycastTarget = false;
+            // A darker bottom edge, so it reads as a strip of paper on the wall.
+            var edge = UIFactory.Panel(view.Root.transform, UITheme.ParchmentDim, "Edge");
+            edge.raycastTarget = false;
+            edge.rectTransform.anchorMin = Vector2.zero;
+            edge.rectTransform.anchorMax = new Vector2(1f, 0f);
+            edge.rectTransform.sizeDelta = new Vector2(0f, 3f);
+            edge.rectTransform.anchoredPosition = new Vector2(0f, 1.5f);
+            view.Text = UIFactory.Label(view.Root.transform, "", UITheme.SizeBody, UITheme.Ink900, TextAlignmentOptions.Left);
+            view.Text.raycastTarget = false;
+            view.Text.textWrappingMode = TextWrappingModes.NoWrap;
+            view.Text.enableAutoSizing = true;
+            view.Text.fontSizeMin = UITheme.SizeTiny;
+            view.Text.fontSizeMax = UITheme.SizeBody;
+            UIFactory.Stretch(view.Text.rectTransform, 10f);
+            view.Root.gameObject.SetActive(false);
+            return view;
+        }
+
         // ------------------------------------------------------------ interaction
 
         /// <summary>A button that reports press and release separately (see <see cref="HoldButton"/>).</summary>
