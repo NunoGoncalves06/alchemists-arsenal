@@ -167,6 +167,9 @@ namespace AlchemistsArsenal.UI.Stations
 
             _queue.text = QueueLine(s);
             _offers = _fighter != null ? ContractBoard.Offers(_day, _biome, _fighter, _visitor) : new List<ContractRecord>();
+            // The first roads keep the board short: the safe job first, then the Guild's.
+            int jobs = Complexity.JobsOffered(Complexity.Level(s));
+            if (_offers.Count > jobs) _offers.RemoveRange(jobs, _offers.Count - jobs);
             BuildOffers();
         }
 

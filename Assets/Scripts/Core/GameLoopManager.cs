@@ -150,7 +150,8 @@ namespace AlchemistsArsenal.Core
             // Every fighter orders their own flask, so every fighter adds to the morning.
             RunState st = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
             int fighters = st != null ? Mathf.Max(1, st.DeployedParty().Count) : 1;
-            _morningBudget = morningBudgetSeconds + extraSecondsPerFighter * (fighters - 1);
+            _morningBudget = morningBudgetSeconds + extraSecondsPerFighter * (fighters - 1)
+                             + Data.Complexity.ExtraMorningSeconds(Data.Complexity.Level(st));
             _morningRemaining = _morningBudget;
             MorningRemaining01 = 1f;
             SetPhase(GamePhase.Morning);

@@ -421,6 +421,13 @@ namespace AlchemistsArsenal.Crafting
                     int sprout = GerminateProgress01 < 0.25f ? 0 : GerminateProgress01 < 0.55f ? 1 : GerminateProgress01 < 0.85f ? 2 : 3;
                     foreach (var g in _tub) SetGrainArt(g, sprout);
 
+                    // Before the road teaches turning, the bed turns itself (and earns its share).
+                    if (!_turned && GerminateProgress01 >= TurnFrom && !Data.Complexity.TurningOn(Data.Complexity.Level()))
+                    {
+                        _turned = true;
+                        Pay(o, QualityBudget.MaltTurn, "The bed turned itself");
+                    }
+
                     if (!_turned && GerminateProgress01 >= TurnBy)
                     {
                         _turned = true;
@@ -625,7 +632,8 @@ namespace AlchemistsArsenal.Crafting
                 {
                     _pourDebt -= 1f;
                     int n = _poured++;
-                    bool husk = (n * 7 + day * 3) % 9 < 2;
+                    // Husks only turn up once the road is far enough along to teach skimming.
+                    bool husk = Data.Complexity.HusksOn(Data.Complexity.Level()) && (n * 7 + day * 3) % 9 < 2;
                     float j = ((n * 37) % 11) / 11f - 0.5f;
                     Grain g = SpawnGrain(mouth + new Vector2(0f, j * 0.06f), husk);
                     g.Body.linearVelocity = Launch(g.Body.position, JarWorld + new Vector2(j * 1.2f, 1.35f), 0.5f);
