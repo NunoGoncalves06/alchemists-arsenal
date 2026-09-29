@@ -69,6 +69,8 @@ namespace AlchemistsArsenal.Core
         public ContractRecord contract = ContractRecord.None;
 
         public bool tutorialCompleted = false;
+        /// <summary>Tutorial lessons already shown (see UI.TutorialScript); each plays once.</summary>
+        public List<string> seenLessons = new List<string>();
         public bool openingCinematicSeen = false;
         /// <summary>What the story has told so far (see Story.StoryDirector).</summary>
         public List<string> storyFlags = new List<string>();
