@@ -67,7 +67,7 @@ namespace AlchemistsArsenal.Core
             // the player brewing. The order carries the contract's generic "Fire
             // Flask", so the Evening report used to name a different potion.
             string name = order == null ? "Raw Sludge"
-                : RecipeBook.For(order.element)?.Name
+                : order.Mixture?.Recipe?.Name ?? RecipeBook.For(order.element)?.Name
                   ?? (string.IsNullOrWhiteSpace(order.potionName) ? "Raw Sludge" : order.potionName);
 
             RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;

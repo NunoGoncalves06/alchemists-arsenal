@@ -434,8 +434,8 @@ namespace AlchemistsArsenal.UI
             _focus = _stations[(int)_activeTab].ShownOrder ?? (cm != null ? cm.CurrentOrder : null);
             BuildFlaskRows();
 
-            bool any = cm != null && cm.Orders.Count > 0;
-            _sendBtn.interactable = any;
+            // The party only leaves with every fighter served and every flask finished.
+            _sendBtn.interactable = ReadyToSend;
             _sendHint.text = SendHint();
 
             ActiveOrder order = _focus;
@@ -474,16 +474,20 @@ namespace AlchemistsArsenal.UI
             _logText.text = sb.ToString();
         }
 
+        /// <summary>Every fighter has ordered and every flask is sealed and labelled.</summary>
+        public static bool ReadyToSend =>
+            CraftingManager.Instance != null && CraftingManager.Instance.AllDone && CounterStation.NextFighter == null;
+
         private static string SendHint()
         {
             var cm = CraftingManager.Instance;
             if (cm == null || cm.Orders.Count == 0) return "Take a job at the Counter first.";
             HeroRecord next = CounterStation.NextFighter;
-            if (next != null) return $"{next.displayName} hasn't ordered yet — they would carry sludge.";
-            if (cm.AllDone) return "Every flask sealed and labelled — good to go.";
+            if (next != null) return $"{next.displayName} hasn't ordered yet.";
+            if (cm.AllDone) return "Every flask is ready.";
             int left = 0;
             for (int i = 0; i < cm.Orders.Count; i++) if (!cm.Orders[i].Finished) left++;
-            return $"{left} flask{(left == 1 ? "" : "s")} still on the benches — you can send early, it just won't be as good.";
+            return $"{left} flask{(left == 1 ? "" : "s")} still on the benches.";
         }
 
         private void SetClock(float t01)

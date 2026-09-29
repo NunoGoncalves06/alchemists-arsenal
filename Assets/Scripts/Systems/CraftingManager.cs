@@ -34,8 +34,11 @@ namespace AlchemistsArsenal.Systems
         /// <summary>Today's orders, in the order the fighters were served.</summary>
         public IReadOnlyList<ActiveOrder> Orders => _orders;
 
-        /// <summary>The bench a brand-new order goes to first: its grain is malted before anything else.</summary>
-        public static BrewStage FirstStage => BrewStage.Malting;
+        /// <summary>
+        /// The bench a brand-new order goes to first: its grain is malted before anything
+        /// else, once the road is far enough along to have a Malting bench (<see cref="Data.Complexity"/>).
+        /// </summary>
+        public static BrewStage FirstStage => Data.Complexity.MaltingOn(Data.Complexity.Level()) ? BrewStage.Malting : BrewStage.Prep;
 
         /// <summary>The most recently accepted order (for the tutorial, tests and old callers).</summary>
         public ActiveOrder CurrentOrder => _orders.Count > 0 ? _orders[_orders.Count - 1] : null;
@@ -73,6 +76,7 @@ namespace AlchemistsArsenal.Systems
         {
             if (job == null) return null;
             string orderId = "ORD-" + UnityEngine.Random.Range(1000, 9999);
+            int level = Data.Complexity.Level();
             var order = new ActiveOrder(orderId, job.PotionName, job.element)
             {
                 heroId = job.heroId ?? "",
@@ -80,8 +84,17 @@ namespace AlchemistsArsenal.Systems
                 contract = job,
                 queueIndex = _orders.Count,
                 stage = FirstStage,
-                Mixture = new Data.BrewMixture(job.element),
+                Mixture = new Data.BrewMixture(job.element, Data.Complexity.RecipeTier(level)),
             };
+            // Before the road has a Malting bench, the grain comes from the miller
+            // already malted: full enzymes, and the malt's share of the score, so a
+            // first-road flask can still reach Perfect.
+            if (!Data.Complexity.MaltingOn(level))
+            {
+                order.MaltQuality01 = 1f;
+                order.maltPoints = Data.QualityBudget.MaltMax;
+                order.ApplyBonus(Data.QualityBudget.MaltMax, "Malting", "Malted grain from the miller");
+            }
             _orders.Add(order);
             OnOrderStarted?.Invoke(order);
             OrdersChanged?.Invoke();

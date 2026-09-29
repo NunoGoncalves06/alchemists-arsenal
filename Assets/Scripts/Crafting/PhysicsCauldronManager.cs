@@ -340,7 +340,8 @@ namespace AlchemistsArsenal.Crafting
         /// <summary>A fresh brew: a clean pot, empty progress, and the day's stir direction.</summary>
         public void BeginBrew(int day)
         {
-            RequiredClockwise = day % 2 == 1;
+            // The first roads always stir clockwise; later, each brew picks its own way.
+            RequiredClockwise = !Data.Complexity.DirectionFlips(Data.Complexity.Level()) || day % 2 == 1;
             _bandScale = 1f;
             BrewProgress01 = 0f;
             bandPhase = 0f;

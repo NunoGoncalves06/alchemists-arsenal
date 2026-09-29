@@ -53,48 +53,69 @@ namespace AlchemistsArsenal.Data
     public static class RecipeBook
     {
         /// <summary>
-        /// One recipe per element. The base is doubled and bound with a neighbouring
-        /// element — the binder is never the counter-element, so a player who knows
-        /// the combat matrix still has to learn the kitchen.
+        /// Four recipes per element, one per tier (<see cref="Complexity.RecipeTier"/>):
+        /// two leaves on the first road, three on the next two, then four and five.
+        /// The base is always doubled (tripled in the longest) and bound with a
+        /// neighbouring element; the binder is never the counter-element, so a player
+        /// who knows the combat matrix still has to learn the kitchen.
         /// </summary>
-        public static PotionRecipe For(ElementType result) => result switch
+        private static readonly PotionRecipe[][] Tiers =
         {
-            ElementType.Fire => new PotionRecipe
+            new[]   // Fire
             {
-                Result = ElementType.Fire,
-                Name = "Fireblood",
-                Method = "Crush ember root twice over, then fold bark through it to hold the heat.",
-                Steps = new[] { ElementType.Fire, ElementType.Fire, ElementType.Nature },
+                R(ElementType.Fire, "Ember Tonic", "Two ember roots, crushed together while they're still warm.", ElementType.Fire, ElementType.Fire),
+                R(ElementType.Fire, "Fireblood", "Crush ember root twice over, then fold bark through it to hold the heat.", ElementType.Fire, ElementType.Fire, ElementType.Nature),
+                R(ElementType.Fire, "Cinderheart", "Fireblood with a pinch of star anise, so it burns longer.", ElementType.Fire, ElementType.Fire, ElementType.Nature, ElementType.Arcane),
+                R(ElementType.Fire, "Wildfire", "Three roots, bark to bind, anise to wake it. Stand back.", ElementType.Fire, ElementType.Fire, ElementType.Fire, ElementType.Nature, ElementType.Arcane),
             },
-            ElementType.Water => new PotionRecipe
+            new[]   // Water
             {
-                Result = ElementType.Water,
-                Name = "Tidevial",
-                Method = "Two measures of frost lily, bound with green so it does not separate.",
-                Steps = new[] { ElementType.Water, ElementType.Water, ElementType.Nature },
+                R(ElementType.Water, "Dewdrop", "Two frost lilies and nothing else.", ElementType.Water, ElementType.Water),
+                R(ElementType.Water, "Tidevial", "Two measures of frost lily, bound with green so it does not separate.", ElementType.Water, ElementType.Water, ElementType.Nature),
+                R(ElementType.Water, "Rimewater", "Tidevial sharpened with anise until it frosts the glass.", ElementType.Water, ElementType.Water, ElementType.Nature, ElementType.Arcane),
+                R(ElementType.Water, "Deep Tide", "Three lilies, green to bind, a drop of venom to make it bite.", ElementType.Water, ElementType.Water, ElementType.Water, ElementType.Nature, ElementType.Poison),
             },
-            ElementType.Nature => new PotionRecipe
+            new[]   // Nature
             {
-                Result = ElementType.Nature,
-                Name = "Greenblood",
-                Method = "Bark and moss doubled, cut with water so it pours.",
-                Steps = new[] { ElementType.Nature, ElementType.Nature, ElementType.Water },
+                R(ElementType.Nature, "Sap Tonic", "Bark and moss, crushed wet.", ElementType.Nature, ElementType.Nature),
+                R(ElementType.Nature, "Greenblood", "Bark and moss doubled, cut with water so it pours.", ElementType.Nature, ElementType.Nature, ElementType.Water),
+                R(ElementType.Nature, "Thornbrew", "Greenblood with anise, so the thorns grow in the flask.", ElementType.Nature, ElementType.Nature, ElementType.Water, ElementType.Arcane),
+                R(ElementType.Nature, "Old Growth", "Three barks, water to carry them, anise to wake the roots.", ElementType.Nature, ElementType.Nature, ElementType.Nature, ElementType.Water, ElementType.Arcane),
             },
-            ElementType.Poison => new PotionRecipe
+            new[]   // Poison
             {
-                Result = ElementType.Poison,
-                Name = "Blackdraught",
-                Method = "Bog spore twice, woken with a pinch of star anise.",
-                Steps = new[] { ElementType.Poison, ElementType.Poison, ElementType.Arcane },
+                R(ElementType.Poison, "Bogwater", "Two bog spores, left to sour.", ElementType.Poison, ElementType.Poison),
+                R(ElementType.Poison, "Blackdraught", "Bog spore twice, woken with a pinch of star anise.", ElementType.Poison, ElementType.Poison, ElementType.Arcane),
+                R(ElementType.Poison, "Nightshade", "Blackdraught thinned with frost lily so it spreads.", ElementType.Poison, ElementType.Poison, ElementType.Arcane, ElementType.Water),
+                R(ElementType.Poison, "Plaguebloom", "Three spores, anise to wake them, lily to carry the cloud.", ElementType.Poison, ElementType.Poison, ElementType.Poison, ElementType.Arcane, ElementType.Water),
             },
-            _ => new PotionRecipe
+            new[]   // Arcane
             {
-                Result = ElementType.Arcane,
-                Name = "Hexdraught",
-                Method = "Hexbloom doubled, soured with venom so the sigil takes.",
-                Steps = new[] { ElementType.Arcane, ElementType.Arcane, ElementType.Poison },
+                R(ElementType.Arcane, "Glimmer", "Two hexblooms, stirred until they hum.", ElementType.Arcane, ElementType.Arcane),
+                R(ElementType.Arcane, "Hexdraught", "Hexbloom doubled, soured with venom so the sigil takes.", ElementType.Arcane, ElementType.Arcane, ElementType.Poison),
+                R(ElementType.Arcane, "Sigilwine", "Hexdraught with an ember root to set the sigil alight.", ElementType.Arcane, ElementType.Arcane, ElementType.Poison, ElementType.Fire),
+                R(ElementType.Arcane, "Starfall", "Three hexblooms, venom and ember. Pour it outside.", ElementType.Arcane, ElementType.Arcane, ElementType.Arcane, ElementType.Poison, ElementType.Fire),
             },
         };
+
+        private static PotionRecipe R(ElementType result, string name, string method, params ElementType[] steps) =>
+            new PotionRecipe { Result = result, Name = name, Method = method, Steps = steps };
+
+        private static int Row(ElementType e) => e switch
+        {
+            ElementType.Fire => 0, ElementType.Water => 1, ElementType.Nature => 2, ElementType.Poison => 3, _ => 4,
+        };
+
+        /// <summary>The recipe for <paramref name="result"/> at <paramref name="tier"/> (0-3; tier 1 is the classic three-leaf one).</summary>
+        public static PotionRecipe For(ElementType result, int tier = 1)
+        {
+            PotionRecipe[] row = Tiers[Row(result)];
+            PotionRecipe r = row[Mathf.Clamp(tier, 0, row.Length - 1)];
+            return new PotionRecipe { Result = r.Result, Name = r.Name, Method = r.Method, Steps = (ElementType[])r.Steps.Clone() };
+        }
+
+        /// <summary>Today's recipe for <paramref name="result"/>: the tier today's road asks for.</summary>
+        public static PotionRecipe Today(ElementType result) => For(result, Complexity.RecipeTier(Complexity.Level()));
 
         /// <summary>
         /// What happens when <paramref name="intruder"/> meets a brew based on
@@ -161,7 +182,9 @@ namespace AlchemistsArsenal.Data
         /// <summary>Ground in the mortar — the second half of prep.</summary>
         public bool Ground;
 
-        public BrewMixture(ElementType result) { Recipe = RecipeBook.For(result); }
+        public BrewMixture(ElementType result) : this(result, 1) { }
+
+        public BrewMixture(ElementType result, int tier) { Recipe = RecipeBook.For(result, tier); }
 
         public int Remaining => Mathf.Max(0, Recipe.StepCount - Added.Count);
         public bool AllLeavesIn => Added.Count >= Recipe.StepCount;

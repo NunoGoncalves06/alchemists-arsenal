@@ -277,17 +277,38 @@ namespace AlchemistsArsenal.Core
                         foreach (var step in Settle($"day{day}_morning_counter_served")) yield return step;
                     }
 
-                    // Malting comes first: nothing reaches Prep until its grain has been
-                    // steeped, sprouted and kilned. The driver works every order's
-                    // malting interleaved, as a player would: the next fighter's grain
-                    // is poured while the last one's dries in the kiln.
-                    SwitchMorningTab(morningScreen, "Malting");
-                    foreach (var step in Settle($"day{day}_morning_malting")) yield return step;
+                    // Each road asks for more of the morning (Data.Complexity): check the
+                    // level's promises before playing it.
                     RunState ms = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
-                    if (ms != null && ms.HasUpgrade(Data.UpgradeCatalog.DraughtKiln) && !ms.seenUpgrades.Contains(Data.UpgradeCatalog.DraughtKiln))
-                        Fail("The Malting bench never announced its new Draught Kiln.");
-                    foreach (var step in DriveMalting(orders, day)) { if (_errorCount > 0) break; yield return step; }
-                    if (_errorCount > 0) yield break;
+                    int level = Data.Complexity.Level(ms);
+                    int wantSteps = new[] { 2, 3, 3, 4, 5 }[level];
+                    foreach (ActiveOrder o in orders)
+                        if (o.Mixture != null && o.Mixture.Recipe.StepCount != wantSteps)
+                            Fail($"Day {day} (level {level}) brews {o.Mixture.Recipe.Name} with {o.Mixture.Recipe.StepCount} leaves, not {wantSteps}.");
+                    if (MorningScreen.ReadyToSend)
+                        Fail("The party could be sent before a single flask was brewed.");
+                    Log($"Day {day}: level {level}, {wantSteps}-leaf recipes ({orders[0].Mixture?.Recipe.Name}), malting {(Data.Complexity.MaltingOn(level) ? "on" : "off")}.");
+
+                    if (Data.Complexity.MaltingOn(level))
+                    {
+                        // Malting comes first: nothing reaches Prep until its grain has been
+                        // steeped, sprouted and kilned. The driver works every order's
+                        // malting interleaved, as a player would: the next fighter's grain
+                        // is poured while the last one's dries in the kiln.
+                        SwitchMorningTab(morningScreen, "Malting");
+                        foreach (var step in Settle($"day{day}_morning_malting")) yield return step;
+                        if (ms != null && ms.HasUpgrade(Data.UpgradeCatalog.DraughtKiln) && !ms.seenUpgrades.Contains(Data.UpgradeCatalog.DraughtKiln))
+                            Fail("The Malting bench never announced its new Draught Kiln.");
+                        foreach (var step in DriveMalting(orders, day)) { if (_errorCount > 0) break; yield return step; }
+                        if (_errorCount > 0) yield break;
+                    }
+                    else
+                    {
+                        // The first road has no Malting bench: the grain comes malted.
+                        foreach (ActiveOrder o in orders)
+                            if (o.stage != BrewStage.Prep)
+                                Fail($"On level {level} {o.heroName}'s order starts at {o.stage}, not Prep.");
+                    }
 
                     // Then Prep: the Cauldron will not brew until the recipe's leaves are
                     // crushed in and ground. Every bench is played for real through the
@@ -338,6 +359,8 @@ namespace AlchemistsArsenal.Core
                         Log($"Morning done for {o.heroName}: {o.qualityScore} ({o.GetGrade()}), {o.stage}; flawless would be {QualityBudget.FlawlessMorning()}.");
                     if (!cmgr.AllDone) Fail("Not every order was sealed and labelled by the end of the morning.");
 
+                    if (!MorningScreen.ReadyToSend)
+                        Fail("Every flask is finished but the party still cannot be sent.");
                     GameLoopManager.Instance.BeginHandoff();
                     foreach (var step in WaitForPhase(GamePhase.Handoff, 5f)) { if (_errorCount > 0) yield break; yield return step; }
                     if (_errorCount > 0) yield break;
@@ -512,7 +535,8 @@ namespace AlchemistsArsenal.Core
                     if (_errorCount > 0) yield break;
                     foreach (var step in Settle($"day{day}_biome_map")) yield return step;
 
-                    if (day < DaysToRun) GameLoopManager.Instance.Sleep(day == 2 ? 0 : -1);
+                    // Always on to the next road: each day brings the next level of the morning.
+                    if (day < DaysToRun) GameLoopManager.Instance.Sleep(-1);
                 }
 
 
