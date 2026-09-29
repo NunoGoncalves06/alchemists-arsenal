@@ -292,8 +292,14 @@ namespace AlchemistsArsenal.UI.Stations
             slot.transform.SetParent(_offerRow, false);
             UIFactory.Flex(slot, 1f, 1f, minWidth: 180f);
 
+            // Hung from the top of its slot, as tall as its words, not the whole board.
             Image paper = UIFactory.Panel(slot.transform, UITheme.Parchment, "Tag");
-            UIFactory.Stretch(paper.rectTransform);
+            RectTransform prt = paper.rectTransform;
+            prt.anchorMin = new Vector2(0f, 1f);
+            prt.anchorMax = new Vector2(1f, 1f);
+            prt.pivot = new Vector2(0.5f, 1f);
+            prt.sizeDelta = new Vector2(0f, 170f);
+            prt.anchoredPosition = Vector2.zero;
             var band = UIFactory.Panel(paper.transform, accent, "Band");
             band.rectTransform.anchorMin = new Vector2(0f, 1f);
             band.rectTransform.anchorMax = new Vector2(1f, 1f);
@@ -341,9 +347,16 @@ namespace AlchemistsArsenal.UI.Stations
         /// <summary>Where a job tag goes; for the harness and the tutorial spotlight.</summary>
         public RectTransform OrderBook => _bookPage != null ? (RectTransform)_bookPage.transform.parent : null;
 
-        /// <summary>The first job tag on the board, or null (the tutorial points at it).</summary>
-        public RectTransform FirstOfferTag =>
-            _offerRow != null && _offerRow.childCount > 0 ? (RectTransform)_offerRow.GetChild(0) : null;
+        /// <summary>The paper of the first job tag on the board, or null (the tutorial points at it).</summary>
+        public RectTransform FirstOfferTag
+        {
+            get
+            {
+                if (_offerRow == null || _offerRow.childCount == 0) return null;
+                DragTag tag = _offerRow.GetChild(0).GetComponent<DragTag>();
+                return tag != null ? tag.Paper : null;
+            }
+        }
 
         /// <summary>Today's orders so far, and who is next.</summary>
         private void BuildBook()

@@ -252,9 +252,9 @@ namespace AlchemistsArsenal.UI
             view.IconImage.rectTransform.anchorMax = new Vector2(0.5f, 1f);
             view.IconImage.rectTransform.anchoredPosition = new Vector2(0f, -26f);
 
-            view.Label = UIFactory.Label(bg.transform, label, UITheme.SizeTiny, UITheme.TextHi,
-                TextAlignmentOptions.Center, true);
-            view.Label.characterSpacing = 4f;
+            view.Label = UIFactory.Label(bg.transform, label, UITheme.SizeSmall, UITheme.TextHi,
+                TextAlignmentOptions.Center, false, UITheme.Display);
+            view.Label.characterSpacing = 0.5f;
             view.BaseLabel = label;
             UIFactory.Place(view.Label.rectTransform, 0f, 0.02f, 1f, 0.30f);
 
