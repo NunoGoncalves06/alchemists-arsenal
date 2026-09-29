@@ -1,7 +1,5 @@
-using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
 using AlchemistsArsenal.Core;
 using AlchemistsArsenal.Systems;
 using AlchemistsArsenal.Audio;
@@ -9,27 +7,37 @@ using AlchemistsArsenal.Audio;
 namespace AlchemistsArsenal.UI
 {
     /// <summary>
-    /// Day-1 guided tutorial FSM (DESIGN.md §7.11 / eval-audio-usability): slows the
-    /// morning budget, gates the Cauldron/Prep/Bottling tabs until the Counter order
-    /// is accepted, and walks the player Counter → Prep → Cauldron with a top-docked coach
-    /// bubble + pointer arrow. Runs once per save (<see cref="RunState.tutorialCompleted"/>).
+    /// Teaches each mechanic the first time it turns up, one at a time, with the
+    /// <see cref="Spotlight"/>: the screen darkens round the thing to touch and one
+    /// short line says what to do. The lessons themselves are data
+    /// (<see cref="TutorialScript"/>); which ones apply depends on the road's level
+    /// (<see cref="Data.Complexity"/>), so day one teaches the basic loop and the
+    /// later roads teach only what they add. Each lesson plays once per save
+    /// (<see cref="RunState.seenLessons"/>).
+    ///
+    /// <para>While a lesson is up the morning clock runs at a third of its speed.
+    /// When the lesson's bench is not the one on screen, the circle points at that
+    /// bench on the rail first.</para>
     /// </summary>
     public class TutorialManager : MonoBehaviour
     {
         public static TutorialManager Instance { get; private set; }
+
+        /// <summary>A lesson is on screen.</summary>
         public static bool Active { get; private set; }
 
-        /// <summary>Gates the Cauldron/Prep/Bottling tabs until the Day-1 Counter
-        /// order is accepted (there's nothing for them to act on before that).</summary>
+        /// <summary>
+        /// The benches stay shut until the first job of a new game is in the order
+        /// book (there is nothing for them to work on before that).
+        /// </summary>
         public static bool StationsUnlocked { get; private set; } = true;
 
-        private enum Step { Idle, Welcome, Counter, Cauldron, Done }
-        private Step _step = Step.Idle;
-        private Coroutine _runCoroutine;
+        private const float SlowClock = 0.35f;
 
-        private Canvas _canvas;
-        private CanvasGroup _group;
-        private TextMeshProUGUI _bubble, _dots;
+        private Spotlight _spot;
+        private Lesson _current;
+        private bool _onRail;
+        private float _notReadyFor;
 
         private void Awake()
         {
@@ -40,181 +48,179 @@ namespace AlchemistsArsenal.UI
         private void OnDestroy()
         {
             if (Instance == this) Instance = null;
-            if (GameLoopManager.Instance != null) GameLoopManager.Instance.OnPhaseChanged -= OnPhase;
         }
 
         private void Start()
         {
-            if (GameLoopManager.Instance != null) GameLoopManager.Instance.OnPhaseChanged += OnPhase;
-            BuildOverlay();
+            _spot = Spotlight.Create(transform, 200);
+            _spot.SkipRequested += () => { if (_current != null) Learnt(_current); };
         }
 
-        private void OnPhase(GamePhase phase)
-        {
-            var s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
-            if (phase == GamePhase.Morning && s != null && !s.tutorialCompleted && _step == Step.Idle)
-            {
-                StartTutorial();
-            }
-            else if (Active && phase != GamePhase.Morning)
-            {
-                // The player moved faster than the tutorial's own pacing — accepted
-                // the order and hit SEND before the Cauldron/Done steps finished on
-                // their own. Without this, the overlay (sorting order 200, above the
-                // game UI's 100) stayed visible at full alpha straight through
-                // Handoff and into the fight: stale coach-bubble text and a bobbing
-                // arrow floating over combat (playtest: "combat is all fucked").
-                CancelTutorial();
-            }
-        }
+        private static RunState State => SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
 
-        private void StartTutorial()
-        {
-            Active = true;
-            StationsUnlocked = false;
-            if (GameLoopManager.Instance != null) GameLoopManager.Instance.BudgetRateMultiplier = 0.35f;
-            _group.alpha = 1f;
-            _runCoroutine = StartCoroutine(Run());
-        }
-
-        private void CancelTutorial()
-        {
-            if (_runCoroutine != null) { StopCoroutine(_runCoroutine); _runCoroutine = null; }
-            Finish();
-        }
-
-        private static IEnumerator WaitForClickOr(float seconds)
-        {
-            for (float t = 0f; t < seconds; t += Time.unscaledDeltaTime)
-            {
-                if (Input.GetMouseButtonDown(0) && t > 0.15f) yield break; // ignore the click that opened this
-                yield return null;
-            }
-        }
-
-        private IEnumerator Run()
-        {
-            _step = Step.Welcome;
-            Show("Day one. Time is paused while we get you set up.\nYou run the shop in the morning — your fighter orders a flask at the counter, you brew it — and they carry whatever you made into the afternoon.\n\n<size=75%>(click to continue)</size>",
-                "1 / 3", new Vector2(0.5f, 0.5f));
-            yield return WaitForClickOr(8f);
-
-            _step = Step.Counter;
-            Show("Rookie is at the COUNTER — the fighter orders their own flask. Read today's road on the right, then TAKE one of the three jobs at the bottom — they pay differently and want different grades.",
-                "2 / 3", new Vector2(0.30f, 0.33f));
-            while (CraftingManager.Instance == null || CraftingManager.Instance.CurrentOrder == null)
-                yield return null;
-
-            StationsUnlocked = true;
-            _step = Step.Cauldron;
-            Show("The benches are open. Work them in order: at MALTING, pour grain into the jar and steep it — while it sprouts, turn it once, then dry it in the kiln. Then PREP crushes the leaves, and the CAULDRON stirs them.",
-                "3 / 3", new Vector2(0.08f, 0.797f), fromRight: true);   // the MALTING item on the rail
-            while (true)
-            {
-                var pot = Crafting.PhysicsCauldronManager.Instance;
-                var o = CraftingManager.Instance != null ? CraftingManager.Instance.CurrentOrder : null;
-                if (pot != null && pot.BrewProgress01 >= 0.4f) break;
-                if (o != null && o.qualityScore >= 55) break;
-                yield return null;
-            }
-
-            _step = Step.Done;
-            Show("A clean mix widens the stirring band, so good prep makes the stirring easier. BOTTLING pours, seals and labels it after. When you're happy, SEND TO EXPEDITION.\nTime runs at normal speed from tomorrow.\n\n<size=75%>(click to continue)</size>",
-                "done", new Vector2(0.85f, 0.10f));
-            AudioManager.Play(Sfx.Chime);
-            yield return WaitForClickOr(8f);
-
-            Finish();
-        }
-
-        private void Finish()
-        {
-            _runCoroutine = null;
-            _step = Step.Idle; // so a later NEW GAME (fresh save) can re-trigger its own tutorial
-            Active = false;
-            StationsUnlocked = true;
-            if (GameLoopManager.Instance != null) GameLoopManager.Instance.BudgetRateMultiplier = 1f;
-            var s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
-            if (s != null) { s.tutorialCompleted = true; SaveSystem.Instance.MarkDirty(); }
-            _group.alpha = 0f;
-        }
-
-        // ------------------------------------------------------------- overlay
-
-        // The coach bubble is docked to the TOP of the screen, right under the top
-        // bar — every interactive control in the Morning screen (tabs on the far
-        // left rail, ACCEPT/SEND/SEAL buttons near the bottom) lives well below this
-        // strip, so the bubble can never sit on top of something the player needs to
-        // click (playtest note: it previously did, twice). A small downward-pointing
-        // arrow sits just above whatever the current step is about.
-
-        private void BuildOverlay()
-        {
-            var go = new GameObject("TutorialCanvas", typeof(RectTransform));
-            go.transform.SetParent(transform, false);
-            _canvas = go.AddComponent<Canvas>();
-            _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            _canvas.sortingOrder = 200;
-            go.AddComponent<GraphicRaycaster>();
-            _group = go.AddComponent<CanvasGroup>();
-            _group.alpha = 0f;
-            _group.blocksRaycasts = false; // never eat clicks — the player still runs the shop
-
-            _arrow = UIFactory.Panel(go.transform, new Color(0f, 0f, 0f, 0f), "Arrow").rectTransform;
-            var ai = _arrow.GetComponent<Image>();
-            ai.sprite = Art.PixelSprites.PointerArrow();
-            ai.color = Color.white; // sprite is already tinted candle-gold
-            ai.raycastTarget = false;
-            _arrow.sizeDelta = new Vector2(36, 20);
-
-            // Kept within x <= 0.70 (the Morning screen's Order Dock starts at 0.70)
-            // and pushed hard against the top bar: every control the player needs —
-            // the station rail on the left, the job cards at the bottom of the
-            // Counter, the gauges under the pot — sits well below this strip, so the
-            // bubble can only ever cover a card heading, never something to click.
-            var bubble = UIFactory.Panel(go.transform, UITheme.Parchment, "Coach");
-            _coach = bubble.rectTransform;
-            _coach.anchorMin = new Vector2(0.10f, 0.835f);
-            _coach.anchorMax = new Vector2(0.68f, 0.932f);
-            _coach.offsetMin = _coach.offsetMax = Vector2.zero;
-            bubble.raycastTarget = false;
-
-            var edge = UIFactory.Panel(bubble.transform, UITheme.Wood, "Edge");
-            edge.rectTransform.anchorMin = new Vector2(0f, 0f);
-            edge.rectTransform.anchorMax = new Vector2(1f, 0f);
-            edge.rectTransform.sizeDelta = new Vector2(0f, 3f);
-            edge.raycastTarget = false;
-
-            _bubble = UIFactory.Label(bubble.transform, "", 16, UITheme.Ink900, TextAlignmentOptions.Left);
-            UIFactory.Stretch(_bubble.rectTransform, 14f);
-            _dots = UIFactory.Label(bubble.transform, "", 12, UITheme.WoodDark, TextAlignmentOptions.BottomRight);
-            UIFactory.Stretch(_dots.rectTransform, 8f);
-        }
-
-        private RectTransform _coach, _arrow;
-
-        private bool _fromRight;
-
-        /// <summary>
-        /// Point at <paramref name="pointAt"/>: from above by default, or from the right
-        /// for the station rail, whose items are stacked, so that "above PREP" was the
-        /// COUNTER's label (the arrow sat on "COUNTER" while the text said PREP).
-        /// </summary>
-        private void Show(string text, string dots, Vector2 pointAt, bool fromRight = false)
-        {
-            _bubble.text = text;
-            _dots.text = dots;
-            _arrow.anchorMin = _arrow.anchorMax = pointAt;
-            _fromRight = fromRight;
-            _arrow.localRotation = Quaternion.Euler(0f, 0f, fromRight ? -90f : 0f);
-        }
+        private static bool InMorning =>
+            GameLoopManager.Instance != null && GameLoopManager.Instance.Phase == GamePhase.Morning &&
+            UIManager.Instance != null && UIManager.Instance.Current == ScreenId.Morning;
 
         private void Update()
         {
-            if (_group == null || _group.alpha < 0.5f || _arrow == null) return;
-            // Sits above the target and bobs, tip pointing down at it — never on it.
-            float bob = Mathf.Sin(Time.unscaledTime * 5f) * 6f;
-            _arrow.anchoredPosition = _fromRight ? new Vector2(24f + bob, 0f) : new Vector2(0f, 30f + bob);
+            if (_spot == null) return;
+            RunState s = State;
+            if (s == null || !InMorning)
+            {
+                if (_current != null) Drop();
+                StationsUnlocked = true;
+                return;
+            }
+            s.seenLessons ??= new List<string>();
+            StationsUnlocked = s.seenLessons.Contains("job") ||
+                               (CraftingManager.Instance != null && CraftingManager.Instance.Orders.Count > 0);
+
+            if (_current != null)
+            {
+                if (Safe(_current.Done)) { Learnt(_current); return; }
+                // Somebody else moved the work on (another order, the clock): let go.
+                if (!Safe(_current.Ready))
+                {
+                    _notReadyFor += Time.unscaledDeltaTime;
+                    if (_notReadyFor > 1.5f) { Drop(); return; }
+                }
+                else _notReadyFor = 0f;
+                FollowStation();
+                return;
+            }
+
+            int level = Data.Complexity.Level(s);
+            foreach (Lesson l in TutorialScript.Lessons)
+            {
+                if (l.MinLevel > level || s.seenLessons.Contains(l.Id)) continue;
+                if (!Safe(l.Ready)) continue;
+                Begin(l);
+                break;
+            }
+        }
+
+        private void Begin(Lesson l)
+        {
+            _current = l;
+            _notReadyFor = 0f;
+            _onRail = !OnStation(l);
+            Active = true;
+            if (GameLoopManager.Instance != null) GameLoopManager.Instance.BudgetRateMultiplier = SlowClock;
+            AudioManager.Play(Sfx.Chime);
+            ShowCurrent();
+        }
+
+        /// <summary>Point at the bench on the rail until the player opens it, then at the lesson itself.</summary>
+        private void FollowStation()
+        {
+            bool off = !OnStation(_current);
+            if (off == _onRail) return;
+            _onRail = off;
+            ShowCurrent();
+        }
+
+        private void ShowCurrent()
+        {
+            Lesson l = _current;
+            if (_onRail)
+            {
+                int i = Mathf.Clamp(l.Station, 0, 4);
+                string name = TutorialScript.StationNames[i];
+                _spot.Show(() => RectPoint(Screen?.RailTabRect(i)), () => RectRadius(Screen?.RailTabRect(i), 6f),
+                    () => $"Open the {name} bench.");
+                return;
+            }
+            _spot.Show(() => Point(l), () => Radius(l), () => SafeSay(l));
+        }
+
+        private void Learnt(Lesson l)
+        {
+            RunState s = State;
+            if (s != null)
+            {
+                if (!s.seenLessons.Contains(l.Id)) s.seenLessons.Add(l.Id);
+                if (l.Id == "send") s.tutorialCompleted = true;
+                SaveSystem.Instance.MarkDirty();
+            }
+            Drop();
+        }
+
+        private void Drop()
+        {
+            _current = null;
+            Active = false;
+            _spot.Hide();
+            if (GameLoopManager.Instance != null) GameLoopManager.Instance.BudgetRateMultiplier = 1f;
+        }
+
+        // ----------------------------------------------------------- geometry
+
+        private static MorningScreen Screen =>
+            UIManager.Instance != null ? UIManager.Instance.ScreenOf(ScreenId.Morning) as MorningScreen : null;
+
+        private static bool OnStation(Lesson l) => l.Station < 0 || (Screen != null && Screen.ActiveTabIndex == l.Station);
+
+        private static Camera WorldCam => ShopWorld.Instance != null ? ShopWorld.Instance.WorldCamera : null;
+
+        private static Vector2? Point(Lesson l)
+        {
+            LessonTarget? t = SafeWhere(l);
+            if (!t.HasValue) return null;
+            if (!t.Value.IsWorld) return RectPoint(t.Value.Rect);
+            Camera cam = WorldCam;
+            if (cam == null) return null;
+            Vector3 sp = cam.WorldToScreenPoint(t.Value.World);
+            return new Vector2(sp.x, sp.y);
+        }
+
+        private static Vector2 Radius(Lesson l)
+        {
+            LessonTarget? t = SafeWhere(l);
+            if (!t.HasValue) return Vector2.one * 60f;
+            if (!t.Value.IsWorld) return RectRadius(t.Value.Rect, t.Value.Pad);
+            Camera cam = WorldCam;
+            if (cam == null) return Vector2.one * 60f;
+            float pxPerUnit = cam.pixelHeight / (2f * cam.orthographicSize);
+            return Vector2.one * t.Value.WorldRadius * pxPerUnit;
+        }
+
+        private static readonly Vector3[] Corners = new Vector3[4];
+
+        private static Vector2? RectPoint(RectTransform rt)
+        {
+            if (rt == null || !rt.gameObject.activeInHierarchy) return null;
+            rt.GetWorldCorners(Corners);   // an overlay canvas: world corners are screen pixels
+            return (Vector2)(Corners[0] + Corners[2]) * 0.5f;
+        }
+
+        /// <summary>
+        /// The ellipse through the rect's corners (half-sizes times the square root
+        /// of two), so a wide button is hugged rather than drowned in a big circle.
+        /// </summary>
+        private static Vector2 RectRadius(RectTransform rt, float pad)
+        {
+            if (rt == null) return Vector2.one * 60f;
+            rt.GetWorldCorners(Corners);
+            Vector2 size = Corners[2] - Corners[0];
+            return size * 0.5f * 1.4142f + Vector2.one * pad;
+        }
+
+        // A lesson reads live bench state; a bench torn down mid-frame must not
+        // throw out of Update every frame after.
+        private static bool Safe(System.Func<bool> f)
+        {
+            try { return f != null && f(); } catch (System.Exception) { return false; }
+        }
+
+        private static LessonTarget? SafeWhere(Lesson l)
+        {
+            try { return l.Where?.Invoke(); } catch (System.Exception) { return null; }
+        }
+
+        private static string SafeSay(Lesson l)
+        {
+            try { return l.Say?.Invoke() ?? ""; } catch (System.Exception) { return ""; }
         }
     }
 }

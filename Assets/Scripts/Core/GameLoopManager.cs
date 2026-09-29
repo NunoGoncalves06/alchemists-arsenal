@@ -87,7 +87,8 @@ namespace AlchemistsArsenal.Core
         private void Update()
         {
             if (Phase != GamePhase.Morning) return;
-            if (UI.TutorialManager.Active) return; // budget is frozen while Day-1 is being taught (reviewer P3)
+            // While a lesson is up the clock runs slow (BudgetRateMultiplier, set by the
+            // TutorialManager), never frozen: the morning still visibly moves.
 
             _morningRemaining -= Time.unscaledDeltaTime * Mathf.Max(0f, BudgetRateMultiplier);
             MorningRemaining01 = Mathf.Clamp01(_morningRemaining / Mathf.Max(1f, _morningBudget));
