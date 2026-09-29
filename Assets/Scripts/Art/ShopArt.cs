@@ -627,6 +627,60 @@ namespace AlchemistsArsenal.Art
             return c.Bake(key, PPU, new Vector2(0.5f, 0f));
         }
 
+        // ------------------------------------------------------------ bottling kit
+
+        /// <summary>
+        /// A paper label tag for the flask: a parchment card with a punched hole and a
+        /// band in the element's colour. Pivot at the hole (it hangs from a peg).
+        /// </summary>
+        public static Sprite LabelTag(Combat.ElementType element)
+        {
+            string key = "label_tag_" + element;
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 11, h = 15;
+            var c = new PixelCanvas(w, h);
+            Color32 ink = (Color32)Core.PixelArt.Element(element);
+            var paper = new[] { PixelCanvas.Hex(0xb8a27a), PixelCanvas.Hex(0xdcc79c), PixelCanvas.Hex(0xf1e3c0) };
+            c.Fill((x, y) => x >= 1 && x <= w - 2 && y >= 1 && y <= h - 2 && !(y <= 2 && (x <= 1 || x >= w - 2)), (x, y) =>
+                PixelCanvas.Shade(paper, 0.9f - (x - 1) * 0.05f - (y > h - 4 ? 0.15f : 0f), x, y));
+            c.Fill((x, y) => x >= 2 && x <= w - 3 && y >= 6 && y <= 11, (x, y) =>
+                new Color32((byte)(ink.r * (y == 6 ? 1f : 0.85f)), (byte)(ink.g * (y == 6 ? 1f : 0.85f)), (byte)(ink.b * (y == 6 ? 1f : 0.85f)), 255));
+            c.Fill((x, y) => x == w / 2 && y == 3, (x, y) => PixelCanvas.Hex(0x2b1d14));
+            c.Outline(K);
+            return c.Bake(key, PPU, new Vector2(0.5f, 1f - 3.5f / h));
+        }
+
+        /// <summary>A short wooden rail with five pegs, for the label tags to hang on.</summary>
+        public static Sprite TagRail()
+        {
+            const string key = "tag_rail";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 58, h = 7;
+            var c = new PixelCanvas(w, h);
+            c.Fill((x, y) => y >= 1 && y <= 3 && x >= 1 && x <= w - 2, (x, y) =>
+                PixelCanvas.Shade(Wood, y == 1 ? 0.9f : 0.5f, x, y));
+            for (int i = 0; i < 5; i++)
+            {
+                int px = 7 + i * 11;
+                c.Fill((x, y) => x >= px - 1 && x <= px && y >= 3 && y <= 5, (x, y) => PixelCanvas.Shade(Brass, 0.7f, x, y));
+            }
+            c.Outline(K);
+            return c.Bake(key, PPU, new Vector2(0.5f, 0.5f));
+        }
+
+        /// <summary>A little wooden saucer the cork waits in; pivot at its base.</summary>
+        public static Sprite CorkDish()
+        {
+            const string key = "cork_dish";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 16, h = 5;
+            var c = new PixelCanvas(w, h);
+            c.Fill((x, y) => y >= 1 && y <= 3 && x >= 1 + (3 - y) / 2 && x <= w - 2 - (3 - y) / 2, (x, y) =>
+                PixelCanvas.Shade(Wood, y == 1 ? 0.85f : 0.45f, x, y));
+            c.Outline(K);
+            return c.Bake(key, PPU, new Vector2(0.5f, 0f));
+        }
+
         // ------------------------------------------------------------- the room
 
         /// <summary>A long workbench top, grained, lit along its front edge.</summary>

@@ -23,11 +23,14 @@ namespace AlchemistsArsenal.Crafting
     /// brew they make as a level that rises with them, and hides each droplet once
     /// it is under the surface. Poured to the brim, what still comes runs over the
     /// lip and down the outside of the glass onto the bench.</item>
-    /// <item><b>Seal.</b> A cork waits on a <see cref="SliderJoint2D"/> above the neck.
-    /// Seal on the beat and it is driven home into the neck; miss and it glances off
-    /// the lip and springs back.</item>
-    /// <item><b>Label.</b> A choice, not a physical act, so it stays in the HUD.</item>
+    /// <item><b>Seal.</b> The cork waits in a dish on the bench. Carry it over the
+    /// neck and let go: dropped true it is driven home along a <see cref="SliderJoint2D"/>;
+    /// dropped off-centre it glances off the lip and waits over the neck for another try.</item>
+    /// <item><b>Label.</b> Paper tags hang on a rail; drag the right one onto the glass.</item>
     /// </list>
+    /// Every move is made on the bench itself, not with a button. The public calls
+    /// (<see cref="PourHeld"/>, <see cref="Seal"/>, <see cref="ApplyLabel"/>) remain
+    /// for the playtest driver.
     /// Points are the button version's (<see cref="QualityBudget"/>).
     /// </summary>
     public class BottlingBench : MonoBehaviour
@@ -75,8 +78,51 @@ namespace AlchemistsArsenal.Crafting
         private Rigidbody2D _ladle, _cork;
         private HingeJoint2D _hinge;
         private SliderJoint2D _slider;
-        private SpriteRenderer _liquidArt;
+        private SpriteRenderer _liquidArt, _flaskLabel;
         private Camera _cam;
+
+        // Hands on the bench: the ladle dragged down, the cork carried, a tag carried.
+        private Vector2 _pressAt, _corkCarryTo;
+        private float _dragTilt01;
+        private bool _corkCarried, _corkFree;
+        private int _tagCarried = -1;
+        public bool CorkCarried => _corkCarried;
+        public bool LabelCarried => _tagCarried >= 0;
+        private Transform _tagRail;
+        private readonly List<(ElementType element, Transform t, Vector2 home)> _tags =
+            new List<(ElementType, Transform, Vector2)>();
+
+        /// <summary>Where the cork waits for a hand, on the bench beside the flask.</summary>
+        public Vector2 CorkDishWorld => (Vector2)transform.position + new Vector2(3.1f, BenchTopY + 0.28f);
+
+        /// <summary>A tag on the rail, by element (for the playtest's drag).</summary>
+        public Vector2 TagWorld(ElementType e)
+        {
+            foreach (var t in _tags) if (t.element == e && t.t != null) return t.t.position;
+            return transform.position;
+        }
+
+        /// <summary>The middle of the glass's bulb, where a label goes.</summary>
+        public Vector2 LabelSpotWorld => _flask != null ? BulbCentre : (Vector2)transform.position;
+
+        /// <summary>True while a label is stuck on the glass.</summary>
+        public bool Labelled => _flaskLabel != null && _flaskLabel.enabled;
+
+        /// <summary>A short line about what the bench wants next, for the station's caption.</summary>
+        public string Hint
+        {
+            get
+            {
+                if (Order == null) return Working != null && Working.stage > BrewStage.Bottling ? "Sealed and labelled." : "Waiting for a brew from the cauldron.";
+                return Current switch
+                {
+                    Step.Pour => "Drag the ladle down to pour. Stop at the line.",
+                    Step.Seal => CorkSeated ? "" : "Carry the cork to the neck and let go.",
+                    Step.Label => "Drag the right label onto the flask.",
+                    _ => "",
+                };
+            }
+        }
         private float _emitDebt, _sinceLastDrop = 99f;
         private int _capacity = 98;
         private int _level = ShopArt.FlaskH;
@@ -173,6 +219,7 @@ namespace AlchemistsArsenal.Crafting
             BuildFlask(new Vector2(0.6f, BenchTopY));
             BuildLadle();
             BuildCork();
+            BuildTags();
 
             var streamGo = new GameObject("Stream");
             streamGo.transform.SetParent(transform, false);
@@ -208,6 +255,9 @@ namespace AlchemistsArsenal.Crafting
                 var funnel = AddArt(go.transform, ShopArt.Funnel(), OrderGlass + 1, "Funnel", FlaskScale);
                 funnel.transform.localPosition = new Vector3(0f, (ShopArt.FlaskH - 2f) / ShopArt.PPU * FlaskScale, 0f);
             }
+            // The label, once one is stuck on: a tag pressed flat on the bulb.
+            _flaskLabel = AddArt(go.transform, ShopArt.LabelTag(ElementType.Fire), OrderGlass + 2, "Label", 0.9f);
+            _flaskLabel.enabled = false;
 
             // The inside of the glass, lip to lip: down the neck, round the bulb, up the neck.
             var pts = new List<Vector2>();
@@ -295,6 +345,32 @@ namespace AlchemistsArsenal.Crafting
             go.SetActive(false);   // appears once the pour is done
         }
 
+        /// <summary>The label tags on their rail, left of the flask, and the dish the cork waits in.</summary>
+        private void BuildTags()
+        {
+            var dish = new GameObject("CorkDish");
+            dish.transform.SetParent(transform, false);
+            dish.transform.position = CorkDishWorld + new Vector2(0f, -0.28f);
+            AddArt(dish.transform, ShopArt.CorkDish(), 3, "Art", 1.5f);
+
+            var rail = new GameObject("TagRail");
+            rail.transform.SetParent(transform, false);
+            rail.transform.localPosition = new Vector3(-3.0f, 0.95f, 0f);
+            AddArt(rail.transform, ShopArt.TagRail(), 4, "Art", 1.1f);
+            _tagRail = rail.transform;
+
+            var order = new[] { ElementType.Nature, ElementType.Fire, ElementType.Water, ElementType.Poison, ElementType.Arcane };
+            for (int i = 0; i < order.Length; i++)
+            {
+                var tag = new GameObject("Tag_" + order[i]);
+                tag.transform.SetParent(rail.transform, false);
+                Vector2 home = (Vector2)rail.transform.position + new Vector2((-22f + i * 11f) / ShopArt.PPU * 1.1f, -0.1f);
+                tag.transform.position = home;
+                AddArt(tag.transform, ShopArt.LabelTag(order[i]), 20 + i, "Art", 1.0f);
+                _tags.Add((order[i], tag.transform, home));
+            }
+        }
+
         private static SpriteRenderer AddArt(Transform parent, Sprite s, int order, string name, float scale)
         {
             var go = new GameObject(name);
@@ -325,6 +401,12 @@ namespace AlchemistsArsenal.Crafting
             Spilled = 0;
             _pourScored = false;
             PourHeld = false;
+            _dragTilt01 = 0f;
+            _corkCarried = false;
+            _tagCarried = -1;
+            if (_flaskLabel != null) _flaskLabel.enabled = false;
+            foreach (var t in _tags) if (t.t != null) t.t.position = t.home;
+            if (_tagRail != null) _tagRail.gameObject.SetActive(Complexity.LabelsOn(Complexity.Level()));
             if (_stream != null) _stream.ResetAll();
             ResetCork(active: false);
             if (_ladle != null) { _ladle.gameObject.SetActive(true); _ladle.rotation = 0f; _ladle.angularVelocity = 0f; }
@@ -332,17 +414,38 @@ namespace AlchemistsArsenal.Crafting
             Changed?.Invoke();
         }
 
-        /// <summary>Put the cork back on its rest over the neck, unseated, its slider re-anchored there.</summary>
+        /// <summary>The cork back in its dish, unseated, waiting to be picked up.</summary>
         private void ResetCork(bool active)
         {
             if (_cork == null) return;
             CorkSeated = false;
             _corkTarget = CorkTarget.Rest;
             _corkDip = 0f;
+            _corkCarried = false;
             _cork.gameObject.SetActive(active);
-            _cork.bodyType = RigidbodyType2D.Dynamic;
+            ParkCork(CorkDishWorld);
+        }
+
+        /// <summary>Hold the cork still at <paramref name="at"/>, off its slider (in the dish, or in a hand).</summary>
+        private void ParkCork(Vector2 at)
+        {
+            _corkFree = true;
+            _slider.enabled = false;
+            _cork.bodyType = RigidbodyType2D.Kinematic;
+            _cork.linearVelocity = Vector2.zero;
+            _cork.position = at;
+            _cork.transform.position = at;
+        }
+
+        /// <summary>Stand the cork on its rest over the neck, back on the slider, for the drive to take it home.</summary>
+        private void CorkOverNeck()
+        {
+            _corkFree = false;
+            _corkCarried = false;
             Vector2 rest = CorkRestWorld;
+            _cork.bodyType = RigidbodyType2D.Dynamic;
             _slider.connectedAnchor = rest;
+            _slider.enabled = true;
             _cork.position = rest;
             _cork.transform.position = rest;
             _cork.linearVelocity = Vector2.zero;
@@ -360,22 +463,91 @@ namespace AlchemistsArsenal.Crafting
                 if (_stream != null) _stream.SetColor(_brewColor);
             }
 
-            // Pressing on the ladle itself pours too, not just the HUD button.
-            if (Attended && Current == Step.Pour && order != null)
-            {
-                Vector2 p = Pointer.World(_cam);
-                bool onLadle = Vector2.Distance(p, LadleWorld + new Vector2(0.6f, 0f)) < 1.3f;
-                if (Pointer.PressedThisFrame && onLadle && !Pointer.OverUI) _pointerPour = true;
-                if (!Pointer.Held) _pointerPour = false;
-            }
-            else _pointerPour = false;
+            if (Attended && order != null) Hands(order);
+            else { _pointerPour = false; _dragTilt01 = 0f; DropCarried(); }
 
             DrawBrew();
         }
 
         private bool _pointerPour;
 
-        private bool Pouring => Attended && Current == Step.Pour && Order != null && (PourHeld || _pointerPour);
+        /// <summary>
+        /// Everything the player does here, done with the pointer on the bench:
+        /// drag the ladle down to tip it (further down, faster pour), carry the cork to
+        /// the neck, carry a label tag onto the glass.
+        /// </summary>
+        private void Hands(ActiveOrder order)
+        {
+            Vector2 p = Pointer.World(_cam);
+            bool press = Pointer.PressedThisFrame && !Pointer.OverUI;
+            bool held = Pointer.Held;
+
+            if (Current == Step.Pour)
+            {
+                bool onLadle = Vector2.Distance(p, LadleWorld + new Vector2(0.6f, 0f)) < 1.3f;
+                if (press && onLadle) { _pointerPour = true; _pressAt = p; }
+                if (_pointerPour && held) _dragTilt01 = Mathf.Clamp01((_pressAt.y - p.y) / 1.3f + 0.15f);
+                if (!held) { _pointerPour = false; _dragTilt01 = 0f; }
+                return;
+            }
+
+            if (Current == Step.Seal && !CorkSeated && _cork != null && _cork.gameObject.activeInHierarchy)
+            {
+                if (press && Vector2.Distance(p, _cork.position) < 0.5f)
+                {
+                    _corkCarried = true;
+                    ParkCork(_cork.position);
+                }
+                if (_corkCarried && held) _corkCarryTo = p;
+                if (_corkCarried && !held) DropCork(p);
+                return;
+            }
+
+            if (Current == Step.Label && Complexity.LabelsOn(Complexity.Level()))
+            {
+                if (press)
+                    for (int i = 0; i < _tags.Count; i++)
+                        if (_tags[i].t != null && Vector2.Distance(p, (Vector2)_tags[i].t.position + new Vector2(0f, -0.3f)) < 0.36f)
+                        { _tagCarried = i; break; }
+                if (_tagCarried >= 0 && held) _tags[_tagCarried].t.position = p + new Vector2(0f, 0.3f);
+                if (_tagCarried >= 0 && !held)
+                {
+                    var tag = _tags[_tagCarried];
+                    _tagCarried = -1;
+                    tag.t.position = tag.home;
+                    if (Vector2.Distance(p, BulbCentre) < BulbRadius + 0.55f) ApplyLabel(tag.element);
+                    else AudioManager.Play(Sfx.Deny);
+                }
+            }
+        }
+
+        /// <summary>Let go of whatever the hand was carrying: it goes back where it came from.</summary>
+        private void DropCarried()
+        {
+            if (_corkCarried && _cork != null) { _corkCarried = false; ParkCork(CorkDishWorld); }
+            if (_tagCarried >= 0) { var t = _tags[_tagCarried]; _tagCarried = -1; if (t.t != null) t.t.position = t.home; }
+        }
+
+        /// <summary>
+        /// The cork let go at <paramref name="at"/>. Over the neck, it is a seal: how true
+        /// to the neck's middle it was dropped is how well it seats. Anywhere else it
+        /// goes back in its dish, no harm done.
+        /// </summary>
+        private void DropCork(Vector2 at)
+        {
+            _corkCarried = false;
+            Vector2 mouth = FlaskMouthWorld;
+            float dx = Mathf.Abs(at.x - mouth.x);
+            bool overNeck = dx < 0.6f && at.y > mouth.y - 0.25f && at.y < mouth.y + 2.6f;
+            if (!overNeck) { ParkCork(CorkDishWorld); return; }
+            SealWith(dx / 0.6f * 0.25f);
+        }
+
+        /// <summary>A pour from the bench: held (the playtest, the old button) or the ladle dragged down.</summary>
+        private bool Pouring => Attended && Current == Step.Pour && Order != null && (PourHeld || (_pointerPour && _dragTilt01 > 0.05f));
+
+        /// <summary>How far to tip: all the way when held, or as far as the drag has pulled the ladle.</summary>
+        private float PourTarget01 => PourHeld ? 1f : _dragTilt01;
 
         /// <summary>
         /// The brew in the glass: a level that stands for the droplets in it, in the
@@ -425,7 +597,7 @@ namespace AlchemistsArsenal.Crafting
             if (_ladle != null)
             {
                 bool pouring = Pouring;
-                float target = pouring ? MaxTilt : 0f;
+                float target = pouring ? MaxTilt * PourTarget01 : 0f;
                 // Critically damped in radians (torque = I * alpha, kd = 2 sqrt(kp)).
                 // Tipping is steady (the error is capped); letting go rights it fast,
                 // so the flow stops close to when you release.
@@ -462,6 +634,7 @@ namespace AlchemistsArsenal.Crafting
                 && tilt < 0.1f && _sinceLastDrop > 0.6f && _stream.Settled(0.6f))
                 ScorePour();
 
+            if (_corkCarried && _cork != null) _cork.MovePosition(_corkCarryTo);
             DriveCork(dt);
         }
 
@@ -514,7 +687,7 @@ namespace AlchemistsArsenal.Crafting
             Current = Step.Seal;
             // The ladle is put away so the cork can come down on the neck.
             if (_ladle != null) _ladle.gameObject.SetActive(false);
-            ResetCork(active: true);
+            ResetCork(active: true);   // into its dish, for a hand to carry to the neck
             Changed?.Invoke();
         }
 
@@ -527,13 +700,23 @@ namespace AlchemistsArsenal.Crafting
         /// <summary>The beat needle, 0..1 (the HUD draws it; the seal is judged on it).</summary>
         public static float SealNeedle01() => Mathf.PingPong(Time.unscaledTime * 0.75f, 1f);
 
-        /// <summary>Drive the cork down. On the beat it seats; off it, it glances off and springs back.</summary>
+        /// <summary>The playtest's seal: stand the cork over the neck and drive it down, judged on the beat needle.</summary>
         public void Seal()
+        {
+            if (Order == null || Current != Step.Seal || SealsLeft <= 0) return;
+            SealWith(Mathf.Abs(SealNeedle01() - 0.5f));
+        }
+
+        /// <summary>
+        /// Drive the cork down, <paramref name="dist"/> off true (0 is dead centre, the
+        /// same scale as the old beat needle). Within <see cref="SealHalfWidth"/> it seats;
+        /// beyond it glances off the lip and waits over the neck for another try.
+        /// </summary>
+        private void SealWith(float dist)
         {
             var order = Order;
             if (order == null || Current != Step.Seal || SealsLeft <= 0) return;
-
-            float dist = Mathf.Abs(SealNeedle01() - 0.5f);
+            CorkOverNeck();
             bool hit = dist <= SealHalfWidth;
             SealsLeft--;
 
@@ -558,6 +741,9 @@ namespace AlchemistsArsenal.Crafting
                     _corkTarget = CorkTarget.Seat;
                 }
             }
+            // Before the road teaches labelling, the flask is labelled for you.
+            if (Current == Step.Label && !Data.Complexity.LabelsOn(Data.Complexity.Level()))
+                ApplyLabel(order.element);
             Changed?.Invoke();
         }
 
@@ -569,7 +755,7 @@ namespace AlchemistsArsenal.Crafting
         /// </summary>
         private void DriveCork(float dt)
         {
-            if (_cork == null || !_cork.gameObject.activeInHierarchy || CorkSeated) return;
+            if (_cork == null || !_cork.gameObject.activeInHierarchy || CorkSeated || _corkFree) return;
 
             Vector2 seat = CorkSeatWorld;
             float targetY;
@@ -615,6 +801,13 @@ namespace AlchemistsArsenal.Crafting
                 AudioManager.Play(Sfx.Deny);
             }
 
+            if (_flaskLabel != null)
+            {
+                _flaskLabel.sprite = ShopArt.LabelTag(element);
+                _flaskLabel.sharedMaterial = SpriteMaterials.For(_flaskLabel.sprite);
+                _flaskLabel.transform.position = BulbCentre + new Vector2(0f, 0.35f);
+                _flaskLabel.enabled = true;
+            }
             Current = Step.Done;
             if (CraftingManager.Instance != null) CraftingManager.Instance.Advance(order);
             _lingerUntil = Time.time + 2f;   // the sealed flask stays up for a moment

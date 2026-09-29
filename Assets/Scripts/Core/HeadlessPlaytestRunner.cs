@@ -240,6 +240,16 @@ namespace AlchemistsArsenal.Core
                     // own flask, in roster order — through the same method the TAKE THIS
                     // JOB button reaches, once per fighter.
                     int partySize = SaveSystem.Instance.State.DeployedParty().Count;
+                    // The first fighter's job goes the way a player takes it: the tag
+                    // carried across the counter and dropped on the order book.
+                    if (day == 1)
+                    {
+                        foreach (var step in WaitRealtime(1.3f)) yield return step;
+                        Capture("day1_spotlight_job");
+                        if (TutorialManager.Instance == null || !TutorialManager.Active)
+                            Fail("Day 1 opened with no lesson on screen.");
+                    }
+                    foreach (var step in DragFirstJobTag(day)) yield return step;
                     for (int k = 0; k < partySize + 1 && UI.Stations.CounterStation.NextFighter != null; k++)
                     {
                         CallPrivate(morningScreen, "AcceptOrder");
@@ -361,6 +371,10 @@ namespace AlchemistsArsenal.Core
 
                     if (!MorningScreen.ReadyToSend)
                         Fail("Every flask is finished but the party still cannot be sent.");
+                    // The send lesson: the spotlight on the SEND button, before it is pressed.
+                    foreach (var step in WaitRealtime(1.3f)) yield return step;
+                    Capture($"day{day}_morning_send_spotlight");
+                    Log($"Lessons seen by day {day}: {string.Join(", ", SaveSystem.Instance.State.seenLessons)}");
                     GameLoopManager.Instance.BeginHandoff();
                     foreach (var step in WaitForPhase(GamePhase.Handoff, 5f)) { if (_errorCount > 0) yield break; yield return step; }
                     if (_errorCount > 0) yield break;
@@ -599,6 +613,7 @@ namespace AlchemistsArsenal.Core
                 if (bench == null) { Fail("No Malting bench."); yield break; }
 
                 float t = 0f, settle = 0f, nextStoke = 0f, nextSkim = 0f;
+                bool lidDragged = false, maltDragged = false;
                 bool pourShot = false, soakShot = false, turnShot = false, kilnShot = false, buoyancyChecked = false;
                 float limit = 70f * orders.Count;
                 while (t < limit && _errorCount == 0)
@@ -620,7 +635,17 @@ namespace AlchemistsArsenal.Core
                                 if (settle < 1.0f) break;   // what is still in the air lands, and the husks rise
                                 if (!buoyancyChecked) { buoyancyChecked = true; CheckBuoyancy(bench); }
                                 if (!pourShot) { pourShot = true; Capture($"day{day}_morning_malting_pour"); }
-                                bench.Steep();
+                                if (day == 2 && !lidDragged)
+                                {
+                                    // By hand: carry the lid from beside the jar onto its mouth.
+                                    lidDragged = true;
+                                    foreach (var f in Drag(bench.LidWorld + new Vector2(0f, 0.15f), bench.JarMouthWorld, $"day{day}_morning_malting_lid_carried"))
+                                        yield return f;
+                                    if (tub.maltStep != MaltStep.Soaking)
+                                        Fail($"The lid was carried onto the jar but it did not steep (step {tub.maltStep}).");
+                                    else Log("Malting: the lid carried onto the jar steeped it.");
+                                }
+                                else bench.Steep();
                                 settle = 0f;
                                 break;
                             case MaltStep.Soaking:
@@ -635,7 +660,18 @@ namespace AlchemistsArsenal.Core
                                 }
                                 break;
                             case MaltStep.Green:
-                                if (bench.CanLoadKiln) bench.LoadKiln();
+                                if (bench.CanLoadKiln && day == 2 && !maltDragged)
+                                {
+                                    // By hand: scoop the green malt out of the jar onto the kiln's tray.
+                                    maltDragged = true;
+                                    ActiveOrder moving = tub;
+                                    foreach (var f in Drag(bench.JarWorld, bench.KilnTrayWorld, $"day{day}_morning_malting_malt_carried"))
+                                        yield return f;
+                                    if (bench.KilnOrder != moving)
+                                        Fail("The green malt was carried onto the kiln but the kiln did not take it.");
+                                    else Log("Malting: the malt carried onto the kiln loaded it.");
+                                }
+                                else if (bench.CanLoadKiln) bench.LoadKiln();
                                 break;
                         }
                     }
@@ -665,6 +701,24 @@ namespace AlchemistsArsenal.Core
                     else
                         Log($"Malting: {o.heroName}'s malt done — quality {o.MaltQuality01:P0} ({o.maltPoints} of {QualityBudget.MaltMax}), flask at {o.qualityScore}");
                 }
+            }
+
+            /// <summary>
+            /// A hand on the bench: press at <paramref name="from"/>, carry to
+            /// <paramref name="to"/> over half a second, capture mid-way, let go.
+            /// </summary>
+            private IEnumerable Drag(Vector2 from, Vector2 to, string capture = null)
+            {
+                PhysicsKit.Pointer.Scripted = _pointer;
+                _pointer.World = from;
+                foreach (var f in Frames(2)) yield return f;
+                _pointer.Press();
+                foreach (var f in Frames(2)) yield return f;
+                for (int i = 0; i <= 30; i++) { _pointer.World = Vector2.Lerp(from, to, i / 30f); yield return null; }
+                if (!string.IsNullOrEmpty(capture)) Capture(capture);
+                _pointer.Release();
+                foreach (var f in Frames(3)) yield return f;
+                PhysicsKit.Pointer.Scripted = null;
             }
 
             /// <summary>The steep's water must sort the grain: husks float, sound barley sinks.</summary>
@@ -928,10 +982,29 @@ namespace AlchemistsArsenal.Core
                 if (bench.LiquidLevelRow > Art.ShopArt.FlaskBodyCY)
                     Fail($"A flask at {bench.Fill01:P0} draws no brew above the middle of its bulb (row {bench.LiquidLevelRow}).");
 
-                // Seal on the beat (the needle runs on real time).
-                for (int guard = 0; guard < 200000 && Mathf.Abs(Crafting.BottlingBench.SealNeedle01() - 0.5f) > 0.02f; guard++)
-                    yield return null;
-                bench.Seal();
+                if (day == 1)
+                {
+                    // The old call still works (the needle runs on real time).
+                    for (int guard = 0; guard < 200000 && Mathf.Abs(Crafting.BottlingBench.SealNeedle01() - 0.5f) > 0.02f; guard++)
+                        yield return null;
+                    bench.Seal();
+                }
+                else
+                {
+                    // By hand: pick the cork out of its dish, carry it over the neck, let go.
+                    Vector2 from = bench.CorkWorld, to = bench.FlaskMouthWorld + new Vector2(0.02f, 1.1f);
+                    if (Vector2.Distance(from, bench.CorkDishWorld) > 0.05f)
+                        Fail($"The cork is not waiting in its dish ({from} vs {bench.CorkDishWorld}).");
+                    PhysicsKit.Pointer.Scripted = _pointer;
+                    _pointer.World = from;
+                    foreach (var f in Frames(2)) yield return f;
+                    _pointer.Press();
+                    for (int i = 0; i <= 30; i++) { _pointer.World = Vector2.Lerp(from, to, i / 30f); yield return null; }
+                    Capture($"day{day}{_orderTag}_morning_bottling_cork_carried");
+                    _pointer.Release();
+                    foreach (var f in Frames(2)) yield return f;
+                    PhysicsKit.Pointer.Scripted = null;
+                }
                 t = 0f;
                 while (!bench.CorkSeated && t < 3f) { t += Time.deltaTime; yield return null; }
                 float off = Vector2.Distance(bench.CorkWorld, bench.CorkSeatWorld);
@@ -939,7 +1012,22 @@ namespace AlchemistsArsenal.Core
                     Fail($"A clean seal left the cork at {bench.CorkWorld}, {off:0.000} from its seat at {bench.CorkSeatWorld} (seated={bench.CorkSeated}).");
                 else Log($"Bottling: the cork went home into the neck, {off:0.000} off its seat.");
                 foreach (var f in Frames(10)) yield return f;
-                bench.ApplyLabel(order.element);
+                if (bench.Current == Crafting.BottlingBench.Step.Label && day >= 2)
+                {
+                    // By hand: take the right tag off the rail and press it on the glass.
+                    Vector2 from = bench.TagWorld(order.element) + new Vector2(0f, -0.3f), to = bench.LabelSpotWorld;
+                    PhysicsKit.Pointer.Scripted = _pointer;
+                    _pointer.World = from;
+                    foreach (var f in Frames(2)) yield return f;
+                    _pointer.Press();
+                    for (int i = 0; i <= 30; i++) { _pointer.World = Vector2.Lerp(from, to, i / 30f); yield return null; }
+                    Capture($"day{day}{_orderTag}_morning_bottling_label_carried");
+                    _pointer.Release();
+                    foreach (var f in Frames(3)) yield return f;
+                    PhysicsKit.Pointer.Scripted = null;
+                    if (!bench.Labelled) Fail("The label was dragged onto the flask but did not stick.");
+                }
+                else bench.ApplyLabel(order.element);
                 if (bench.Current != Crafting.BottlingBench.Step.Done) Fail($"Bottling ended at step {bench.Current}, not Done.");
                 Log($"Bottling: sealed and labelled, quality {order.qualityScore}");
             }
@@ -1111,6 +1199,56 @@ namespace AlchemistsArsenal.Core
             {
                 for (int i = 0; i < 6; i++) yield return null;
                 Capture(screenshotName);
+            }
+
+            /// <summary>
+            /// Drag the first job tag onto the Counter's order book with real uGUI
+            /// drag events, and check the job was taken (the drop path, not the click
+            /// shortcut).
+            /// </summary>
+            private IEnumerable DragFirstJobTag(int day)
+            {
+                var screen = UIManager.Instance != null ? UIManager.Instance.ScreenOf(ScreenId.Morning) as MorningScreen : null;
+                var counter = screen != null ? screen.Counter : null;
+                RectTransform first = counter != null ? counter.FirstOfferTag : null;
+                DragTag tag = first != null ? first.GetComponent<DragTag>() : null;
+                if (tag == null || counter.OrderBook == null || UnityEngine.EventSystems.EventSystem.current == null)
+                {
+                    Fail("The Counter has no job tag or order book to drag onto.");
+                    yield break;
+                }
+                int before = CraftingManager.Instance != null ? CraftingManager.Instance.Orders.Count : 0;
+                Vector2 from = RectTransformUtility.WorldToScreenPoint(null, tag.Paper.position);
+                Vector2 to = RectTransformUtility.WorldToScreenPoint(null, counter.OrderBook.position);
+                var pe = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current)
+                {
+                    position = from, pressPosition = from,
+                    button = UnityEngine.EventSystems.PointerEventData.InputButton.Left,
+                };
+                var ev = UnityEngine.EventSystems.ExecuteEvents.beginDragHandler;
+                UnityEngine.EventSystems.ExecuteEvents.Execute(tag.gameObject, pe, ev);
+                pe.dragging = true;
+                for (int i = 1; i <= 8; i++)
+                {
+                    pe.position = Vector2.Lerp(from, to, i / 10f);
+                    UnityEngine.EventSystems.ExecuteEvents.Execute(tag.gameObject, pe, UnityEngine.EventSystems.ExecuteEvents.dragHandler);
+                    yield return null;
+                }
+                Capture($"day{day}_morning_counter_tag_carried");
+                pe.position = to;
+                UnityEngine.EventSystems.ExecuteEvents.Execute(tag.gameObject, pe, UnityEngine.EventSystems.ExecuteEvents.dragHandler);
+                UnityEngine.EventSystems.ExecuteEvents.Execute(tag.gameObject, pe, UnityEngine.EventSystems.ExecuteEvents.endDragHandler);
+                yield return null;
+                int after = CraftingManager.Instance != null ? CraftingManager.Instance.Orders.Count : 0;
+                if (after != before + 1) Fail($"Dropping a job tag on the order book took {after - before} job(s), not 1.");
+                else Log("Counter: the job tag dropped on the order book was taken.");
+            }
+
+            /// <summary>Let wall-clock time pass (animations run on unscaled time).</summary>
+            private IEnumerable WaitRealtime(float seconds)
+            {
+                float until = Time.realtimeSinceStartup + seconds;
+                for (int guard = 0; guard < 2000 && Time.realtimeSinceStartup < until; guard++) yield return null;
             }
 
             private IEnumerable SettleFrames(int frames)

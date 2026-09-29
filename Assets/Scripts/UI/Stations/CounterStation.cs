@@ -42,7 +42,8 @@ namespace AlchemistsArsenal.UI.Stations
         private HeroRecord _fighter;
         private CustomerDefinition _visitor;
         private List<ContractRecord> _offers = new List<ContractRecord>();
-        private readonly List<Button> _offerButtons = new List<Button>();
+        private Image _bookPage;
+        private TextMeshProUGUI _bookText;
         private int _day = 1, _biome;
 
         /// <summary>The order of whoever was served last (for the dock and the rail).</summary>
@@ -92,14 +93,30 @@ namespace AlchemistsArsenal.UI.Stations
             UIFactory.Flex(_queue.gameObject, 1f, 0f, minHeight: 34f);
 
             // --- today's road ------------------------------------------------
-            var roadCard = UIKit.Card(root, "Today's road — what they will meet out there", out Transform road);
+            var roadCard = UIKit.Card(root, "Today's road", out Transform road);
             UIFactory.Place(roadCard.rectTransform, 0.36f, 0.44f, 1f, 1f);
             _roadBox = road;
 
             // --- the board ---------------------------------------------------
-            var boardCard = UIKit.Card(root, "Jobs on the board — take one", out Transform board);
-            UIFactory.Place(boardCard.rectTransform, 0f, 0f, 1f, 0.41f, 0f);
+            var boardCard = UIKit.Card(root, "Jobs on the board", out Transform board);
+            UIFactory.Place(boardCard.rectTransform, 0f, 0f, 0.75f, 0.41f, 0f);
             boardCard.rectTransform.offsetMax = new Vector2(0f, -14f);
+
+            // --- the order book: a job tag dragged onto it is taken -------------
+            var cover = UIFactory.Panel(root, UITheme.WoodDark, "OrderBook");
+            UIFactory.Place(cover.rectTransform, 0.765f, 0f, 1f, 0.41f, 0f);
+            cover.rectTransform.offsetMax = new Vector2(0f, -14f);
+            _bookPage = UIFactory.Panel(cover.transform, UITheme.Parchment, "Page");
+            UIFactory.Stretch(_bookPage.rectTransform, 8f);
+            var bookStack = UIFactory.VStack(_bookPage.transform, 6f, new RectOffset(14, 14, 10, 10));
+            UIFactory.Stretch((RectTransform)bookStack.transform);
+            var bookTitle = UIFactory.Title(bookStack.transform, "Order book", UITheme.SizeHeading, UITheme.Ink900);
+            UIFactory.FixedHeight(bookTitle.gameObject, 28f);
+            var rule = UIFactory.Panel(bookStack.transform, UITheme.ParchmentDim, "Rule");
+            UIFactory.FixedHeight(rule.gameObject, 2f);
+            _bookText = UIFactory.Label(bookStack.transform, "", UITheme.SizeSmall, UITheme.Ink800, TextAlignmentOptions.TopLeft);
+            UIFactory.Flex(_bookText.gameObject, 1f, 1f);
+            foreach (var g in cover.GetComponentsInChildren<Graphic>(true)) g.raycastTarget = g == _bookPage;
 
             _recommendation = UIFactory.Label(board, "", UITheme.SizeSmall, UITheme.CandleHot);
             UIFactory.FixedHeight(_recommendation.gameObject, 22f);
@@ -240,7 +257,7 @@ namespace AlchemistsArsenal.UI.Stations
             int total = 0; foreach (int c in counts) total += c;
             ElementType best = ContractBoard.Counter(dominant);
             _recommendation.text = total > 0
-                ? $"Mostly <b>{dominant}</b> out there — a <b>{best}</b> flask lands the x2."
+                ? $"Mostly <b>{dominant}</b> out there. A <b>{best}</b> flask hits them twice as hard."
                 : "Quiet day. Brew whatever you like.";
         }
 
@@ -249,7 +266,7 @@ namespace AlchemistsArsenal.UI.Stations
         private void BuildOffers()
         {
             Clear(_offerRow);
-            _offerButtons.Clear();
+            BuildBook();
 
             if (_fighter == null)
             {
@@ -268,43 +285,84 @@ namespace AlchemistsArsenal.UI.Stations
         private void BuildOfferCard(ContractRecord offer)
         {
             Color accent = UITheme.Element(offer.element);
-            Image card = UIKit.Surface(_offerRow, out Transform inner, UITheme.Surface, UITheme.Line, "Offer");
-            UIFactory.Flex(card.gameObject, 1f, 1f, minWidth: 180f);
 
-            // The button is anchored to the card, NOT stacked inside it. A layout
-            // group nested inside another layout group negotiates its size a frame
-            // late, and the last child of the inner stack ended up drawn below the
-            // card's own bottom edge — the TAKE THIS JOB row was sliced off by the
-            // screen edge (caught on a headless-playtest screenshot). Anything that
-            // must stay inside a card gets anchored.
-            var col = UIFactory.VStack(inner, 6f, new RectOffset(14, 14, 12, 6));
-            UIFactory.Place((RectTransform)col.transform, 0f, 0.26f, 1f, 1f);
+            // A paper tag on a nail. The slot holds its place in the row; the paper
+            // inside it is what the hand picks up (see DragTag).
+            var slot = new GameObject("Offer", typeof(RectTransform));
+            slot.transform.SetParent(_offerRow, false);
+            UIFactory.Flex(slot, 1f, 1f, minWidth: 180f);
+
+            Image paper = UIFactory.Panel(slot.transform, UITheme.Parchment, "Tag");
+            UIFactory.Stretch(paper.rectTransform);
+            var band = UIFactory.Panel(paper.transform, accent, "Band");
+            band.rectTransform.anchorMin = new Vector2(0f, 1f);
+            band.rectTransform.anchorMax = new Vector2(1f, 1f);
+            band.rectTransform.sizeDelta = new Vector2(0f, 6f);
+            band.rectTransform.anchoredPosition = new Vector2(0f, -3f);
+            var nail = UIFactory.Panel(paper.transform, UITheme.Ink700, "Hole");
+            nail.rectTransform.anchorMin = nail.rectTransform.anchorMax = new Vector2(0.5f, 1f);
+            nail.rectTransform.sizeDelta = new Vector2(8f, 8f);
+            nail.rectTransform.anchoredPosition = new Vector2(0f, -14f);
+
+            var col = UIFactory.VStack(paper.transform, 5f, new RectOffset(14, 14, 24, 10));
+            UIFactory.Stretch((RectTransform)col.transform);
 
             var titleRow = UIFactory.HStack(col.transform, 8f);
             titleRow.childAlignment = TextAnchor.MiddleLeft;
             UIFactory.FixedHeight(titleRow.gameObject, 26f);
             var badge = UIFactory.ElementBadge(titleRow.transform, offer.element, 24f);
             UIFactory.Flex(badge.gameObject, 0f, 0f, minWidth: 24f, minHeight: 24f);
-            var title = UIFactory.Label(titleRow.transform, offer.title, UITheme.SizeBody, accent,
+            var title = UIFactory.Label(titleRow.transform, offer.title, UITheme.SizeBody, UITheme.Ink900,
                 TextAlignmentOptions.Left, true);
             UIFactory.Flex(title.gameObject, 1f, 1f);
 
             var what = UIFactory.Label(col.transform,
-                $"<b>{offer.PotionName}</b>  ·  wants <color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(offer.RequiredGrade))}>{offer.RequiredGrade.ToString().ToUpperInvariant()}</color> or better",
-                UITheme.SizeSmall, UITheme.TextHi);
+                $"<b>{offer.PotionName}</b>, {offer.RequiredGrade} or better",
+                UITheme.SizeSmall, UITheme.Ink800);
             UIFactory.Flex(what.gameObject, 1f, 0f, minHeight: 20f);
 
             var pay = UIFactory.MonoLabel(col.transform,
-                $"{offer.fee} g   +{offer.bonus} g on delivery", UITheme.SizeBody, UITheme.Candle);
+                $"{offer.fee} g   +{offer.bonus} g on delivery", UITheme.SizeBody, UITheme.WoodDark);
             UIFactory.Flex(pay.gameObject, 1f, 0f, minHeight: 22f);
 
-            var note = UIFactory.Label(col.transform, offer.note, UITheme.SizeSmall, UITheme.TextLow);
+            var note = UIFactory.Label(col.transform, offer.note, UITheme.SizeSmall, UITheme.Ink700);
             UIFactory.Flex(note.gameObject, 1f, 1f, minHeight: 28f);
 
+            foreach (var g in paper.GetComponentsInChildren<Graphic>(true)) g.raycastTarget = g == paper;
             ContractRecord captured = offer;
-            var button = UIFactory.Button(inner, "TAKE THIS JOB", () => Accept(captured), primary: true);
-            UIFactory.Place(button.image.rectTransform, 0.06f, 0.04f, 0.94f, 0.21f);
-            _offerButtons.Add(button);
+            var tag = slot.AddComponent<DragTag>();
+            tag.Paper = paper.rectTransform;
+            tag.Target = (RectTransform)_bookPage.transform.parent;
+            tag.OnDropped = () => Accept(captured);
+            tag.OnClicked = () => Accept(captured);
+            tag.OnHoverTarget = over => _bookPage.color = over ? UITheme.CandleHot : UITheme.Parchment;
+        }
+
+        /// <summary>Where a job tag goes; for the harness and the tutorial spotlight.</summary>
+        public RectTransform OrderBook => _bookPage != null ? (RectTransform)_bookPage.transform.parent : null;
+
+        /// <summary>The first job tag on the board, or null (the tutorial points at it).</summary>
+        public RectTransform FirstOfferTag =>
+            _offerRow != null && _offerRow.childCount > 0 ? (RectTransform)_offerRow.GetChild(0) : null;
+
+        /// <summary>Today's orders so far, and who is next.</summary>
+        private void BuildBook()
+        {
+            if (_bookText == null) return;
+            RunState s = State;
+            var sb = new StringBuilder();
+            if (s != null)
+                foreach (HeroRecord h in s.DeployedParty())
+                {
+                    ContractRecord c = s.ContractFor(h.id);
+                    if (c != null) sb.Append(h.displayName).Append(": ").Append(c.PotionName).Append('\n');
+                }
+            if (_fighter != null)
+            {
+                if (sb.Length > 0) sb.Append('\n');
+                sb.Append($"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.WoodDark)}>Drag a job here for {_fighter.displayName}.</color>");
+            }
+            _bookText.text = sb.ToString();
         }
 
         /// <summary>

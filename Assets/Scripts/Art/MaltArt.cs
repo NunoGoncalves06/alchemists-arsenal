@@ -211,6 +211,20 @@ namespace AlchemistsArsenal.Art
             return c.Bake(key, PPU, new Vector2(0.5f, 0f));
         }
 
+        /// <summary>The steeping jar's wooden lid, with a knob; pivot at its underside centre.</summary>
+        public static Sprite JarLid()
+        {
+            const string key = "malt_jar_lid";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 32, h = 7;
+            var c = new PixelCanvas(w, h);
+            c.Fill((x, y) => y >= 3 && y <= 5 && x >= 1 && x <= w - 2, (x, y) =>
+                S(Wood, y == 3 ? 0.85f : 0.45f - (x - 1) * 0.004f, x, y));
+            c.Fill((x, y) => y >= 1 && y <= 2 && x >= w / 2 - 3 && x <= w / 2 + 2, (x, y) => S(Wood, y == 1 ? 0.9f : 0.6f, x, y));
+            c.Outline(K);
+            return c.Bake(key, PPU, new Vector2(0.5f, 1f / h));
+        }
+
         /// <summary>A split log: bark along its length, rings at the cut end.</summary>
         public static Sprite Log()
         {
