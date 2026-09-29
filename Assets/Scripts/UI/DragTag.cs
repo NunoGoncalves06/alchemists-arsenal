@@ -29,7 +29,7 @@ namespace AlchemistsArsenal.UI
         private Vector3 _grabOffset;
         private bool _carried, _overTarget;
         private float _homeT = 1f;
-        private Vector3 _homeFrom;
+        private Vector2 _homeFrom;   // anchored position, so any anchoring slides home right
 
         public void OnBeginDrag(PointerEventData e)
         {
@@ -64,7 +64,7 @@ namespace AlchemistsArsenal.UI
                 OnDropped?.Invoke();
                 return;
             }
-            _homeFrom = Paper.localPosition;
+            _homeFrom = Paper.anchoredPosition;
             _homeT = 0f;   // slide back on the rack
         }
 
@@ -79,7 +79,7 @@ namespace AlchemistsArsenal.UI
             if (_homeT >= 1f || Paper == null) return;
             _homeT = Mathf.Min(1f, _homeT + Time.unscaledDeltaTime / 0.18f);
             float k = 1f - (1f - _homeT) * (1f - _homeT);
-            Paper.localPosition = Vector3.Lerp(_homeFrom, Vector3.zero, k);
+            Paper.anchoredPosition = Vector2.Lerp(_homeFrom, Vector2.zero, k);
             if (_homeT >= 1f) { Paper.anchoredPosition = Vector2.zero; Lift(false); }
         }
 

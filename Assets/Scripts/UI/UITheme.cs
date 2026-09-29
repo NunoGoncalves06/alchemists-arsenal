@@ -29,12 +29,13 @@ namespace AlchemistsArsenal.UI
         // --- surface tokens (UI redesign) -----------------------------------
         // One ramp for every panel so depth reads consistently: the app ground is
         // darkest, cards sit one step up, and anything interactive sits one more.
-        public static readonly Color Ground     = Hex(0x120d16); // behind everything
-        public static readonly Color Surface    = Hex(0x1f1726); // cards / docks
-        public static readonly Color SurfaceHi  = Hex(0x2c2135); // rows, inputs, inactive tabs
-        public static readonly Color SurfaceTop = Hex(0x3a2c46); // hover / selected row
-        public static readonly Color Line       = Hex(0x4b3a59); // hairline borders
-        public static readonly Color LineSoft   = Hex(0x332640);
+        // Warm, like the inside of a wooden shop at night: no violet dashboard greys.
+        public static readonly Color Ground     = Hex(0x15100d); // behind everything
+        public static readonly Color Surface    = Hex(0x211914); // cards / docks
+        public static readonly Color SurfaceHi  = Hex(0x2d221b); // rows, inputs, inactive tabs
+        public static readonly Color SurfaceTop = Hex(0x3c2e23); // hover / selected row
+        public static readonly Color Line       = Hex(0x5a4331); // hairline borders (dark wood)
+        public static readonly Color LineSoft   = Hex(0x3a2c21);
 
         // text roles — never pick a raw palette colour for text
         public static readonly Color TextHi     = Hex(0xf3e8cf);

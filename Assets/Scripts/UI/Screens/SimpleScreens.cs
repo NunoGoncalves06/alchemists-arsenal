@@ -254,7 +254,7 @@ namespace AlchemistsArsenal.UI
         {
             var s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
             int biome = s != null ? s.TargetBiomeIndex : 0;
-            _title.text = $"Day {(s != null ? s.day : 1)} — {BiomeLibrary.Name(biome)}";
+            _title.text = $"Day {(s != null ? s.day : 1)}: {BiomeLibrary.Name(biome)}";
             _flavour.text = s != null && s.IsReplayDay ? "A road you have walked before. Half the pay, but pay all the same."
                 : BiomeFlavour(biome);
             _whisper.text = Story.StoryDirector.DayWhisper(s);
@@ -371,12 +371,12 @@ namespace AlchemistsArsenal.UI
 
             var grade = order.GetGrade();
             what.text = $"{order.potionName}\n<color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(grade))}>" +
-                        $"{grade.ToString().ToUpperInvariant()}</color>  <size=85%>{order.qualityScore} / 100" +
+                        $"{grade.ToString()}</color>  <size=85%>{order.qualityScore} / 100" +
                         (order.Finished ? "" : " · unfinished") + "</size>";
             terms.text = job != null && job.accepted
                 ? job.Meets(grade)
-                    ? $"Wanted {job.RequiredGrade.ToString().ToUpperInvariant()} or better — this clears it."
-                    : $"Wanted {job.RequiredGrade.ToString().ToUpperInvariant()} or better. This is short: half pay."
+                    ? $"Wanted {job.RequiredGrade.ToString()} or better — this clears it."
+                    : $"Wanted {job.RequiredGrade.ToString()} or better. This is short: half pay."
                 : "";
         }
     }
@@ -408,7 +408,7 @@ namespace AlchemistsArsenal.UI
             if (_sub != null)
                 _sub.text = (party.Count <= 1
                     ? $"where {(party.Count == 1 ? party[0].displayName : "Rookie")} walks tomorrow"
-                    : $"where the party of {party.Count} walks tomorrow").ToUpperInvariant();   // a Heading is set in capitals
+                    : $"where the party of {party.Count} walks tomorrow");
 
             var card = UIKit.Card(_dynamic, "The five roads", out Transform list, spacing: 8f);
             UIFactory.Place(card.rectTransform, 0.05f, 0.2f, 0.62f, 0.82f);

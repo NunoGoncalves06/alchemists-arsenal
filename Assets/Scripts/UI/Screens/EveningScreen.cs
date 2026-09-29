@@ -49,12 +49,13 @@ namespace AlchemistsArsenal.UI
             _tabButtons[(int)EveTab.Report] = Tab(0.34f, 0.46f, "REPORT", ShowReport);
             _tabButtons[(int)EveTab.Upgrades] = Tab(0.47f, 0.59f, "UPGRADES", ShowUpgrades);
             _tabButtons[(int)EveTab.Roster] = Tab(0.60f, 0.72f, "PARTY", ShowRoster);
-            Tab(0.73f, 0.85f, "DIARY", () =>
+            var diary = Tab(0.73f, 0.85f, "DIARY", () =>
             {
                 DiaryScreen.OpenEntryId = null;
                 DiaryScreen.FromOpeningCinematic = false;
                 UIManager.Instance.Show(ScreenId.Diary);
             });
+            UIFactory.TintButton(diary, UITheme.SurfaceHi, UITheme.SurfaceTop, UITheme.TextHi);   // like the other tabs
 
             // --- body --------------------------------------------------------
             _body = UIFactory.Rect(transform, "Body", new Vector2(0f, 0.11f), new Vector2(1f, 0.9f),
@@ -86,7 +87,7 @@ namespace AlchemistsArsenal.UI
 
             // BeginEvening already rolled the day over, so the run that just ended
             // was yesterday's.
-            _title.text = $"Evening — day {Mathf.Max(1, s.day - 1)}";
+            _title.text = $"Evening of day {Mathf.Max(1, s.day - 1)}";
             _gold.text = $"{s.gold} g";
             ShowReport();
 
@@ -194,9 +195,9 @@ namespace AlchemistsArsenal.UI
 
                 var asked = UIFactory.Label(c,
                     $"Asked for <color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(r.contractRequired))}>" +
-                    $"{r.contractRequired.ToString().ToUpperInvariant()}</color> or better — you delivered " +
+                    $"{r.contractRequired.ToString()}</color> or better — you delivered " +
                     $"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(r.craftedGrade))}>" +
-                    $"{r.craftedGrade.ToString().ToUpperInvariant()}</color>.",
+                    $"{r.craftedGrade.ToString()}</color>.",
                     UITheme.SizeBody, UITheme.TextMid);
                 UIFactory.Flex(asked.gameObject, 1f, 0f, minHeight: 44f);
 
@@ -222,13 +223,13 @@ namespace AlchemistsArsenal.UI
                 UIKit.KeyValue(c, "Below grade", "x0.50", valueColor: UITheme.Danger);
             if (r.perfectTip) UIKit.KeyValue(c, "Perfect tip", $"+{Economy.PerfectTip} g", valueColor: UITheme.Ok);
             if (r.replayDay) UIKit.KeyValue(c, "Replayed road", "x0.50", valueColor: UITheme.Danger);
-            UIKit.KeyValue(c, "PAID", $"{r.goldPaidByGrade} g", keyColor: UITheme.Candle, valueColor: UITheme.Candle);
+            UIKit.KeyValue(c, "Paid", $"{r.goldPaidByGrade} g", keyColor: UITheme.Candle, valueColor: UITheme.Candle);
         }
 
         /// <summary>Several fighters, several jobs: one line each — what they asked for, what they carried, what it paid.</summary>
         private void BuildJobs(ExpeditionReport r)
         {
-            var card = UIKit.Card(_body, $"The jobs — {r.contracts.Count} fighters", out Transform c, spacing: 6f);
+            var card = UIKit.Card(_body, $"The jobs, {r.contracts.Count} fighters", out Transform c, spacing: 6f);
             UIFactory.Place(card.rectTransform, 0.34f, 0.34f, 0.66f, 1f);
 
             foreach (ExpeditionReport.ContractLine line in r.contracts)
@@ -240,8 +241,8 @@ namespace AlchemistsArsenal.UI
                 var who = UIFactory.Label(inner,
                     $"<b>{line.heroName}</b>  <size=85%>{line.title}</size>\n" +
                     $"<size=85%><color=#{ColorUtility.ToHtmlStringRGB(UITheme.Element(line.element))}>{line.element}</color> · wanted " +
-                    $"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(line.required))}>{line.required.ToString().ToUpperInvariant()}</color>, carried " +
-                    $"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(line.delivered))}>{line.delivered.ToString().ToUpperInvariant()}</color></size>",
+                    $"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(line.required))}>{line.required.ToString()}</color>, carried " +
+                    $"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(line.delivered))}>{line.delivered.ToString()}</color></size>",
                     UITheme.SizeSmall, UITheme.TextHi, TextAlignmentOptions.Left);
                 UIFactory.Place(who.rectTransform, 0.17f, 0f, 0.76f, 1f);
                 var paid = UIFactory.MonoLabel(inner, r.won ? $"{line.paid} g" : "0 g", UITheme.SizeBody,
@@ -258,7 +259,7 @@ namespace AlchemistsArsenal.UI
             }
             if (r.perfectTip) UIKit.KeyValue(c, "Perfect tips", "included", valueColor: UITheme.Ok);
             if (r.replayDay) UIKit.KeyValue(c, "Replayed road", "x0.50", valueColor: UITheme.Danger);
-            UIKit.KeyValue(c, "PAID", $"{r.goldPaidByGrade} g", keyColor: UITheme.Candle, valueColor: UITheme.Candle);
+            UIKit.KeyValue(c, "Paid", $"{r.goldPaidByGrade} g", keyColor: UITheme.Candle, valueColor: UITheme.Candle);
         }
 
         private static string BuyerIdFor(ExpeditionReport r)
@@ -341,7 +342,7 @@ namespace AlchemistsArsenal.UI
             SelectTab(EveTab.Upgrades);
             RunState s = SaveSystem.Instance.State;
 
-            var card = UIKit.Card(_body, $"Upgrades — permanent, {s.gold} g on hand", out Transform c, spacing: 6f);
+            var card = UIKit.Card(_body, $"Upgrades ({s.gold} g on hand)", out Transform c, spacing: 6f);
             UIFactory.Stretch(card.rectTransform);
 
             var benches = new List<UpgradeDefinition>();
@@ -400,8 +401,8 @@ namespace AlchemistsArsenal.UI
             UIFactory.Place(desc.rectTransform, 0.33f, 0.30f, 0.98f, 0.72f);
 
             string id = up.Id; int cost = up.Cost;
-            string caption = owned ? (up.IsBench ? $"INSTALLED · {up.Bench.ToUpperInvariant()}" : "OWNED")
-                : !available ? "LOCKED" : $"BUY — {cost} g";
+            string caption = owned ? (up.IsBench ? $"Installed at {up.Bench}" : "Owned")
+                : !available ? "Locked" : $"Buy for {cost} g";
             var buy = UIFactory.Button(inner, caption,
                 owned || !available ? (System.Action)null : () => BuyUpgrade(id, cost),
                 primary: !owned && available);

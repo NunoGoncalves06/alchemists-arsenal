@@ -1211,7 +1211,7 @@ namespace AlchemistsArsenal.Core
                 var screen = UIManager.Instance != null ? UIManager.Instance.ScreenOf(ScreenId.Morning) as MorningScreen : null;
                 var counter = screen != null ? screen.Counter : null;
                 RectTransform first = counter != null ? counter.FirstOfferTag : null;
-                DragTag tag = first != null ? first.GetComponent<DragTag>() : null;
+                DragTag tag = first != null ? first.GetComponentInParent<DragTag>() : null;
                 if (tag == null || counter.OrderBook == null || UnityEngine.EventSystems.EventSystem.current == null)
                 {
                     Fail("The Counter has no job tag or order book to drag onto.");

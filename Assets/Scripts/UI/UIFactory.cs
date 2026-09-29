@@ -127,8 +127,9 @@ namespace AlchemistsArsenal.UI
         public static TextMeshProUGUI Heading(Transform parent, string text, Color? color = null,
             int size = UITheme.SizeSmall, TextAlignmentOptions align = TextAlignmentOptions.TopLeft)
         {
-            var t = Label(parent, text.ToUpperInvariant(), size, color ?? UITheme.TextLow, align, bold: true);
-            t.characterSpacing = UITheme.HeadingTracking;
+            // Set in the serif, as written: a label on a drawer, not a shouted tag.
+            var t = Label(parent, text, size + 3, color ?? UITheme.TextLow, align, bold: false, font: UITheme.Display);
+            t.characterSpacing = 0.5f;
             return t;
         }
 
@@ -165,24 +166,72 @@ namespace AlchemistsArsenal.UI
 
         // --------------------------------------------------------------- buttons
 
+        /// <summary>
+        /// An embossed plaque: brass for the main action, wood for the rest. A dark
+        /// rim, a lit top edge and a shadowed foot, so it reads as a thing on the
+        /// wall that can be pressed, not a flat rectangle. The caption is set in the
+        /// serif, in sentence case.
+        /// </summary>
         public static Button Button(Transform parent, string text, Action onClick, bool primary = true)
         {
-            var img = Panel(parent, primary ? UITheme.Candle : UITheme.SurfaceHi, "Button");
+            var img = Panel(parent, primary ? UITheme.Candle : UITheme.Wood, "Button");
             var btn = img.gameObject.AddComponent<Button>();
             btn.targetGraphic = img;
             var colors = btn.colors;
-            colors.highlightedColor = primary ? UITheme.CandleHot : UITheme.SurfaceTop;
-            colors.pressedColor = primary ? UITheme.Wood : UITheme.Line;
+            colors.highlightedColor = primary ? UITheme.CandleHot : new Color(0.52f, 0.37f, 0.24f);
+            colors.pressedColor = primary ? new Color(0.72f, 0.54f, 0.21f) : UITheme.WoodDark;
             colors.disabledColor = new Color(img.color.r, img.color.g, img.color.b, 0.35f);
             colors.fadeDuration = 0.08f;
             btn.colors = colors;
             if (onClick != null) btn.onClick.AddListener(() => onClick());
 
-            var label = Label(img.transform, text, UITheme.SizeBody,
-                primary ? UITheme.TextOnGold : UITheme.TextHi, TextAlignmentOptions.Center, bold: true);
-            label.characterSpacing = 3f;
+            var rim = img.gameObject.AddComponent<Outline>();
+            rim.effectColor = UITheme.Alpha(UITheme.Ink900, 0.9f);
+            rim.effectDistance = new Vector2(2f, -2f);
+            Bevel(img.transform, "Lit", new Color(1f, 0.95f, 0.8f, 0.30f), top: true, 2f);
+            Bevel(img.transform, "Foot", new Color(0f, 0f, 0f, 0.30f), top: false, 3f);
+
+            var label = Label(img.transform, Soften(text), UITheme.SizeBody + 2,
+                primary ? UITheme.Ink900 : UITheme.Parchment, TextAlignmentOptions.Center, bold: false, font: UITheme.Display);
+            label.characterSpacing = 0.5f;
             Stretch(label.rectTransform, 6f);
             return btn;
+        }
+
+        private static void Bevel(Transform parent, string name, Color c, bool top, float px)
+        {
+            var edge = Panel(parent, c, name);
+            edge.raycastTarget = false;
+            RectTransform rt = edge.rectTransform;
+            rt.anchorMin = new Vector2(0f, top ? 1f : 0f);
+            rt.anchorMax = new Vector2(1f, top ? 1f : 0f);
+            rt.pivot = new Vector2(0.5f, top ? 1f : 0f);
+            rt.sizeDelta = new Vector2(0f, px);
+            rt.anchoredPosition = Vector2.zero;
+        }
+
+        /// <summary>
+        /// "SEND TO EXPEDITION" becomes "Send to expedition": the UI never shouts.
+        /// Mixed-case text and rich text are left alone.
+        /// </summary>
+        public static string Soften(string s)
+        {
+            if (string.IsNullOrEmpty(s) || s.IndexOf('<') >= 0) return s;
+            bool upper = false;
+            foreach (char ch in s)
+            {
+                if (char.IsLower(ch)) return s;
+                if (char.IsUpper(ch)) upper = true;
+            }
+            if (!upper) return s;
+            char[] c = s.ToLowerInvariant().ToCharArray();
+            bool start = true;
+            for (int i = 0; i < c.Length; i++)
+            {
+                if (start && char.IsLetter(c[i])) { c[i] = char.ToUpperInvariant(c[i]); start = false; }
+                else if (c[i] == '\n' || c[i] == '.' || c[i] == '!' || c[i] == '?') start = true;
+            }
+            return new string(c);
         }
 
         /// <summary>Change a button's caption without hunting for its child label.</summary>
@@ -190,7 +239,7 @@ namespace AlchemistsArsenal.UI
         {
             if (b == null) return;
             var t = b.GetComponentInChildren<TextMeshProUGUI>();
-            if (t != null) t.text = text;
+            if (t != null) t.text = Soften(text);
         }
 
         /// <summary>Recolour a button's idle + hover states together (selection, element tints).</summary>

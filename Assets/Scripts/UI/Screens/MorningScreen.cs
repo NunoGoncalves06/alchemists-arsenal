@@ -194,7 +194,7 @@ namespace AlchemistsArsenal.UI
             for (int i = 0; i < _stations.Length; i++)
             {
                 var tab = (StationTab)i;
-                _tabs[i] = UIKit.StationTab(stack.transform, _stations[i].RailName.ToUpperInvariant(),
+                _tabs[i] = UIKit.StationTab(stack.transform, _stations[i].RailName,
                     (i + 1).ToString(), _stations[i].RailIcon, () => SwitchTab(tab));
             }
         }
@@ -482,9 +482,9 @@ namespace AlchemistsArsenal.UI
             _quality.Set(order.qualityScore / 100f, $"{order.qualityScore} / 100");
             _quality.SetFillColor(UITheme.GradeColor(grade));
             _gradeText.text =
-                $"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(grade))}>{grade.ToString().ToUpperInvariant()}</color>" +
+                $"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(grade))}>{grade.ToString()}</color>" +
                 (hasJob
-                    ? job.Meets(grade) ? "  — meets the job" : $"  — they want {job.RequiredGrade.ToString().ToUpperInvariant()}"
+                    ? job.Meets(grade) ? "  — meets the job" : $"  — they want {job.RequiredGrade.ToString()}"
                     : "");
 
             var sb = new StringBuilder();
