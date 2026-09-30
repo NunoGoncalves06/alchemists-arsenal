@@ -447,6 +447,7 @@ namespace AlchemistsArsenal.Core
                             Fail("A guardian fell but its scene was not recorded as watched.");
                     }
                     foreach (var step in Settle($"day{day}_evening_report")) yield return step;
+                    if (day == 1) foreach (var step in WalkEveningBriefing()) yield return step;
 
                     if (day == 1)
                     {
@@ -1389,6 +1390,44 @@ namespace AlchemistsArsenal.Core
             }
 
             // -------------------------------------------------------- reflection
+
+            /// <summary>
+            /// The first Evening's briefing, line by line, as a player meets it: the
+            /// report (click on), the Upgrades tab and what is in it, the Party tab and
+            /// what is in it, the diary, then sleep. Each line is photographed once the
+            /// spotlight has closed in, and must be the lesson expected.
+            /// </summary>
+            private IEnumerable WalkEveningBriefing()
+            {
+                object evening = UIManager.Instance != null ? UIManager.Instance.ScreenOf(ScreenId.Evening) : null;
+                var steps = new (string id, System.Action act)[]
+                {
+                    ("ev_report", () => TutorialManager.Instance.Continue()),
+                    ("ev_upgrades", () => CallPrivate(evening, "ShowUpgrades")),
+                    ("ev_upgrades_body", () => TutorialManager.Instance.Continue()),
+                    ("ev_party", () => CallPrivate(evening, "ShowRoster")),
+                    ("ev_party_body", () => TutorialManager.Instance.Continue()),
+                    ("ev_diary", () => UIManager.Instance.Show(ScreenId.Diary)),
+                };
+                foreach (var (id, act) in steps)
+                {
+                    foreach (var step in WaitRealtime(1.3f)) yield return step;
+                    if (TutorialManager.CurrentLessonId != id)
+                    {
+                        Fail($"Evening briefing: expected '{id}', but the lesson on screen is '{TutorialManager.CurrentLessonId ?? "none"}'.");
+                        yield break;
+                    }
+                    Capture($"day1_briefing_{id}");
+                    act();
+                    yield return null;
+                }
+                UIManager.Instance.Show(ScreenId.Evening);
+                foreach (var step in WaitRealtime(1.3f)) yield return step;
+                if (TutorialManager.CurrentLessonId != "ev_sleep")
+                    Fail($"Evening briefing: expected 'ev_sleep' after the diary, got '{TutorialManager.CurrentLessonId ?? "none"}'.");
+                else Capture("day1_briefing_ev_sleep");
+                Log($"Evening briefing: {string.Join(", ", SaveSystem.Instance.State.seenLessons.FindAll(x => x.StartsWith("ev_")))} seen.");
+            }
 
             /// <summary>
             /// The HUD's pause stops time, and 1x (or 2x) plays again: a player once
