@@ -387,6 +387,7 @@ namespace AlchemistsArsenal.Core
                     // this is still the frame BeginAfternoon ran on — the one t00s shows.
                     CheckFirstAfternoonFrame();
                     if (_errorCount > 0) yield break;
+                    if (day == 1) CheckPauseAndResume();
 
                     // A screenshot roughly every second for the whole fight, not just
                     // one frame at the start — a player reported the adventurer's
@@ -955,21 +956,35 @@ namespace AlchemistsArsenal.Core
                              8f, $"the bottling bench taking up {order.heroName}'s brew"))
                     yield return step;
                 if (_errorCount > 0) yield break;
+                if (day == 1 && _orderTag == "")
+                {
+                    // The pour lesson as the player first sees it: the ladle lit, the
+                    // flask and its gauge kept lit, the caption clear of all three.
+                    foreach (var step in WaitRealtime(1.4f)) yield return step;
+                    Capture("day1_spotlight_pour");
+                }
 
                 bench.PourHeld = true;
                 float t = 0f;
                 bool captured = false;
-                // Let go a little early: what is already in the air still lands.
-                while (bench.Fill01 < 0.72f && t < 12f)
+                // Let go a little early: what is already in the air still lands. One
+                // flask on day 3 is poured until it brims over instead: a brimful flask
+                // used to keep its pour open for ever and lock the send.
+                bool brim = day == 3 && _orderTag == "_o3";
+                float stopAt = brim ? 1.05f : 0.72f;
+                while (bench.Fill01 < stopAt && t < (brim ? 9f : 12f))
                 {
                     t += Time.deltaTime;
                     if (!captured && bench.Fill01 > 0.35f) { captured = true; Capture($"day{day}{_orderTag}_morning_bottling_pour"); }
                     yield return null;
                 }
                 bench.PourHeld = false;
-                if (bench.Fill01 < 0.72f) Fail($"Pouring for 12 s only filled the flask to {bench.Fill01:P0}.");
+                if (brim) Capture($"day{day}{_orderTag}_morning_bottling_brimful");
+                if (!brim && bench.Fill01 < 0.72f) Fail($"Pouring for 12 s only filled the flask to {bench.Fill01:P0}.");
                 t = 0f;
                 while (bench.Current == Crafting.BottlingBench.Step.Pour && t < 8f) { t += Time.deltaTime; yield return null; }
+                if (brim && bench.Current != Crafting.BottlingBench.Step.Pour)
+                    Log($"Bottling: a brimful flask ({bench.Fill01:P0}) was still scored and moved on.");
                 if (bench.Current == Crafting.BottlingBench.Step.Pour) { Fail("The pour was never scored (droplets never settled)."); yield break; }
                 Log($"Bottling: poured to {bench.Fill01:P0} ({bench.Spilled} spilled), brew drawn up to row {bench.LiquidLevelRow}");
 
@@ -1374,6 +1389,23 @@ namespace AlchemistsArsenal.Core
             }
 
             // -------------------------------------------------------- reflection
+
+            /// <summary>
+            /// The HUD's pause stops time, and 1x (or 2x) plays again: a player once
+            /// paused and found no way back, since the speeds did nothing while paused.
+            /// </summary>
+            private void CheckPauseAndResume()
+            {
+                object hud = UIManager.Instance != null ? UIManager.Instance.ScreenOf(ScreenId.ExpeditionHud) : null;
+                float before = Time.timeScale;
+                CallPrivate(hud, "TogglePause");
+                if (!Mathf.Approximately(Time.timeScale, 0f)) { Fail($"Pause left time running at {Time.timeScale}x."); return; }
+                Capture("day1_afternoon_paused");
+                CallPrivate(hud, "SetFast", before > 1.5f);
+                if (!Mathf.Approximately(Time.timeScale, before))
+                    Fail($"Pressing a speed while paused left time at {Time.timeScale}x, not {before}x.");
+                else Log("HUD: pause stopped time, and the speed button played it again.");
+            }
 
             private void CallPrivate(object target, string method, params object[] args)
             {

@@ -68,7 +68,14 @@ namespace AlchemistsArsenal.UI
             RunState s = State;
             if (s == null || !InMorning)
             {
-                if (_current != null) Drop();
+                // Leaving the morning ends any lesson at once, with no fade into the
+                // next screen; one that was just done (the send) still counts.
+                if (_current != null)
+                {
+                    if (s != null && Safe(_current.Done)) Learnt(_current);
+                    else Drop();
+                }
+                _spot.HideNow();
                 StationsUnlocked = true;
                 return;
             }
@@ -131,7 +138,32 @@ namespace AlchemistsArsenal.UI
                     () => $"Open the {name} bench.");
                 return;
             }
-            _spot.Show(() => Point(l), () => Radius(l), () => SafeSay(l));
+            _spot.Show(() => Point(l), () => Radius(l), () => SafeSay(l), () => Reveals(l));
+        }
+
+        /// <summary>
+        /// What stays lit besides the target, in screen pixels: every gauge on the
+        /// bench (the dark must never hide the instrument that says when to stop),
+        /// and whatever the lesson itself names (the flask while it fills).
+        /// </summary>
+        private static List<Rect> Reveals(Lesson l)
+        {
+            var rects = new List<Rect>();
+            Camera cam = WorldCam;
+            if (cam == null || l.Station < 1) return rects;   // the Counter is all UI
+            foreach (Rect w in Crafting.BenchGauge.VisibleWorldRects()) rects.Add(WorldToScreen(cam, w, 6f));
+            Rect? own = null;
+            try { own = l.Reveal?.Invoke(); } catch (System.Exception) { own = null; }
+            if (own.HasValue) rects.Add(WorldToScreen(cam, own.Value, 8f));
+            return rects;
+        }
+
+        private static Rect WorldToScreen(Camera cam, Rect w, float padPx)
+        {
+            Vector3 a = cam.WorldToScreenPoint(new Vector3(w.xMin, w.yMin, 0f));
+            Vector3 b = cam.WorldToScreenPoint(new Vector3(w.xMax, w.yMax, 0f));
+            return Rect.MinMaxRect(Mathf.Min(a.x, b.x) - padPx, Mathf.Min(a.y, b.y) - padPx,
+                                   Mathf.Max(a.x, b.x) + padPx, Mathf.Max(a.y, b.y) + padPx);
         }
 
         private void Learnt(Lesson l)

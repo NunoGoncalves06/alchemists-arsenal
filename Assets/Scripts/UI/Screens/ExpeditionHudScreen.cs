@@ -81,7 +81,8 @@ namespace AlchemistsArsenal.UI
             crt.offsetMin = crt.offsetMax = Vector2.zero;
             _speed1 = MiniBtn(ctrl.transform, "1x", () => SetFast(false));
             _speed2 = MiniBtn(ctrl.transform, "2x", () => SetFast(true));
-            _pause = MiniBtn(ctrl.transform, "II", TogglePause);
+            _pause = MiniBtn(ctrl.transform, "", TogglePause);
+            BuildPauseIcons(_pause.transform);
 
             // No NEXT WAVE button. Since a road is only won by clearing every wave,
             // skipping one was a silent forfeit dressed as a fast-forward. The 2x
@@ -375,6 +376,12 @@ namespace AlchemistsArsenal.UI
 
         private void SetFast(bool fast)
         {
+            // A speed is a way back into the fight: pressing 1x or 2x while paused plays.
+            if (_paused)
+            {
+                _paused = false;
+                _pauseHandle.Dispose();
+            }
             _fast = fast;
             _speedHandle.Dispose();
             if (TimeControl.Instance != null && !_paused)
@@ -398,11 +405,65 @@ namespace AlchemistsArsenal.UI
             Recolor();
         }
 
+        // Drawn, not typed: the display font has no pause glyph, and "II" was set in
+        // sentence case as "Ii". Two bars while playing, a play triangle while paused.
+        private GameObject _pauseBars, _playTri;
+        private static Sprite _triSprite;
+
+        private void BuildPauseIcons(Transform button)
+        {
+            _pauseBars = new GameObject("PauseIcon", typeof(RectTransform));
+            _pauseBars.transform.SetParent(button, false);
+            var bars = (RectTransform)_pauseBars.transform;
+            bars.anchorMin = bars.anchorMax = new Vector2(0.5f, 0.5f);
+            bars.sizeDelta = new Vector2(14f, 16f);
+            foreach (float x in new[] { -4f, 4f })
+            {
+                var bar = UIFactory.Panel(bars, UITheme.Parchment, "Bar");
+                bar.raycastTarget = false;
+                bar.rectTransform.anchorMin = bar.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+                bar.rectTransform.sizeDelta = new Vector2(4f, 16f);
+                bar.rectTransform.anchoredPosition = new Vector2(x, 0f);
+            }
+
+            var tri = UIFactory.Panel(button, UITheme.Ink900, "PlayIcon");
+            tri.raycastTarget = false;
+            tri.sprite = TriangleSprite();
+            tri.type = Image.Type.Simple;
+            tri.rectTransform.anchorMin = tri.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            tri.rectTransform.sizeDelta = new Vector2(16f, 16f);
+            tri.rectTransform.anchoredPosition = new Vector2(1.5f, 0f);
+            _playTri = tri.gameObject;
+            _playTri.SetActive(false);
+        }
+
+        private static Sprite TriangleSprite()
+        {
+            if (_triSprite != null) return _triSprite;
+            const int n = 16;
+            var tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
+            var px = new Color32[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    // Pointing right: the half-height shrinks as x moves to the tip.
+                    float halfH = (n - 1 - x) * 0.5f;
+                    bool inside = x >= 2 && Mathf.Abs(y - (n - 1) * 0.5f) <= halfH;
+                    px[y * n + x] = inside ? new Color32(255, 255, 255, 255) : new Color32(0, 0, 0, 0);
+                }
+            tex.SetPixels32(px);
+            tex.Apply(false, true);
+            _triSprite = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 100f);
+            return _triSprite;
+        }
+
         private void Recolor()
         {
             if (_speed1 != null) _speed1.image.color = (!_fast && !_paused) ? UITheme.Candle : UITheme.Ink700;
             if (_speed2 != null) _speed2.image.color = (_fast && !_paused) ? UITheme.Candle : UITheme.Ink700;
             if (_pause != null) _pause.image.color = _paused ? UITheme.Candle : UITheme.Ink700;
+            if (_pauseBars != null) _pauseBars.SetActive(!_paused);
+            if (_playTri != null) _playTri.SetActive(_paused);
         }
 
         /// <summary>Per-card HP + death visuals.</summary>

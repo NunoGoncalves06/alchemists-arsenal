@@ -39,6 +39,8 @@ namespace AlchemistsArsenal.UI
         public Func<bool> Ready, Done;
         public Func<LessonTarget?> Where;
         public Func<string> Say;
+        /// <summary>A world area to keep lit besides the target (and every bench gauge), or null.</summary>
+        public Func<Rect?> Reveal;
     }
 
     /// <summary>
@@ -171,7 +173,10 @@ namespace AlchemistsArsenal.UI
                 Ready = () => Bottle != null && Bottle.Working != null && Bottle.Current == BottlingBench.Step.Pour,
                 Done = () => Bottle == null || Bottle.Working == null || Bottle.Current != BottlingBench.Step.Pour,
                 Where = () => LessonTarget.At(Bottle.LadleWorld, 1.2f),
-                Say = () => "Drag the ladle down to pour. Stop on the line.",
+                Reveal = () => Bottle.FlaskWorldRect,
+                Say = () => Bottle.Fill01 >= BottlingBench.TargetLow
+                    ? "That's the band. Let go of the ladle."
+                    : "Drag the ladle down to pour. Stop between the gold lines.",
             },
             new Lesson
             {
