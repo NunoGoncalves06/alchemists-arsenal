@@ -36,6 +36,9 @@ namespace AlchemistsArsenal.UI
 
         public event Action SkipRequested;
 
+        /// <summary>The strip along the foot of the screen is taken (a bench's own caption lives there).</summary>
+        public bool ReserveFoot = true;
+
         private RawImage _mask;
         private Texture2D _tex;
         private Color32[] _px;
@@ -98,7 +101,7 @@ namespace AlchemistsArsenal.UI
             _captionRt = _caption.Root.rectTransform;
             _captionRt.anchorMin = _captionRt.anchorMax = Vector2.zero;
             _captionRt.pivot = new Vector2(0.5f, 0.5f);
-            _captionRt.sizeDelta = new Vector2(560f, 58f);
+            _captionRt.sizeDelta = new Vector2(720f, 58f);
             _caption.Text.fontSizeMax = UITheme.SizeBody + 2;
             _caption.Text.alignment = TextAlignmentOptions.Center;
         }
@@ -267,12 +270,13 @@ namespace AlchemistsArsenal.UI
                 new Vector2(_centre.x, hole.yMax + gap + half.y),
                 new Vector2(hole.xMax + gap + half.x, _centre.y),
                 new Vector2(hole.xMin - gap - half.x, _centre.y),
+                new Vector2(screen.x * 0.38f, half.y + 14f),   // the foot of the screen, left of any button there
                 new Vector2(screen.x * 0.5f, screen.y * 0.84f),
                 new Vector2(screen.x * 0.5f, screen.y * 0.16f),
             };
 
             // The strip along the foot of the screen holds the bench's own caption.
-            var benchCaption = new Rect(0f, 0f, screen.x, screen.y * 0.12f);
+            var benchCaption = ReserveFoot ? new Rect(0f, 0f, screen.x, screen.y * 0.12f) : Rect.zero;
             Rect inner = Shrink(hole, 0.15f);
 
             // The first spot that covers nothing; if every spot covers something, the

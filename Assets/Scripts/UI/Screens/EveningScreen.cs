@@ -24,6 +24,20 @@ namespace AlchemistsArsenal.UI
         private enum EveTab { Report, Upgrades, Roster }
 
         private readonly Button[] _tabButtons = new Button[3];
+        private Button _diaryTab, _sleepBtn;
+        private EveTab _activeTab = EveTab.Report;
+
+        // --- what the evening briefing points at ---------------------------------
+        /// <summary>0 Report, 1 Upgrades, 2 Party.</summary>
+        public int ActiveTabIndex => (int)_activeTab;
+        /// <summary>0 Report, 1 Upgrades, 2 Party, 3 Diary.</summary>
+        public RectTransform TabRect(int i)
+        {
+            Button b = i == 3 ? _diaryTab : i >= 0 && i < _tabButtons.Length ? _tabButtons[i] : null;
+            return b != null ? (RectTransform)b.transform : null;
+        }
+        public RectTransform BodyRect => _body;
+        public RectTransform SleepRect => _sleepBtn != null ? (RectTransform)_sleepBtn.transform : null;
 
         protected override void Build()
         {
@@ -49,7 +63,7 @@ namespace AlchemistsArsenal.UI
             _tabButtons[(int)EveTab.Report] = Tab(0.34f, 0.46f, "REPORT", ShowReport);
             _tabButtons[(int)EveTab.Upgrades] = Tab(0.47f, 0.59f, "UPGRADES", ShowUpgrades);
             _tabButtons[(int)EveTab.Roster] = Tab(0.60f, 0.72f, "PARTY", ShowRoster);
-            var diary = Tab(0.73f, 0.85f, "DIARY", () =>
+            var diary = _diaryTab = Tab(0.73f, 0.85f, "DIARY", () =>
             {
                 DiaryScreen.OpenEntryId = null;
                 DiaryScreen.FromOpeningCinematic = false;
@@ -61,7 +75,7 @@ namespace AlchemistsArsenal.UI
             _body = UIFactory.Rect(transform, "Body", new Vector2(0f, 0.11f), new Vector2(1f, 0.9f),
                 new Vector2(26, 10), new Vector2(-26, -14));
 
-            var sleep = UIFactory.Button(transform, "SLEEP", () => GameLoopManager.Instance.BeginBiomeMap());
+            var sleep = _sleepBtn = UIFactory.Button(transform, "SLEEP", () => GameLoopManager.Instance.BeginBiomeMap());
             UIFactory.Place(sleep.image.rectTransform, 0.80f, 0.025f, 0.975f, 0.09f);
         }
 
@@ -641,6 +655,7 @@ namespace AlchemistsArsenal.UI
 
         private void SelectTab(EveTab active)
         {
+            _activeTab = active;
             for (int i = 0; i < _tabButtons.Length; i++)
             {
                 Button b = _tabButtons[i];

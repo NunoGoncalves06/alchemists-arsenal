@@ -18,6 +18,10 @@ namespace AlchemistsArsenal.UI
     /// <para>While a lesson is up the morning clock runs at a third of its speed.
     /// When the lesson's bench is not the one on screen, the circle points at that
     /// bench on the rail first.</para>
+    ///
+    /// <para>The first Evening gets a briefing the same way: the report, the
+    /// upgrades, the party, the diary and sleep, one short line each. A briefing
+    /// line is done when the player clicks to go on.</para>
     /// </summary>
     public class TutorialManager : MonoBehaviour
     {
@@ -37,7 +41,16 @@ namespace AlchemistsArsenal.UI
         private Spotlight _spot;
         private Lesson _current;
         private bool _onRail;
-        private float _notReadyFor;
+        private float _notReadyFor, _shownFor;
+
+        /// <summary>The lesson on screen, or null (the harness checks the briefing with it).</summary>
+        public static string CurrentLessonId => Instance != null && Instance._current != null ? Instance._current.Id : null;
+
+        /// <summary>Go on from a briefing line, as a click would.</summary>
+        public void Continue()
+        {
+            if (_current != null && _current.ClickToGo) Learnt(_current);
+        }
 
         private void Awake()
         {
@@ -62,29 +75,39 @@ namespace AlchemistsArsenal.UI
             GameLoopManager.Instance != null && GameLoopManager.Instance.Phase == GamePhase.Morning &&
             UIManager.Instance != null && UIManager.Instance.Current == ScreenId.Morning;
 
+        /// <summary>The lesson's screen is the one showing (and, for the benches, it is morning).</summary>
+        private static bool OnItsScreen(Lesson l) =>
+            UIManager.Instance != null && UIManager.Instance.Current == l.OnScreen &&
+            (l.OnScreen != ScreenId.Morning || InMorning);
+
         private void Update()
         {
             if (_spot == null) return;
             RunState s = State;
-            if (s == null || !InMorning)
+            if (s == null)
             {
-                // Leaving the morning ends any lesson at once, with no fade into the
-                // next screen; one that was just done (the send) still counts.
-                if (_current != null)
-                {
-                    if (s != null && Safe(_current.Done)) Learnt(_current);
-                    else Drop();
-                }
+                if (_current != null) Drop();
                 _spot.HideNow();
                 StationsUnlocked = true;
                 return;
             }
             s.seenLessons ??= new List<string>();
-            StationsUnlocked = s.seenLessons.Contains("job") ||
+            StationsUnlocked = !InMorning || s.seenLessons.Contains("job") ||
                                (CraftingManager.Instance != null && CraftingManager.Instance.Orders.Count > 0);
 
             if (_current != null)
             {
+                // Leaving the lesson's screen ends it at once, with no fade into the
+                // next screen; one that was just done (the send, the diary) still counts.
+                if (!OnItsScreen(_current))
+                {
+                    if (Safe(_current.Done)) Learnt(_current);
+                    else Drop();
+                    _spot.HideNow();
+                    return;
+                }
+                _shownFor += Time.unscaledDeltaTime;
+                if (_current.ClickToGo && _shownFor > 0.6f && Input.GetMouseButtonDown(0)) { Learnt(_current); return; }
                 if (Safe(_current.Done)) { Learnt(_current); return; }
                 // Somebody else moved the work on (another order, the clock): let go.
                 if (!Safe(_current.Ready))
@@ -100,7 +123,7 @@ namespace AlchemistsArsenal.UI
             int level = Data.Complexity.Level(s);
             foreach (Lesson l in TutorialScript.Lessons)
             {
-                if (l.MinLevel > level || s.seenLessons.Contains(l.Id)) continue;
+                if (l.MinLevel > level || s.seenLessons.Contains(l.Id) || !OnItsScreen(l)) continue;
                 if (!Safe(l.Ready)) continue;
                 Begin(l);
                 break;
@@ -111,9 +134,11 @@ namespace AlchemistsArsenal.UI
         {
             _current = l;
             _notReadyFor = 0f;
+            _shownFor = 0f;
             _onRail = !OnStation(l);
             Active = true;
-            if (GameLoopManager.Instance != null) GameLoopManager.Instance.BudgetRateMultiplier = SlowClock;
+            if (l.OnScreen == ScreenId.Morning && GameLoopManager.Instance != null)
+                GameLoopManager.Instance.BudgetRateMultiplier = SlowClock;
             AudioManager.Play(Sfx.Chime);
             ShowCurrent();
         }
@@ -134,11 +159,14 @@ namespace AlchemistsArsenal.UI
             {
                 int i = Mathf.Clamp(l.Station, 0, 4);
                 string name = TutorialScript.StationNames[i];
+                _spot.ReserveFoot = true;
                 _spot.Show(() => RectPoint(Screen?.RailTabRect(i)), () => RectRadius(Screen?.RailTabRect(i), 6f),
                     () => $"Open the {name} bench.");
                 return;
             }
-            _spot.Show(() => Point(l), () => Radius(l), () => SafeSay(l), () => Reveals(l));
+            _spot.ReserveFoot = l.OnScreen == ScreenId.Morning;
+            _spot.Show(() => Point(l), () => Radius(l),
+                () => l.ClickToGo ? SafeSay(l) + " <i>Click to go on.</i>" : SafeSay(l), () => Reveals(l));
         }
 
         /// <summary>
@@ -210,7 +238,7 @@ namespace AlchemistsArsenal.UI
         {
             LessonTarget? t = SafeWhere(l);
             if (!t.HasValue) return Vector2.one * 60f;
-            if (!t.Value.IsWorld) return RectRadius(t.Value.Rect, t.Value.Pad);
+            if (!t.Value.IsWorld) return t.Value.Inside ? RectInside(t.Value.Rect) : RectRadius(t.Value.Rect, t.Value.Pad);
             Camera cam = WorldCam;
             if (cam == null) return Vector2.one * 60f;
             float pxPerUnit = cam.pixelHeight / (2f * cam.orthographicSize);
@@ -236,6 +264,14 @@ namespace AlchemistsArsenal.UI
             rt.GetWorldCorners(Corners);
             Vector2 size = Corners[2] - Corners[0];
             return size * 0.5f * 1.4142f + Vector2.one * pad;
+        }
+
+        /// <summary>An ellipse just inside a big rect: a whole panel lit, its corners left dark.</summary>
+        private static Vector2 RectInside(RectTransform rt)
+        {
+            if (rt == null) return Vector2.one * 60f;
+            rt.GetWorldCorners(Corners);
+            return (Vector2)(Corners[2] - Corners[0]) * 0.5f * 1.02f;
         }
 
         // A lesson reads live bench state; a bench torn down mid-frame must not

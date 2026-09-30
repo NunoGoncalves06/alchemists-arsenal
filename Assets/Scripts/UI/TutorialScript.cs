@@ -18,11 +18,15 @@ namespace AlchemistsArsenal.UI
         public RectTransform Rect;
         public float Pad;
         public bool IsWorld;
+        /// <summary>For a big piece of UI: an ellipse inside the rect, not round its corners.</summary>
+        public bool Inside;
 
         public static LessonTarget At(Vector2 world, float radius) =>
             new LessonTarget { World = world, WorldRadius = radius, IsWorld = true };
         public static LessonTarget On(RectTransform rect, float pad = 10f) =>
             new LessonTarget { Rect = rect, Pad = pad };
+        public static LessonTarget Over(RectTransform rect) =>
+            new LessonTarget { Rect = rect, Inside = true };
     }
 
     /// <summary>
@@ -41,6 +45,10 @@ namespace AlchemistsArsenal.UI
         public Func<string> Say;
         /// <summary>A world area to keep lit besides the target (and every bench gauge), or null.</summary>
         public Func<Rect?> Reveal;
+        /// <summary>The screen the lesson happens on (the benches are all on the Morning).</summary>
+        public ScreenId OnScreen = ScreenId.Morning;
+        /// <summary>A briefing, not a task: it is done when the player clicks to go on.</summary>
+        public bool ClickToGo;
     }
 
     /// <summary>
@@ -205,7 +213,71 @@ namespace AlchemistsArsenal.UI
                 Where = () => LessonTarget.On(Screen.SendButtonRect, 8f),
                 Say = () => "Every flask is ready. Send them out.",
             },
+
+            // ------------------------------------------------ the first evening
+            // A short walk round the Evening, tab by tab: what came home, where
+            // the gold goes, who goes out, and the diary that carries the story.
+            new Lesson
+            {
+                Id = "ev_report", MinLevel = 0, OnScreen = ScreenId.Evening, ClickToGo = true,
+                Ready = () => Evening != null && Evening.ActiveTabIndex == 0,
+                Done = () => false,
+                Where = () => LessonTarget.Over(Evening.BodyRect),
+                Say = () => "Tonight's report: how the road went and what you earned.",
+            },
+            new Lesson
+            {
+                Id = "ev_upgrades", MinLevel = 0, OnScreen = ScreenId.Evening,
+                Ready = () => Evening != null && Evening.ActiveTabIndex != 1,
+                Done = () => Evening != null && Evening.ActiveTabIndex == 1,
+                Where = () => LessonTarget.On(Evening.TabRect(1), 6f),
+                Say = () => "Upgrades: spend your gold here.",
+            },
+            new Lesson
+            {
+                Id = "ev_upgrades_body", MinLevel = 0, OnScreen = ScreenId.Evening, ClickToGo = true,
+                Ready = () => Evening != null && Evening.ActiveTabIndex == 1,
+                Done = () => false,
+                Where = () => LessonTarget.Over(Evening.BodyRect),
+                Say = () => "Bench upgrades change how a bench works. Road upgrades go out with the party.",
+            },
+            new Lesson
+            {
+                Id = "ev_party", MinLevel = 0, OnScreen = ScreenId.Evening,
+                Ready = () => Evening != null && Evening.ActiveTabIndex != 2,
+                Done = () => Evening != null && Evening.ActiveTabIndex == 2,
+                Where = () => LessonTarget.On(Evening.TabRect(2), 6f),
+                Say = () => "Party: hire fighters and choose who walks tomorrow.",
+            },
+            new Lesson
+            {
+                Id = "ev_party_body", MinLevel = 0, OnScreen = ScreenId.Evening, ClickToGo = true,
+                Ready = () => Evening != null && Evening.ActiveTabIndex == 2,
+                Done = () => false,
+                Where = () => LessonTarget.Over(Evening.BodyRect),
+                Say = () => "Every fighter orders their own flask, so a bigger party means more to brew.",
+            },
+            new Lesson
+            {
+                Id = "ev_diary", MinLevel = 0, OnScreen = ScreenId.Evening,
+                Ready = () => Evening != null,
+                Done = () => UIManager.Instance != null && UIManager.Instance.Current == ScreenId.Diary,
+                Where = () => LessonTarget.On(Evening.TabRect(3), 6f),
+                Say = () => "Nell's diary: read it to follow the story.",
+            },
+            new Lesson
+            {
+                Id = "ev_sleep", MinLevel = 0, OnScreen = ScreenId.Evening,
+                Ready = () => Evening != null,
+                Done = () => UIManager.Instance != null && UIManager.Instance.Current != ScreenId.Evening
+                             && UIManager.Instance.Current != ScreenId.Diary,
+                Where = () => LessonTarget.On(Evening.SleepRect, 6f),
+                Say = () => "When you are ready, sleep and pick tomorrow's road.",
+            },
         };
+
+        private static EveningScreen Evening =>
+            UIManager.Instance != null ? UIManager.Instance.ScreenOf(ScreenId.Evening) as EveningScreen : null;
 
         /// <summary>The rail names, for "Open the Prep bench."</summary>
         public static readonly string[] StationNames = { "Counter", "Malting", "Prep", "Cauldron", "Bottling" };
