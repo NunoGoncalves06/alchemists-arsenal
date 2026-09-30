@@ -25,6 +25,41 @@ namespace AlchemistsArsenal.Crafting
 
         public GameObject GameObject => _root != null ? _root.gameObject : null;
 
+        private static readonly System.Collections.Generic.List<BenchGauge> LiveGauges =
+            new System.Collections.Generic.List<BenchGauge>();
+
+        /// <summary>
+        /// Every gauge that is showing, and the world box it and its chalk take up.
+        /// The tutorial's spotlight keeps these lit, so the dark never hides the
+        /// instrument a lesson is about.
+        /// </summary>
+        public static System.Collections.Generic.List<Rect> VisibleWorldRects()
+        {
+            var rects = new System.Collections.Generic.List<Rect>();
+            LiveGauges.RemoveAll(g => g._root == null);
+            foreach (BenchGauge g in LiveGauges)
+                if (g._root.gameObject.activeInHierarchy) rects.Add(g.WorldRect);
+            return rects;
+        }
+
+        private Rect WorldRect
+        {
+            get
+            {
+                Vector2 c = _root.position;
+                float along = _len + 0.3f, across = 0.6f;
+                Vector2 size = _vertical ? new Vector2(across, along) : new Vector2(along, across);
+                var r = new Rect(c - size * 0.5f, size);
+                if (_text != null && _text.gameObject.activeInHierarchy && !string.IsNullOrEmpty(_text.text))
+                {
+                    Vector2 t = _text.transform.position;
+                    r = Rect.MinMaxRect(Mathf.Min(r.xMin, t.x - 0.9f), Mathf.Min(r.yMin, t.y - 0.25f),
+                                        Mathf.Max(r.xMax, t.x + 0.9f), Mathf.Max(r.yMax, t.y + 0.25f));
+                }
+                return r;
+            }
+        }
+
         /// <param name="length">World units along the gauge.</param>
         /// <param name="fillMode">A rising fill (a thermometer) instead of a needle.</param>
         public static BenchGauge Create(Transform parent, Vector2 world, float length, bool vertical, int order,
@@ -35,6 +70,7 @@ namespace AlchemistsArsenal.Crafting
             root.transform.SetParent(parent, false);
             root.transform.position = world;
             g._root = root.transform;
+            LiveGauges.Add(g);
 
             const float thick = 0.22f;
             Part(g._root, "Frame", Brass, order, g.Size(length + 0.14f, thick + 0.12f), Vector2.zero);

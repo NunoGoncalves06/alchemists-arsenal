@@ -461,13 +461,12 @@ namespace AlchemistsArsenal.Art
             string key = $"flask_marks_{low}_{high}";
             if (PixelCanvas.TryGet(key, out Sprite s)) return s;
             var c = new PixelCanvas(FlaskW, FlaskH);
+            // A gold line right across the glass at each edge of the band, drawn over
+            // the brew, so the player can see where to stop while it rises.
             foreach (int row in new[] { low, high })
-            {
-                int right = -1;
-                for (int x = 0; x < FlaskW; x++) if (FlaskHollow(x, row)) right = x;
-                for (int x = right - 2; right >= 0 && x <= right; x++)
-                    c.Set(x, row, new Color32(255, 255, 255, 150));
-            }
+                for (int x = 0; x < FlaskW; x++)
+                    if (FlaskHollow(x, row))
+                        c.Set(x, row, (x & 1) == 0 ? new Color32(246, 216, 115, 255) : new Color32(246, 216, 115, 170));
             return c.Bake(key, PPU, new Vector2(0.5f, 0f));
         }
 

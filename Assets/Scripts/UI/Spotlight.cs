@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -7,45 +8,53 @@ using TMPro;
 namespace AlchemistsArsenal.UI
 {
     /// <summary>
-    /// The tutorial's pointer: the screen goes dark except a soft circle over the
-    /// one thing to touch next (round for a thing in the shop, an ellipse hugging a
-    /// wide piece of UI such as a button). Each new lesson the circle starts wide at the centre
-    /// of the screen and closes in on its target, then a gold ring pulses round it.
-    /// It follows a moving target (a leaf in the hand, a carried cork).
+    /// The tutorial's pointer: a hole in a dark mask. The screen goes dark except a
+    /// clean-edged circle over the one thing to touch next (round for a thing in
+    /// the shop, an ellipse hugging a wide piece of UI such as a button). Each new
+    /// lesson the hole starts wide at the centre of the screen and closes in on its
+    /// target, then follows it if it moves (a leaf in the hand, a carried cork).
     ///
-    /// <para>Only the circle takes clicks; the dark stops them, UI and bench alike
+    /// <para>Smaller holes keep the bench's instruments lit (the gauges, the flask
+    /// while it fills), so the dark never hides what tells the player when to stop.
+    /// The caption goes wherever it covers none of the holes.</para>
+    ///
+    /// <para>Only the main hole takes clicks; the dark stops them, UI and bench alike
     /// (the benches ignore a press while the pointer is over UI, see
     /// <c>Pointer.OverUI</c>). Three clicks on the dark let the player out of the
     /// lesson, so a lesson can never trap anyone.</para>
     ///
-    /// <para>Everything is worked out in screen pixels (where the targets are) and
-    /// then laid out as fractions of the canvas, so it lines up at any resolution,
-    /// and in the harness, which re-renders every canvas at its own size for a
-    /// screenshot.</para>
+    /// <para>The mask is a small texture redrawn when the holes move, stretched over
+    /// the screen, so it lines up at any resolution (and in the harness, which
+    /// re-renders every canvas at its own size for a screenshot).</para>
     /// </summary>
     public class Spotlight : MonoBehaviour
     {
-        private const float Dim = 0.72f;
+        private const float Dim = 0.74f;
         private const float IntroSeconds = 0.9f;
-        private const int Tex = 128;
+        private const int MaskW = 320;
+        private const float EdgePx = 1.6f;   // mask pixels of soft edge: a crisp rim, not a glow
 
         public event Action SkipRequested;
 
-        private RectTransform _root, _hole, _ring;
-        private Canvas _canvas;
-        private readonly Image[] _dark = new Image[4];
-        private Image _holeImg, _ringImg;
+        private RawImage _mask;
+        private Texture2D _tex;
+        private Color32[] _px;
+        private int _maskH;
         private CanvasGroup _group;
+        private Canvas _canvas;
         private UIKit.CaptionView _caption;
         private RectTransform _captionRt;
 
         private Func<Vector2?> _target;
         private Func<Vector2> _radius;
         private Func<string> _text;
+        private Func<List<Rect>> _reveals;
         private float _introT = 1f, _fade;
         private int _darkClicks;
         private Vector2 _centre, _vel;
         private Vector2 _r;   // radii in x and y, pixels
+        private readonly List<Rect> _revealNow = new List<Rect>();
+        private string _drawnKey = "";
 
         public bool Showing => _target != null;
         /// <summary>A target is on screen and the dark is up (the clock slows for this).</summary>
@@ -71,30 +80,21 @@ namespace AlchemistsArsenal.UI
 
         private void Build()
         {
-            _root = (RectTransform)transform;
+            var root = (RectTransform)transform;
             _canvas = GetComponent<Canvas>();
             _group = gameObject.AddComponent<CanvasGroup>();
             _group.alpha = 0f;
             _group.blocksRaycasts = false;
 
-            for (int i = 0; i < 4; i++)
-            {
-                _dark[i] = Corner(UIFactory.Panel(_root, new Color(0f, 0f, 0f, Dim), "Dark" + i));
-                _dark[i].gameObject.AddComponent<DarkClick>().Owner = this;
-            }
+            var maskGo = new GameObject("Mask", typeof(RectTransform));
+            maskGo.transform.SetParent(root, false);
+            _mask = maskGo.AddComponent<RawImage>();
+            _mask.color = Color.white;
+            UIFactory.Stretch(_mask.rectTransform);
+            maskGo.AddComponent<HoleFilter>().Owner = this;
+            maskGo.AddComponent<DarkClick>().Owner = this;
 
-            _holeImg = Corner(UIFactory.Panel(_root, new Color(0f, 0f, 0f, Dim), "Hole"));
-            _holeImg.sprite = Disc(soft: true);
-            _hole = _holeImg.rectTransform;
-            _hole.gameObject.AddComponent<HoleFilter>().Owner = this;
-            _hole.gameObject.AddComponent<DarkClick>().Owner = this;
-
-            _ringImg = Corner(UIFactory.Panel(_root, UITheme.CandleHot, "Ring"));
-            _ringImg.sprite = Disc(soft: false);
-            _ringImg.raycastTarget = false;
-            _ring = _ringImg.rectTransform;
-
-            _caption = UIKit.Caption(_root, "SpotCaption");
+            _caption = UIKit.Caption(root, "SpotCaption");
             _captionRt = _caption.Root.rectTransform;
             _captionRt.anchorMin = _captionRt.anchorMax = Vector2.zero;
             _captionRt.pivot = new Vector2(0.5f, 0.5f);
@@ -103,24 +103,18 @@ namespace AlchemistsArsenal.UI
             _caption.Text.alignment = TextAlignmentOptions.Center;
         }
 
-        private static Image Corner(Image img)
-        {
-            RectTransform rt = img.rectTransform;
-            rt.anchorMin = rt.anchorMax = Vector2.zero;
-            rt.pivot = Vector2.zero;
-            return img;
-        }
-
         /// <summary>
         /// Light up <paramref name="target"/> (a screen point, or null while it is not
-        /// on screen) with a circle of <paramref name="radius"/> pixels, and say
+        /// on screen) with a hole of <paramref name="radius"/> pixels (x and y), keep the
+        /// <paramref name="reveals"/> (screen rects) lit too, and say
         /// <paramref name="text"/> beside it. Restarts the closing-in animation.
         /// </summary>
-        public void Show(Func<Vector2?> target, Func<Vector2> radius, Func<string> text)
+        public void Show(Func<Vector2?> target, Func<Vector2> radius, Func<string> text, Func<List<Rect>> reveals = null)
         {
             _target = target;
             _radius = radius;
             _text = text;
+            _reveals = reveals;
             _introT = 0f;
             _darkClicks = 0;
             _centre = new Vector2(Screen.width, Screen.height) * 0.5f;
@@ -132,6 +126,18 @@ namespace AlchemistsArsenal.UI
             _target = null;
             _radius = null;
             _text = null;
+            _reveals = null;
+        }
+
+        /// <summary>Gone this frame: for leaving the morning, where a fade would drift into the next screen.</summary>
+        public void HideNow()
+        {
+            Hide();
+            if (_fade <= 0f) return;
+            _fade = 0f;
+            _group.alpha = 0f;
+            _group.blocksRaycasts = false;
+            _caption.Set("");
         }
 
         private void Update()
@@ -144,7 +150,7 @@ namespace AlchemistsArsenal.UI
             if (_fade <= 0f) { _caption.Set(""); return; }
             if (!on) return;   // fading out where it last was
 
-            Vector2 screen = new Vector2(Screen.width, Screen.height);
+            Vector2 screen = new Vector2(Mathf.Max(1, Screen.width), Mathf.Max(1, Screen.height));
             Vector2 want = Vector2.Max(Vector2.one * 24f, _radius != null ? _radius() : Vector2.one * 60f);
 
             if (_introT < 1f)
@@ -160,52 +166,147 @@ namespace AlchemistsArsenal.UI
                 _centre = Vector2.SmoothDamp(_centre, at.Value, ref _vel, 0.12f, Mathf.Infinity, Time.unscaledDeltaTime);
                 _r = Vector2.Lerp(_r, want, 1f - Mathf.Exp(-12f * Time.unscaledDeltaTime));
             }
-            Layout(_centre, _r, screen);
 
-            // The ring breathes once the circle has arrived: grows a little and fades.
-            float beat = _introT < 1f ? 0f : Mathf.Repeat(Time.unscaledTime * 0.9f, 1f);
-            Vector2 ringR = _r * (1f + 0.16f * beat);
-            Place(_ring, _centre.x - ringR.x, _centre.y - ringR.y, 2f * ringR.x, 2f * ringR.y, screen);
-            _ringImg.color = UITheme.Alpha(UITheme.CandleHot, _introT < 1f ? 0f : 0.9f * (1f - beat));
+            // The instruments open up once the main hole has arrived.
+            _revealNow.Clear();
+            if (_introT >= 1f && _reveals != null)
+            {
+                List<Rect> extra = null;
+                try { extra = _reveals(); } catch (Exception) { extra = null; }
+                if (extra != null)
+                    foreach (Rect r in extra)
+                        if (r.width > 0f && r.height > 0f && r.Overlaps(new Rect(Vector2.zero, screen))) _revealNow.Add(r);
+            }
 
+            DrawMask(screen);
+            PlaceCaption(screen);
+        }
+
+        // ---------------------------------------------------------------- mask
+
+        private void DrawMask(Vector2 screen)
+        {
+            int h = Mathf.Clamp(Mathf.RoundToInt(MaskW * screen.y / screen.x), 16, 1024);
+            if (_tex == null || _maskH != h)
+            {
+                if (_tex != null) Destroy(_tex);
+                _maskH = h;
+                _tex = new Texture2D(MaskW, h, TextureFormat.RGBA32, false)
+                    { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+                _px = new Color32[MaskW * h];
+                _mask.texture = _tex;
+                _drawnKey = "";
+            }
+
+            // Redraw only when something moved by at least a fraction of a mask pixel.
+            float sx = MaskW / screen.x, sy = _maskH / screen.y;
+            var key = new System.Text.StringBuilder();
+            key.Append(Mathf.RoundToInt(_centre.x * sx * 4f)).Append(',').Append(Mathf.RoundToInt(_centre.y * sy * 4f))
+               .Append(',').Append(Mathf.RoundToInt(_r.x * sx * 4f)).Append(',').Append(Mathf.RoundToInt(_r.y * sy * 4f));
+            foreach (Rect r in _revealNow)
+                key.Append('|').Append(Mathf.RoundToInt(r.x * sx)).Append(',').Append(Mathf.RoundToInt(r.y * sy))
+                   .Append(',').Append(Mathf.RoundToInt(r.width * sx)).Append(',').Append(Mathf.RoundToInt(r.height * sy));
+            string k = key.ToString();
+            if (k == _drawnKey) return;
+            _drawnKey = k;
+
+            // Everything in mask pixels.
+            float cx = _centre.x * sx, cy = _centre.y * sy;
+            float rx = Mathf.Max(1f, _r.x * sx), ry = Mathf.Max(1f, _r.y * sy);
+            float edge = EdgePx / Mathf.Min(rx, ry);
+            var rects = new List<Rect>(_revealNow.Count);
+            foreach (Rect r in _revealNow)
+                rects.Add(new Rect(r.x * sx, r.y * sy, r.width * sx, r.height * sy));
+
+            byte full = (byte)(Dim * 255f);
+            for (int y = 0; y < _maskH; y++)
+            {
+                float py = y + 0.5f;
+                float dy = (py - cy) / ry;
+                for (int x = 0; x < MaskW; x++)
+                {
+                    float px = x + 0.5f;
+                    float dx = (px - cx) / rx;
+                    float d = Mathf.Sqrt(dx * dx + dy * dy);
+                    // 0 inside the hole, 1 in the dark, a pixel-wide rim between.
+                    float a = Mathf.Clamp01((d - (1f - edge)) / edge);
+                    for (int i = 0; i < rects.Count && a > 0f; i++)
+                    {
+                        Rect r = rects[i];
+                        float ox = Mathf.Max(r.xMin - px, px - r.xMax, 0f);
+                        float oy = Mathf.Max(r.yMin - py, py - r.yMax, 0f);
+                        float outside = Mathf.Sqrt(ox * ox + oy * oy);
+                        a = Mathf.Min(a, Mathf.Clamp01(outside / EdgePx));
+                    }
+                    _px[y * MaskW + x] = new Color32(0, 0, 0, (byte)(a * full));
+                }
+            }
+            _tex.SetPixels32(_px);
+            _tex.Apply(false, false);
+        }
+
+        // ------------------------------------------------------------- caption
+
+        /// <summary>
+        /// Under the hole, over it, beside it, or failing all those the top or foot of
+        /// the screen: the first place that covers neither the hole nor anything kept
+        /// lit (the flask being filled, a gauge).
+        /// </summary>
+        private void PlaceCaption(Vector2 screen)
+        {
             _caption.Set(_text?.Invoke());
-            // The caption sits under the circle, or over it when the circle is low.
             float px = _canvas != null && _canvas.scaleFactor > 0f ? _canvas.scaleFactor : 1f;   // canvas unit -> pixel
-            float half = _captionRt.sizeDelta.y * 0.5f * px;
-            float y = _centre.y - _r.y - 18f - half;
-            if (y - half < 12f) y = _centre.y + _r.y + 18f + half;
-            float w = _captionRt.sizeDelta.x * 0.5f * px + 12f;
-            float x = Mathf.Clamp(_centre.x, w, Mathf.Max(w, screen.x - w));
-            y = Mathf.Clamp(y, half + 8f, Mathf.Max(half + 8f, screen.y - half - 8f));
-            _captionRt.anchorMin = _captionRt.anchorMax = new Vector2(x / screen.x, y / screen.y);
+            Vector2 size = _captionRt.sizeDelta * px;
+            Vector2 half = size * 0.5f;
+            const float gap = 18f;
+
+            var hole = new Rect(_centre - _r, _r * 2f);
+            var candidates = new[]
+            {
+                new Vector2(_centre.x, hole.yMin - gap - half.y),
+                new Vector2(_centre.x, hole.yMax + gap + half.y),
+                new Vector2(hole.xMax + gap + half.x, _centre.y),
+                new Vector2(hole.xMin - gap - half.x, _centre.y),
+                new Vector2(screen.x * 0.5f, screen.y * 0.84f),
+                new Vector2(screen.x * 0.5f, screen.y * 0.16f),
+            };
+
+            // The strip along the foot of the screen holds the bench's own caption.
+            var benchCaption = new Rect(0f, 0f, screen.x, screen.y * 0.12f);
+            Rect inner = Shrink(hole, 0.15f);
+
+            // The first spot that covers nothing; if every spot covers something, the
+            // one that covers least.
+            Vector2 best = candidates[0];
+            float bestCost = float.MaxValue;
+            foreach (Vector2 c0 in candidates)
+            {
+                Vector2 c = new Vector2(Mathf.Clamp(c0.x, half.x + 12f, Mathf.Max(half.x + 12f, screen.x - half.x - 12f)),
+                                        Mathf.Clamp(c0.y, half.y + 8f, Mathf.Max(half.y + 8f, screen.y - half.y - 8f)));
+                var box = new Rect(c - half, size);
+                float cost = Overlap(box, inner) * 2f + Overlap(box, benchCaption) * 4f;
+                foreach (Rect r in _revealNow) cost += Overlap(box, r) * 3f;
+                if (cost < bestCost - 0.5f) { best = c; bestCost = cost; }
+                if (cost <= 0f) break;
+            }
+            _captionRt.anchorMin = _captionRt.anchorMax = new Vector2(best.x / screen.x, best.y / screen.y);
             _captionRt.anchoredPosition = Vector2.zero;
         }
 
-        /// <summary>The hole square, and the four dark slabs round it.</summary>
-        private void Layout(Vector2 c, Vector2 r, Vector2 screen)
+        private static float Overlap(Rect a, Rect b)
         {
-            float x0 = c.x - r.x, x1 = c.x + r.x, y0 = c.y - r.y, y1 = c.y + r.y;
-            Place(_hole, x0, y0, 2f * r.x, 2f * r.y, screen);
-            Slab(0, 0f, y1, screen.x, Mathf.Max(0f, screen.y - y1));        // above
-            Slab(1, 0f, 0f, screen.x, Mathf.Max(0f, y0));                  // below
-            Slab(2, 0f, y0, Mathf.Max(0f, x0), y1 - y0);                    // left
-            Slab(3, x1, y0, Mathf.Max(0f, screen.x - x1), y1 - y0);         // right
+            float w = Mathf.Min(a.xMax, b.xMax) - Mathf.Max(a.xMin, b.xMin);
+            float h = Mathf.Min(a.yMax, b.yMax) - Mathf.Max(a.yMin, b.yMin);
+            return w > 0f && h > 0f ? w * h : 0f;
         }
 
-        private void Slab(int i, float x, float y, float w, float h)
-        {
-            Place(_dark[i].rectTransform, x, y, w, h, new Vector2(Screen.width, Screen.height));
-        }
+        /// <summary>The hole's box pulled in a little: an ellipse's corners are dark anyway.</summary>
+        private static Rect Shrink(Rect r, float frac) =>
+            new Rect(r.x + r.width * frac * 0.5f, r.y + r.height * frac * 0.5f, r.width * (1f - frac), r.height * (1f - frac));
 
-        /// <summary>Lay a rect given in screen pixels out as a fraction of the canvas.</summary>
-        private static void Place(RectTransform rt, float x, float y, float w, float h, Vector2 screen)
-        {
-            rt.anchorMin = new Vector2(x / screen.x, y / screen.y);
-            rt.anchorMax = new Vector2((x + w) / screen.x, (y + h) / screen.y);
-            rt.offsetMin = rt.offsetMax = Vector2.zero;
-        }
+        // -------------------------------------------------------------- clicks
 
-        private bool InsideCircle(Vector2 screenPoint)
+        private bool InsideHole(Vector2 screenPoint)
         {
             Vector2 d = screenPoint - _centre;
             float nx = d.x / Mathf.Max(1f, _r.x), ny = d.y / Mathf.Max(1f, _r.y);
@@ -217,40 +318,16 @@ namespace AlchemistsArsenal.UI
             if (++_darkClicks >= 3) { _darkClicks = 0; SkipRequested?.Invoke(); }
         }
 
-        // ------------------------------------------------------------ textures
-
-        private static Sprite _soft, _ringSprite;
-
-        /// <summary>A clear disc fading to dark at its rim (soft), or a thin ring.</summary>
-        private static Sprite Disc(bool soft)
+        private void OnDestroy()
         {
-            if (soft && _soft != null) return _soft;
-            if (!soft && _ringSprite != null) return _ringSprite;
-            var tex = new Texture2D(Tex, Tex, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
-            var px = new Color32[Tex * Tex];
-            float h = Tex * 0.5f;
-            for (int y = 0; y < Tex; y++)
-                for (int x = 0; x < Tex; x++)
-                {
-                    float d = new Vector2(x + 0.5f - h, y + 0.5f - h).magnitude / h;
-                    float a = soft ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.82f, 1f, d))
-                                   : Mathf.Clamp01(1f - Mathf.Abs(d - 0.955f) / 0.035f);
-                    px[y * Tex + x] = new Color32(255, 255, 255, (byte)(a * 255f));
-                }
-            tex.SetPixels32(px);
-            tex.Apply(false, true);
-            var sprite = Sprite.Create(tex, new Rect(0, 0, Tex, Tex), new Vector2(0.5f, 0.5f), 100f);
-            if (soft) _soft = sprite; else _ringSprite = sprite;
-            return sprite;
+            if (_tex != null) Destroy(_tex);
         }
 
-        // -------------------------------------------------------------- clicks
-
-        /// <summary>The hole square only takes a click outside its circle.</summary>
+        /// <summary>The mask takes a click (and so stops it) everywhere but the main hole.</summary>
         private sealed class HoleFilter : MonoBehaviour, ICanvasRaycastFilter
         {
             public Spotlight Owner;
-            public bool IsRaycastLocationValid(Vector2 sp, Camera cam) => Owner == null || !Owner.InsideCircle(sp);
+            public bool IsRaycastLocationValid(Vector2 sp, Camera cam) => Owner == null || !Owner.InsideHole(sp);
         }
 
         private sealed class DarkClick : MonoBehaviour, IPointerClickHandler

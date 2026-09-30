@@ -84,6 +84,18 @@ namespace AlchemistsArsenal.Crafting
         // Hands on the bench: the ladle dragged down, the cork carried, a tag carried.
         private Vector2 _pressAt, _corkCarryTo;
         private float _dragTilt01;
+        private BenchGauge _fillGauge;
+
+        /// <summary>The glass, neck to foot, in world space (the tutorial keeps it lit during the pour).</summary>
+        public Rect FlaskWorldRect
+        {
+            get
+            {
+                if (_flask == null) return new Rect((Vector2)transform.position, Vector2.one);
+                Vector2 a = FlaskLocalToWorld(0f, ShopArt.FlaskH), b = FlaskLocalToWorld(ShopArt.FlaskW, 0f);
+                return Rect.MinMaxRect(Mathf.Min(a.x, b.x), Mathf.Min(a.y, b.y), Mathf.Max(a.x, b.x), Mathf.Max(a.y, b.y));
+            }
+        }
         private bool _corkCarried, _corkFree;
         private int _tagCarried = -1;
         public bool CorkCarried => _corkCarried;
@@ -116,7 +128,7 @@ namespace AlchemistsArsenal.Crafting
                 if (Order == null) return Working != null && Working.stage > BrewStage.Bottling ? "Sealed and labelled." : "Waiting for a brew from the cauldron.";
                 return Current switch
                 {
-                    Step.Pour => "Drag the ladle down to pour. Stop at the line.",
+                    Step.Pour => "Drag the ladle down to pour. Stop between the gold lines.",
                     Step.Seal => CorkSeated ? "" : "Carry the cork to the neck and let go.",
                     Step.Label => "Drag the right label onto the flask.",
                     _ => "",
@@ -467,6 +479,31 @@ namespace AlchemistsArsenal.Crafting
             else { _pointerPour = false; _dragTilt01 = 0f; DropCarried(); }
 
             DrawBrew();
+            DrawFillGauge();
+        }
+
+        /// <summary>
+        /// Beside the flask during the pour: how full it is, against the band to stop
+        /// in. Built on first use, from the flask's own position.
+        /// </summary>
+        private void DrawFillGauge()
+        {
+            bool show = Current == Step.Pour && Order != null && _flask != null;
+            if (_fillGauge == null)
+            {
+                if (!show) return;
+                Rect glass = FlaskWorldRect;
+                _fillGauge = BenchGauge.Create(transform, new Vector2(glass.xMax + 0.45f, glass.center.y - 0.2f),
+                    glass.height * 0.8f, true, OrderGlass + 4, fillMode: true, name: "FillGauge");
+                _fillGauge.SetBand(TargetLow, TargetHigh);
+            }
+            _fillGauge.SetVisible(show);
+            if (!show) return;
+            float f = Fill01;
+            Color c = f > TargetHigh ? new Color(0.84f, 0.27f, 0.31f)
+                    : f >= TargetLow ? new Color(0.31f, 0.78f, 0.38f) : PixelArt.Element(Working != null ? Working.element : ElementType.Fire);
+            _fillGauge.SetValue(f, c);
+            _fillGauge.SetText(f >= TargetLow && f <= TargetHigh ? "stop!" : $"{Mathf.RoundToInt(f * 100f)}%");
         }
 
         private bool _pointerPour;
@@ -629,9 +666,13 @@ namespace AlchemistsArsenal.Crafting
             MeasureFill();
             if (Current == Step.Pour) Overtop();
 
-            // Scored once the ladle is back up and the flask has stopped moving.
+            // Scored once the ladle is back up and the flask has stopped moving, or
+            // at the latest a few seconds after the last drop: a brimful flask keeps
+            // sending drops over the lip, and a drop that misses the bench falls for
+            // ever, and either used to keep the pour open for good (the send stayed
+            // locked with no way on).
             if (Current == Step.Pour && !_pourScored && !Pouring && _stream != null && _stream.Emitted > 0
-                && tilt < 0.1f && _sinceLastDrop > 0.6f && _stream.Settled(0.6f))
+                && tilt < 0.1f && _sinceLastDrop > 0.6f && (_stream.Settled(0.6f) || _sinceLastDrop > 2.5f))
                 ScorePour();
 
             if (_corkCarried && _cork != null) _cork.MovePosition(_corkCarryTo);
