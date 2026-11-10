@@ -63,7 +63,12 @@ namespace AlchemistsArsenal.Data
             _ => ElementType.Fire,
         };
 
-        /// <summary>Head-count per element for a biome's waves (index = ElementType).</summary>
+        /// <summary>
+        /// How much of a road's life is of each element (index = ElementType): every wave's
+        /// monsters' health, and the guardian's. Counted by health, not heads, so a guardian
+        /// at the end of a short road weighs what it takes to bring down: the Cinder Peaks'
+        /// fire is a few small Emberlings, and their Woodwose is Nature.
+        /// </summary>
         public static int[] ThreatCounts(BiomeData biome)
         {
             var counts = new int[5];
@@ -72,7 +77,12 @@ namespace AlchemistsArsenal.Data
             {
                 if (w.monster == null) continue;
                 int i = (int)w.monster.Element;
-                if (i >= 0 && i < counts.Length) counts[i] += Mathf.Max(1, w.count);
+                if (i >= 0 && i < counts.Length) counts[i] += Mathf.Max(1, w.count) * Mathf.Max(1, w.monster.MaxHealth);
+            }
+            if (biome.HasBoss)
+            {
+                int b = (int)biome.Boss.CoreElement;
+                if (b >= 0 && b < counts.Length) counts[b] += biome.Boss.MaxHealth;
             }
             return counts;
         }

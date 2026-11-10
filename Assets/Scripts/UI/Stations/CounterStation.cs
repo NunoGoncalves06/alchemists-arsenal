@@ -256,9 +256,14 @@ namespace AlchemistsArsenal.UI.Stations
 
             int total = 0; foreach (int c in counts) total += c;
             ElementType best = ContractBoard.Counter(dominant);
-            _recommendation.text = total > 0
-                ? $"Mostly <b>{dominant}</b> out there. A <b>{best}</b> flask hits them twice as hard."
-                : "Quiet day. Brew whatever you like.";
+            // When the guardian outweighs the waves, say so: the flask is chosen for it.
+            bool guardianDecides = biome.HasBoss && biome.Boss.CoreElement == dominant
+                                   && counts[(int)dominant] - biome.Boss.MaxHealth < biome.Boss.MaxHealth;
+            _recommendation.text = total <= 0
+                ? "Quiet day. Brew whatever you like."
+                : guardianDecides
+                    ? $"The {biome.Boss.DisplayName} waits at the end: <b>{dominant}</b>, and most of the road. A <b>{best}</b> flask hits it twice as hard."
+                    : $"Mostly <b>{dominant}</b> out there. A <b>{best}</b> flask hits them twice as hard.";
         }
 
         // ---------------------------------------------------------------- offers
