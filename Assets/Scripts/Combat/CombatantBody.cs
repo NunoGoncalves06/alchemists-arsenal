@@ -36,6 +36,9 @@ namespace AlchemistsArsenal.Combat
         public Vector2 Velocity => _rb != null ? _rb.linearVelocity : Vector2.zero;
         public bool IsAlive => currentHP > 0;
 
+        /// <summary>Walked off the road out of flasks: alive, but no longer a fighter or a target.</summary>
+        public bool IsWithdrawn { get; private set; }
+
         public event Action<CombatantBody> OnDied;
 
         /// <summary>Raised on every applied hit (after mitigation) with the amount actually dealt.</summary>
@@ -47,6 +50,9 @@ namespace AlchemistsArsenal.Combat
 
         /// <summary>Global damage feed — the expedition HUD's floating damage numbers.</summary>
         public static event Action<CombatantBody, DamageInfo> OnAnyDamaged;
+
+        /// <summary>Global feed of fighters leaving the road out of flasks (telemetry, HUD).</summary>
+        public static event Action<CombatantBody> OnAnyWithdrew;
 
         private void Awake()
         {
@@ -94,9 +100,42 @@ namespace AlchemistsArsenal.Combat
             Initialise(Team.Monster, data.Element, data.MaxHealth);
         }
 
+        /// <summary>
+        /// Leave the road: out of the roster (so nothing targets them), out of every
+        /// hit query, the AI and legs switched off, and a walk off the left edge at
+        /// <paramref name="exitX"/>, where the body is put away. Never a death.
+        /// </summary>
+        public void Withdraw(float exitX)
+        {
+            if (IsWithdrawn || !IsAlive) return;
+            IsWithdrawn = true;
+            if (team == Team.Monster) MonsterRegistry.Unregister(this);
+            else AdventurerRegistry.Unregister(this);
+            foreach (var c in GetComponents<Collider2D>()) c.enabled = false;
+            foreach (var b in GetComponents<MonoBehaviour>())
+                if (b is UtilityAI_CombatController || b is AdventurerMovementController || b is IBombLauncher) b.enabled = false;
+            OnAnyWithdrew?.Invoke(this);
+            StartCoroutine(WalkOff(exitX));
+        }
+
+        private System.Collections.IEnumerator WalkOff(float exitX)
+        {
+            const float speed = 3.5f;
+            if (_rb != null) { _rb.bodyType = RigidbodyType2D.Kinematic; _rb.linearVelocity = new Vector2(-speed, 0f); }
+            float cap = 12f;   // whatever the arena, it is gone within this
+            while (transform.position.x > exitX && cap > 0f)
+            {
+                if (_rb == null) transform.position += Vector3.left * speed * Time.deltaTime;
+                cap -= Time.deltaTime;
+                yield return null;
+            }
+            if (_rb != null) _rb.linearVelocity = Vector2.zero;
+            gameObject.SetActive(false);
+        }
+
         public void ApplyDamage(in DamageInfo info)
         {
-            if (!IsAlive) return;
+            if (!IsAlive || IsWithdrawn) return;
 
             int amount = Mathf.Max(0, info.Amount);
             if (_ward != null && _ward.HasActiveWard && _ward.WardElement == info.Element)

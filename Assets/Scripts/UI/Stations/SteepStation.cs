@@ -6,29 +6,28 @@ using AlchemistsArsenal.Systems;
 namespace AlchemistsArsenal.UI.Stations
 {
     /// <summary>
-    /// The Malting bench. Everything happens on the bench (<see cref="MaltingBench"/>):
-    /// hold on the sack to pour, drag the lid onto the jar to steep it, click the
-    /// husks that float, click the jar to turn the bed, drag the sprouted malt onto
-    /// the kiln, drag logs into its fire. The jar and the kiln carry their own
-    /// gauges. This panel adds one caption saying what the bench wants next.
+    /// The Steep bench. Everything happens on the bench (<see cref="SteepBench"/>):
+    /// hold on the sack to pour, drag the lid onto the jar to steep it, click the husks
+    /// that float, click the jar to turn the bed, drag the sprouted malt into the sack
+    /// for the kiln. The jar carries its own gauge. This panel adds one caption.
     /// </summary>
-    public class MaltingStation : StationPanel
+    public class SteepStation : StationPanel
     {
-        public override string RailName => "Malting";
-        public override Sprite RailIcon => MaltArt.Grain(false, 3);
+        public override string RailName => SteepBench.Station;
+        public override Sprite RailIcon => MaltArt.Grain(false, 1);
         public override bool ShowsWorld => true;
-        public override bool Complete => AllPast(BrewStage.Malting);
+        public override bool Complete => AllPast(BrewStage.Steep);
 
-        private static MaltingBench Bench => MaltingBench.Instance;
+        private static SteepBench Bench => SteepBench.Instance;
 
-        /// <summary>The order in the jar, or else the one in the kiln.</summary>
-        protected override ActiveOrder Order => Bench == null ? null : Bench.TubOrder ?? Bench.KilnOrder;
+        /// <summary>The order in the jar.</summary>
+        protected override ActiveOrder Order => Bench != null ? Bench.TubOrder : null;
 
         private UIKit.CaptionView _caption;
 
         protected override void BuildContent(RectTransform root)
         {
-            _caption = UIKit.Caption(root, "MaltingCaption");
+            _caption = UIKit.Caption(root, "SteepCaption");
             UIFactory.Place(_caption.Root.rectTransform, 0.18f, 0.035f, 0.82f, 0.095f);
         }
 
@@ -55,7 +54,7 @@ namespace AlchemistsArsenal.UI.Stations
             string hint = b.Hint;
             if (string.IsNullOrEmpty(hint))
                 hint = cm == null || cm.Orders.Count == 0 ? "Take a job at the Counter first."
-                    : AllPast(BrewStage.Malting) ? "All malted. On to Prep." : "";
+                    : AllPast(BrewStage.Steep) ? "All steeped. On to the Kiln." : "";
             ActiveOrder o = Order;
             _caption.Set(o != null && !string.IsNullOrEmpty(o.heroName) && !string.IsNullOrEmpty(b.Hint) ? o.heroName + ": " + hint : hint);
         }

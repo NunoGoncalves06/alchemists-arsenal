@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
@@ -35,29 +36,32 @@ namespace AlchemistsArsenal.UI
         // Prep comes before the Cauldron: you crush and add the leaves, then you
         // stir them. The Cauldron refuses to brew until the mixture is ready, so the
         // rail order is the order the work actually happens in.
-        // Malting comes right after the Counter: the grain is malted before anything
-        // else, and nothing reaches Prep until its malt is done.
-        private enum StationTab { Counter, Malting, Prep, Cauldron, Bottling }
+        // Steep and Kiln come right after the Counter: the grain is malted before
+        // anything else, and nothing reaches Prep until its malt is dried. Delivery is
+        // last: the sealed flask is handed to the fighter who ordered it.
+        // The tab values are the bench indices in ShopWorld.BenchCentres.
+        private enum StationTab { Counter, Steep, Kiln, Prep, Cauldron, Bottling, Delivery }
 
         private readonly StationPanel[] _stations =
         {
-            new CounterStation(), new MaltingStation(), new PrepStation(), new CauldronStation(), new BottlingStation(),
+            new CounterStation(), new SteepStation(), new KilnStation(), new PrepStation(),
+            new CauldronStation(), new BottlingStation(), new DeliveryStation(),
         };
-        private readonly UIKit.RailTab[] _tabs = new UIKit.RailTab[5];
+        private readonly UIKit.RailTab[] _tabs = new UIKit.RailTab[7];
 
         private StationTab _activeTab = StationTab.Counter;
         private bool _everSwitched, _counterWasServed;
 
         // --- what the tutorial and the harness look at --------------------------
         public CounterStation Counter => (CounterStation)_stations[(int)StationTab.Counter];
-        /// <summary>0 Counter, 1 Malting, 2 Prep, 3 Cauldron, 4 Bottling.</summary>
+        /// <summary>0 Counter, 1 Steep, 2 Kiln, 3 Prep, 4 Cauldron, 5 Bottling, 6 Delivery.</summary>
         public int ActiveTabIndex => (int)_activeTab;
         public RectTransform RailTabRect(int index) =>
             index >= 0 && index < _tabs.Length && _tabs[index] != null && _tabs[index].Button != null
                 ? (RectTransform)_tabs[index].Button.transform : null;
         public RectTransform SendButtonRect => _sendBtn != null ? (RectTransform)_sendBtn.transform : null;
         /// <summary>Show a bench, as its rail icon would (the tutorial never needs this; the harness may).</summary>
-        public void ShowTab(int index) => SwitchTab((StationTab)Mathf.Clamp(index, 0, 4));
+        public void ShowTab(int index) => SwitchTab((StationTab)Mathf.Clamp(index, 0, _stations.Length - 1));
         private int _builtForDay = -1;
 
         private Image _bg;
@@ -94,6 +98,8 @@ namespace AlchemistsArsenal.UI
             // Low over the bench's own planks: every station keeps its text up top.
             UIFactory.Place(_newBanner.rectTransform, 0.2f, 0.262f, 0.585f, 0.31f);
             _newBanner.raycastTarget = false;
+
+            Pause = PauseMenu.Build(transform);   // last, over everything
             _newText = UIFactory.Label(_newBanner.transform, "", UITheme.SizeBody, UITheme.Ink900, TextAlignmentOptions.Center, true);
             UIFactory.Stretch(_newText.rectTransform, 6f);
             _newBanner.gameObject.SetActive(false);
@@ -166,8 +172,7 @@ namespace AlchemistsArsenal.UI
                 TextAlignmentOptions.Left);
             UIFactory.Place(_biomeChip.rectTransform, 0.60f, 0f, 0.86f, 1f);
 
-            var menu = UIFactory.Button(bar.transform, "MENU", () => UIManager.Instance.Show(ScreenId.Settings),
-                primary: false);
+            var menu = UIFactory.Button(bar.transform, "MENU", () => Pause?.Open(), primary: false);
             UIFactory.Place(menu.image.rectTransform, 0.90f, 0.16f, 0.985f, 0.84f);
         }
 
@@ -284,6 +289,8 @@ namespace AlchemistsArsenal.UI
             // a fallback closes that race (it previously silently failed to switch).
             bool hasOrder = CraftingManager.Instance != null && CraftingManager.Instance.Orders.Count > 0;
             if (tab != StationTab.Counter && !TutorialManager.StationsUnlocked && !hasOrder) return;
+            // A focus lesson keeps the player at its bench until it is learnt.
+            if (TutorialManager.BenchHeld && tab != _activeTab) return;
 
             if (_stations[(int)_activeTab] != null) _stations[(int)_activeTab].OnExit();
             _activeTab = tab;
@@ -317,13 +324,14 @@ namespace AlchemistsArsenal.UI
             for (int i = 0; i < _tabs.Length; i++)
             {
                 if (_tabs[i] == null) continue;
-                bool visible = i != (int)StationTab.Malting || malting;
+                bool visible = (i != (int)StationTab.Steep && i != (int)StationTab.Kiln) || malting;
                 GameObject tabGo = _tabs[i].Button != null ? _tabs[i].Button.gameObject : null;
                 if (tabGo != null && tabGo.activeSelf != visible) tabGo.SetActive(visible);
                 if (!visible) continue;
                 shown++;
                 if (_tabs[i].Step != null) _tabs[i].Step.text = shown.ToString();
-                bool locked = i != (int)StationTab.Counter && !unlocked;
+                bool locked = (i != (int)StationTab.Counter && !unlocked)
+                              || (TutorialManager.BenchHeld && i != (int)_activeTab);
                 _tabs[i].SetState(i == (int)_activeTab, locked, _stations[i].Complete);
                 _tabs[i].SetCount(WaitingAt((StationTab)i));
             }
@@ -342,10 +350,7 @@ namespace AlchemistsArsenal.UI
                     foreach (HeroRecord h in s.DeployedParty()) if (s.ContractFor(h.id) == null) n++;
                     return n;
                 }
-                case StationTab.Malting: return StationPanel.CountAt(BrewStage.Malting);
-                case StationTab.Prep: return StationPanel.CountAt(BrewStage.Prep);
-                case StationTab.Cauldron: return StationPanel.CountAt(BrewStage.Cauldron);
-                default: return StationPanel.CountAt(BrewStage.Bottling);
+                default: return StationPanel.CountAt(StageAt(tab));
             }
         }
 
@@ -368,7 +373,7 @@ namespace AlchemistsArsenal.UI
             foreach (var station in _stations) station.Refresh();
             _dockSig = int.MinValue;
             RefreshDock();
-            if (CounterStation.AllServed) SwitchTab(StationTab.Malting);   // the grain is malted first
+            if (CounterStation.AllServed) SwitchTab(TabFor(CraftingManager.FirstStage));   // the grain is malted first
         }
 
         private void OnStationChanged()
@@ -378,7 +383,7 @@ namespace AlchemistsArsenal.UI
             // The last job dropped in the order book: walk the player to the first bench.
             bool served = CounterStation.AllServed;
             if (served && !_counterWasServed && _activeTab == StationTab.Counter)
-                SwitchTab(CraftingManager.FirstStage == BrewStage.Malting ? StationTab.Malting : StationTab.Prep);
+                SwitchTab(TabFor(CraftingManager.FirstStage));
             _counterWasServed = served;
         }
 
@@ -399,17 +404,17 @@ namespace AlchemistsArsenal.UI
             if (s != null && s.contracts != null) sig = sig * 17 + s.contracts.Count;
             ActiveOrder shown = _stations[(int)_activeTab].ShownOrder;
             if (shown != null) sig = sig * 13 + shown.queueIndex + 1;
+            if (TutorialManager.BenchHeld) sig = sig * 3 + 1;   // the rail locks while a lesson holds the bench
             return sig;
         }
 
-        private static string StageName(BrewStage stage) => stage switch
-        {
-            BrewStage.Malting => "MALTING",
-            BrewStage.Prep => "PREP",
-            BrewStage.Cauldron => "CAULDRON",
-            BrewStage.Bottling => "BOTTLING",
-            _ => "READY",
-        };
+        private static string StageName(BrewStage stage) => stage == BrewStage.Done ? "READY" : stage.ToString().ToUpperInvariant();
+
+        /// <summary>The stage each bench works (the Counter has none: it opens orders).</summary>
+        private static BrewStage StageAt(StationTab tab) => (BrewStage)((int)tab - 1);
+
+        /// <summary>The bench that works <paramref name="stage"/>.</summary>
+        private static StationTab TabFor(BrewStage stage) => (StationTab)((int)stage + 1);
 
         /// <summary>One row per fighter going out: face, name, element, where their flask is, its score.</summary>
         private void BuildFlaskRows()
@@ -488,14 +493,28 @@ namespace AlchemistsArsenal.UI
                     : "");
 
             var sb = new StringBuilder();
-            int start = Mathf.Max(0, order.deductions.Count - 9);
-            for (int i = start; i < order.deductions.Count; i++)
+            // On a bench, only what happened at that bench; at the Counter and Delivery,
+            // the flask's whole journey.
+            string only = _activeTab == StationTab.Counter || _activeTab == StationTab.Delivery
+                ? null : _stations[(int)_activeTab].RailName;
+            var lines = new List<DeductionLog>();
+            foreach (var d in order.deductions)
             {
-                var d = order.deductions[i];
+                if (only != null && d.station != only) continue;
+                // The whole journey is too long to list line by line: one line per bench, net points.
+                DeductionLog last = only == null && lines.Count > 0 ? lines[lines.Count - 1] : null;
+                if (last != null && last.station == d.station)
+                    lines[lines.Count - 1] = new DeductionLog(last.pointsDelta + d.pointsDelta, d.station, "the bench's net", d.timestamp);
+                else lines.Add(only == null ? new DeductionLog(d.pointsDelta, d.station, "the bench's net", d.timestamp) : d);
+            }
+            int start = Mathf.Max(0, lines.Count - 9);
+            for (int i = start; i < lines.Count; i++)
+            {
+                var d = lines[i];
                 string col = d.pointsDelta >= 0 ? "#4fae5a" : "#d64550";
                 sb.AppendLine($"<color={col}>{(d.pointsDelta >= 0 ? "+" : "")}{d.pointsDelta,-3}</color> {d.station}: {d.reason}");
             }
-            if (order.deductions.Count == 0) sb.AppendLine("Nothing done to it yet.");
+            if (lines.Count == 0) sb.AppendLine(only == null ? "Nothing done to it yet." : $"Nothing done to it at {only} yet.");
             _logText.text = sb.ToString();
         }
 
@@ -525,8 +544,13 @@ namespace AlchemistsArsenal.UI
             if (_clockPct != null) _clockPct.text = $"{Mathf.CeilToInt(t01 * 100f)}%";
         }
 
+        /// <summary>The pause menu (MENU, or Esc).</summary>
+        public PauseMenu Pause { get; private set; }
+
         private void Update()
         {
+            if (Input.GetKeyDown(KeyCode.Escape) && Pause != null) Pause.Toggle();
+            if (Pause != null && Pause.IsOpen) return;
             StationPanel active = _stations[(int)_activeTab];
             if (active != null) { active.FollowOrder(); active.Tick(); }
 

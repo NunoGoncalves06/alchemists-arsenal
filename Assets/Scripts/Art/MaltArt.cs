@@ -23,6 +23,7 @@ namespace AlchemistsArsenal.Art
         private static readonly Color32[] Copper = { X(0x5a2a14), X(0x9a5a2a), X(0xd08a4a) };
         private static readonly Color32[] Burlap = { X(0x4a3a24), X(0x6a5434), X(0x8a7048), X(0xa88c5c), X(0xc8aa74) };
         private static readonly Color32[] Barley = { X(0x7a5420), X(0xa8742a), X(0xd9a441), X(0xf0c96a) };
+        private static readonly Color32[] Sprout = { X(0x4f7a2e), X(0x7fae48), X(0xa9d46a), X(0xd2eca0) };
         private static readonly Color32[] Chaff = { X(0x8a7c60), X(0xb4a482), X(0xd8caa8), X(0xefe4c8) };
 
         // ------------------------------------------------------------ the jar
@@ -147,6 +148,73 @@ namespace AlchemistsArsenal.Art
             c.Fill((x, y) => PixelCanvas.InEllipse(x, y, 20f, 23f, 4f, 3f), (x, y) =>
                 PixelCanvas.InEllipse(x, y, 20f, 23f, 2.8f, 2f) ? S(Barley, 0.6f + (x - 18) * 0.06f, x, y) : S(Burlap, 0.95f, x, y));
             c.Fill((x, y) => y >= 5 && y <= 6 && x >= 9 && x <= 15, (x, y) => S(Wood, 0.45f, x, y));   // the tie
+            c.Outline(K);
+            return c.Bake(key, PPU, new Vector2(12.5f / w, 1f));
+        }
+
+        /// <summary>
+        /// A wicker basket with a handle, the Steeping Vat's: the green malt goes into it
+        /// for the kiln. Drawn to the sack's size and pivot (the handle's top), so it
+        /// stands where the sack stood.
+        /// </summary>
+        public static Sprite Basket()
+        {
+            const string key = "malt_basket";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 26, h = 30;
+            var c = new PixelCanvas(w, h);
+            // The handle, an arch of cane over the mouth.
+            c.Fill((x, y) => y <= 12 && PixelCanvas.InEllipse(x, y, 12.5f, 12f, 9.5f, 11.5f) && !PixelCanvas.InEllipse(x, y, 12.5f, 12f, 8f, 10f),
+                (x, y) => S(Wood, 0.75f, x, y));
+            // The body: wider at the rim, woven in rows.
+            c.Fill((x, y) => y >= 12 && y <= h - 2 && Mathf.Abs(x + 0.5f - 12.5f) <= 11.5f - (y - 12) * 0.2f,
+                (x, y) =>
+                {
+                    bool row = (y - 12) % 3 == 0;
+                    bool weave = ((x + (y / 3) * 2) % 4) < 2;
+                    return S(Burlap, (row ? 0.95f : weave ? 0.7f : 0.5f) - (x - 2) * 0.012f, x, y);
+                });
+            // Green malt heaped at the rim.
+            c.Fill((x, y) => y >= 10 && y <= 12 && PixelCanvas.InEllipse(x, y, 12.5f, 12.5f, 9f, 2.5f),
+                (x, y) => S(Barley, 0.55f + ((x * 7 + y * 3) % 5) * 0.06f, x, y));
+            c.Fill((x, y) => y >= 12 && y <= 13 && x >= 1 && x <= w - 2, (x, y) => S(Wood, 0.55f, x, y));   // the rim
+            c.Outline(K);
+            return c.Bake(key, PPU, new Vector2(12.5f / w, 1f));
+        }
+
+        /// <summary>
+        /// A squat slatted crate heaped with sprouted malt, rootlets showing: where green
+        /// malt waits for the kiln before the Turning Vat. Drawn on the sack's canvas and
+        /// pivot, so it stands where a sack stood; but not a sack, and not the wicker basket.
+        /// </summary>
+        public static Sprite MaltCrate()
+        {
+            const string key = "malt_crate";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 26, h = 30;
+            var c = new PixelCanvas(w, h);
+            // The crate: planks across, posts at the corners, a rim.
+            c.Fill((x, y) => y >= 14 && y <= h - 2 && x >= 1 && x <= w - 2, (x, y) =>
+            {
+                bool post = x <= 3 || x >= w - 4;
+                bool seam = (y - 14) % 5 == 4;
+                float light = post ? 0.42f : 0.8f - (x - 4) * 0.008f;
+                return S(Wood, seam ? light - 0.3f : light, x, y);
+            });
+            c.Fill((x, y) => y >= 13 && y <= 14 && x >= 0 && x <= w - 1, (x, y) => S(Wood, 0.95f, x, y));   // the rim
+            c.Fill((x, y) => (x == 2 || x == w - 3) && (y == 17 || y == 25), (x, y) => S(Iron, 0.7f, x, y));   // nails
+            // The heap: pale malt, with the green of its rootlets through it and over it.
+            c.Fill((x, y) => PixelCanvas.InEllipse(x, y, 12.5f, 12f, 11f, 6.5f) && y <= 14, (x, y) =>
+            {
+                int hash = (x * 7 + y * 13) % 11;
+                if (hash < 3) return S(Sprout, 0.35f + (y < 10 ? 0.45f : 0.1f), x, y);
+                return S(Barley, 0.55f + ((x + y) % 4) * 0.08f - (x - 3) * 0.01f, x, y);
+            });
+            for (int i = 0; i < 6; i++)   // rootlets curling over the rim
+            {
+                int rx = 4 + i * 3 + (i % 2);
+                c.Fill((x, y) => x == rx && y >= 12 && y <= 15, (x, y) => S(Sprout, y == 12 ? 1f : 0.55f, x, y));
+            }
             c.Outline(K);
             return c.Bake(key, PPU, new Vector2(12.5f / w, 1f));
         }

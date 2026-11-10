@@ -173,7 +173,17 @@ namespace AlchemistsArsenal.Crafting
         /// spoon. It holds the middle of the band, the way the recipe turns, so the brew
         /// goes on while the player works another bench.
         /// </summary>
-        public bool ClockworkTurning => AutoStir && Order != null && !IsBrewComplete && !mouseOverPot;
+        public bool ClockworkTurning => AutoStir && Order != null && !IsBrewComplete && !HandStirring;
+
+        /// <summary>
+        /// The player's own spoon, smoothed. Kept apart from the paddle's turning so that
+        /// a pointer merely resting over the pot neither stops the paddle nor reads as a
+        /// spoon gone still (which scorched a clockwork pot nobody was neglecting).
+        /// </summary>
+        private float _handSpin;
+
+        /// <summary>The player's hand is actually turning the spoon: the paddle gives way to it.</summary>
+        private bool HandStirring => mouseOverPot && Mathf.Abs(_handSpin) >= spinDeadZone;
 
         /// <summary>The element of the brew in the pot (what the liquid is tinted).</summary>
         public ElementType BrewElement => Working != null ? Working.element : ElementType.Nature;
@@ -348,7 +358,7 @@ namespace AlchemistsArsenal.Crafting
             bandCenter = bandMid;
             everStirred = false;
             wasInBand = true;
-            smoothedSpinDegPerSec = 0f;
+            smoothedSpinDegPerSec = _handSpin = 0f;
             hasLastAngle = false;
             IngredientCount = 0;
             SplashCount = 0;
@@ -364,13 +374,15 @@ namespace AlchemistsArsenal.Crafting
 
         private void Update()
         {
+            if (AlchemistsArsenal.Core.TimeControl.Paused) return;   // the pause menu: nothing here moves or reads the pointer
             BindNext();
             Vector2 surface = ToSurface(Pointer.World(_cam != null ? _cam : Camera.main));
             float R = _liquid != null ? _liquid.Radius : 1f;
 
             // Unattended, the spoon is not in the player's hand at all; and there is
             // nothing to stir until the leaves are crushed and in.
-            mouseOverPot = Attended && MixtureReady && surface.sqrMagnitude <= (R * 1.15f) * (R * 1.15f);
+            // With the clockwork stirrer bought there is no spoon at all: the paddle has the pot.
+            mouseOverPot = !AutoStir && Attended && MixtureReady && surface.sqrMagnitude <= (R * 1.15f) * (R * 1.15f);
 
             TrackSpin(surface);
             if (ClockworkTurning)
@@ -379,6 +391,7 @@ namespace AlchemistsArsenal.Crafting
                 smoothedSpinDegPerSec = Mathf.Lerp(smoothedSpinDegPerSec, want, Damp(3f));
                 everStirred = true;
             }
+            else smoothedSpinDegPerSec = _handSpin;
 
             if (_liquid != null)
             {
@@ -420,7 +433,7 @@ namespace AlchemistsArsenal.Crafting
 
             // The bottom only catches under the player's own hand: a pot left while you
             // work another bench is not charged for, nor is one nobody has stirred yet.
-            if (live && Attended && rate < MinOptimalStir)
+            if (live && Attended && !ClockworkTurning && rate < MinOptimalStir)
             {
                 _slowFor += dt;
                 if (_slowFor > slowGraceSeconds)
@@ -482,8 +495,7 @@ namespace AlchemistsArsenal.Crafting
             if (!mouseOverPot || r01 < innerDeadRadius)
             {
                 hasLastAngle = false;
-                if (!ClockworkTurning)
-                    smoothedSpinDegPerSec = Mathf.Lerp(smoothedSpinDegPerSec, 0f, Damp(mouseOverPot ? 2.5f : 6f));
+                _handSpin = Mathf.Lerp(_handSpin, 0f, Damp(mouseOverPot ? 2.5f : 6f));
                 return;
             }
 
@@ -496,7 +508,7 @@ namespace AlchemistsArsenal.Crafting
 
             float grip = Mathf.Clamp01((r01 - innerDeadRadius) / Mathf.Max(0.01f, fullGripRadius - innerDeadRadius));
             raw = Mathf.Clamp(raw * grip, -spinForFullPower * 2f, spinForFullPower * 2f);
-            smoothedSpinDegPerSec = Mathf.Lerp(smoothedSpinDegPerSec, raw, Damp(spinSmoothing));
+            _handSpin = Mathf.Lerp(_handSpin, raw, Damp(spinSmoothing));
         }
 
         /// <summary>What a full stir is, in degrees a second (the playtest drives the spoon in these units).</summary>

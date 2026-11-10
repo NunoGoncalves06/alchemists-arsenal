@@ -69,6 +69,9 @@ namespace AlchemistsArsenal.PhysicsKit
             }
         }
 
+        /// <summary>The colour the droplets are poured in (before each one's small shade).</summary>
+        public Color CurrentColor => _color;
+
         public void SetColor(Color c)
         {
             _color = c;

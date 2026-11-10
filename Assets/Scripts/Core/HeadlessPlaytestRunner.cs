@@ -47,11 +47,11 @@ namespace AlchemistsArsenal.Core
         public const string ArmedKey = "AA_HeadlessPlaytestArmed";
         private const string ReportPath = "headless-playtest-report.txt";
         private const string ScreensDir = "headless-screens";
-        // day 1: tutorial / no boss, solo. day 2: boss enabled, solo.
+        // day 1: tutorial, solo, the Woods' guardian at the end of the waves. day 2: solo.
         // day 3: REPLAYS biome 0 with a full three-hero party, so it is directly
         // comparable with day 1 on the same road - the regression test for
         // "does a bigger party trivialise the early game".
-        private const int DaysToRun = 3;
+        private const int DaysToRun = 4;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoStart()
@@ -80,8 +80,8 @@ namespace AlchemistsArsenal.Core
             /// FINGERPRINT line so two runs can be diffed.</summary>
             private readonly List<string> _fingerprint = new List<string>();
 
-            /// <summary>The harness's own save file. See <see cref="SaveSystem.SlotOverride"/>.</summary>
-            private const int HarnessSlot = 7;
+            /// <summary>The harness's slot, in its own save folder. See <see cref="SaveSystem.DirectoryOverride"/>.</summary>
+            private const int HarnessSlot = 0;
 
             /// <summary>
             /// Every frame advances game time by exactly one physics step. Fights used
@@ -105,7 +105,11 @@ namespace AlchemistsArsenal.Core
                 _wall = Stopwatch.StartNew();
                 Application.logMessageReceived += OnUnityLog;
                 _suite = ReadSuiteArg();
-                SaveSystem.SlotOverride = HarnessSlot;
+                // Its own save folder, emptied: the title starts with nothing to continue.
+                string harnessSaves = Path.Combine(Application.persistentDataPath, "harness");
+                try { if (Directory.Exists(harnessSaves)) Directory.Delete(harnessSaves, true); } catch (Exception) { }
+                Directory.CreateDirectory(harnessSaves);
+                SaveSystem.DirectoryOverride = harnessSaves;
                 SettingsService.ExpeditionSpeedOverride = 1;
                 CutsceneScreen.AutoAdvance = true;
                 StoryStage.SkipIntro = true;
@@ -113,7 +117,7 @@ namespace AlchemistsArsenal.Core
                 Art.PixelCanvas.ExportDir = Path.Combine(Directory.GetCurrentDirectory(), "headless-screens", "art");
                 Time.captureDeltaTime = FrameStep;
                 Log($"=== HEADLESS PLAYTEST START (runtime driver, post-reload, suite={_suite}) ===");
-                Log($"Save slot pinned to slot_{HarnessSlot}.json, fight speed pinned to 1x, fixed step {FrameStep:F4}s.");
+                Log($"Saves pinned to {SaveSystem.DirectoryOverride}, fight speed pinned to 1x, fixed step {FrameStep:F4}s.");
                 StartCoroutine(DriveThenFinish());
             }
 
@@ -180,6 +184,8 @@ namespace AlchemistsArsenal.Core
                 foreach (var step in WaitForPhase(GamePhase.MainMenu, 10f)) { if (_errorCount > 0) yield break; yield return step; }
                 if (_errorCount > 0) yield break;
                 foreach (var step in Settle("boot_main_menu")) yield return step;
+                if (ContinueButtonLit()) Fail("The title's CONTINUE is lit with no save in any slot.");
+                else Log("Title: CONTINUE is dark with no save.");
                 foreach (var step in ProbeClocks()) yield return step;
 
                 if (BalanceSuite)
@@ -198,6 +204,8 @@ namespace AlchemistsArsenal.Core
                 // Any Check() failure logs an error, which OnUnityLog turns into a
                 // failure of this run.
                 foreach (var step in RunSimulationChecks()) yield return step;
+                // The suites that need real physics time: the strike speed against a dropped body.
+                foreach (var step in RunSuite<DebugTools.PrepStrikeSimulationTest>(10f)) yield return step;
                 if (_errorCount > 0) yield break;
 
                 // No 4x time-scale push any more. It never actually applied to the
@@ -210,7 +218,7 @@ namespace AlchemistsArsenal.Core
 
                     if (day == 1)
                     {
-                        GameLoopManager.Instance.StartNewGame();
+                        GameLoopManager.Instance.StartNewGame(HarnessSlot);
                         yield return null;
                         // The opening plays between the first Day Intro and the morning;
                         // under the harness each shot moves on by itself once it is in.
@@ -222,6 +230,8 @@ namespace AlchemistsArsenal.Core
 
                     foreach (var step in WaitForPhase(GamePhase.Morning, 15f)) { if (_errorCount > 0) yield break; yield return step; }
                     if (_errorCount > 0) yield break;
+                    if (day == 1) foreach (var step in CheckPauseAndTitleRoundTrip()) { if (_errorCount > 0) yield break; yield return step; }
+                    if (day == 1) foreach (var step in CheckOutsideClicksDoNotAdvance()) { if (_errorCount > 0) yield break; yield return step; }
                     foreach (var step in Settle($"day{day}_morning_counter")) yield return step;
 
                     // Morning: call MorningScreen's own AcceptOrder() — the exact
@@ -301,20 +311,25 @@ namespace AlchemistsArsenal.Core
 
                     if (Data.Complexity.MaltingOn(level))
                     {
-                        // Malting comes first: nothing reaches Prep until its grain has been
-                        // steeped, sprouted and kilned. The driver works every order's
-                        // malting interleaved, as a player would: the next fighter's grain
-                        // is poured while the last one's dries in the kiln.
-                        SwitchMorningTab(morningScreen, "Malting");
-                        foreach (var step in Settle($"day{day}_morning_malting")) yield return step;
-                        if (ms != null && ms.HasUpgrade(Data.UpgradeCatalog.DraughtKiln) && !ms.seenUpgrades.Contains(Data.UpgradeCatalog.DraughtKiln))
-                            Fail("The Malting bench never announced its new Draught Kiln.");
-                        foreach (var step in DriveMalting(orders, day)) { if (_errorCount > 0) break; yield return step; }
+                        // Malting comes first, on two benches: nothing reaches Prep until its
+                        // grain has been steeped and sprouted at Steep, then dried at Kiln.
+                        SwitchMorningTab(morningScreen, "Steep");
+                        foreach (var step in Settle($"day{day}_morning_steep")) yield return step;
+                        if (ms != null && ms.HasUpgrade(Data.UpgradeCatalog.SteepingVat) && !ms.seenUpgrades.Contains(Data.UpgradeCatalog.SteepingVat))
+                            Fail("The Steep bench never announced its new Steeping Vat.");
+                        foreach (var step in DriveSteep(orders, day)) { if (_errorCount > 0) break; yield return step; }
                         if (_errorCount > 0) yield break;
+                        SwitchMorningTab(morningScreen, "Kiln");
+                        foreach (var step in Settle($"day{day}_morning_kiln")) yield return step;
+                        if (ms != null && ms.HasUpgrade(Data.UpgradeCatalog.DraughtKiln) && !ms.seenUpgrades.Contains(Data.UpgradeCatalog.DraughtKiln))
+                            Fail("The Kiln bench never announced its new Draught Kiln.");
+                        foreach (var step in DriveKiln(orders, day)) { if (_errorCount > 0) break; yield return step; }
+                        if (_errorCount > 0) yield break;
+                        CheckLedgerStations(orders);
                     }
                     else
                     {
-                        // The first road has no Malting bench: the grain comes malted.
+                        // The first road has no Steep or Kiln bench: the grain comes malted.
                         foreach (ActiveOrder o in orders)
                             if (o.stage != BrewStage.Prep)
                                 Fail($"On level {level} {o.heroName}'s order starts at {o.stage}, not Prep.");
@@ -351,6 +366,11 @@ namespace AlchemistsArsenal.Core
                     if (_errorCount > 0) yield break;
                     if (Crafting.PhysicsCauldronManager.AutoStir && orders.Count > 1 && _clockworkBrews == 0)
                         Fail("The clockwork stirrer is installed but brewed nothing by itself.");
+                    foreach (var f in Frames(80)) yield return f;
+                    var coldView = UnityEngine.Object.FindFirstObjectByType<Crafting.CauldronView>();
+                    if (coldView != null && coldView.FireLit) Fail($"Day {day}: every recipe is stirred and nothing waits, but the fire is still lit.");
+                    else Capture($"day{day}_morning_cauldron_cold");
+                    foreach (var step in StirTheColdPot(coldView, day)) yield return step;
 
                     SwitchMorningTab(morningScreen, "Bottling");
                     _orderTag = "";
@@ -362,12 +382,18 @@ namespace AlchemistsArsenal.Core
                         if (_errorCount > 0) break;
                         foreach (var step in Settle($"day{day}{_orderTag}_morning_bottling_done")) yield return step;
                     }
+                    // (the slide is photographed inside DriveBottling, while the flask is on its way)
                     _orderTag = "";
+                    if (_errorCount > 0) yield break;
+
+                    // Then Delivery: every sealed flask handed to the fighter who ordered it.
+                    SwitchMorningTab(morningScreen, "Delivery");
+                    foreach (var step in DriveDelivery(orders, day)) { if (_errorCount > 0) break; yield return step; }
                     if (_errorCount > 0) yield break;
 
                     foreach (ActiveOrder o in orders)
                         Log($"Morning done for {o.heroName}: {o.qualityScore} ({o.GetGrade()}), {o.stage}; flawless would be {QualityBudget.FlawlessMorning()}.");
-                    if (!cmgr.AllDone) Fail("Not every order was sealed and labelled by the end of the morning.");
+                    if (!cmgr.AllDone) Fail("Not every order was sealed, labelled and handed over by the end of the morning.");
 
                     if (!MorningScreen.ReadyToSend)
                         Fail("Every flask is finished but the party still cannot be sent.");
@@ -375,7 +401,10 @@ namespace AlchemistsArsenal.Core
                     foreach (var step in WaitRealtime(1.3f)) yield return step;
                     Capture($"day{day}_morning_send_spotlight");
                     Log($"Lessons seen by day {day}: {string.Join(", ", SaveSystem.Instance.State.seenLessons)}");
+                    CheckDistinctRecipes(day, cmgr);
                     GameLoopManager.Instance.BeginHandoff();
+                    Log($"Day {day}: handed over with {SaveSystem.Instance.State.morningLeft01:P0} of the morning left " +
+                        $"(quick hands +{Economy.SpeedBonus(SaveSystem.Instance.State.morningLeft01):P0}).");
                     foreach (var step in WaitForPhase(GamePhase.Handoff, 5f)) { if (_errorCount > 0) yield break; yield return step; }
                     if (_errorCount > 0) yield break;
                     foreach (var step in Settle($"day{day}_handoff")) yield return step;
@@ -386,6 +415,8 @@ namespace AlchemistsArsenal.Core
                     // WaitForPhase has not yielded (the phase is set synchronously), so
                     // this is still the frame BeginAfternoon ran on — the one t00s shows.
                     CheckFirstAfternoonFrame();
+                    CheckCarriedFlasks();
+                    CheckLevelStatsInFight(day);
                     if (_errorCount > 0) yield break;
                     if (day == 1) CheckPauseAndResume();
 
@@ -399,6 +430,8 @@ namespace AlchemistsArsenal.Core
                     foreach (var step in WaitForExpeditionEndWithCaptures(90f, $"day{day}_afternoon", captureEvery: 2f)) { if (_errorCount > 0) yield break; yield return step; }
                     if (_errorCount > 0) yield break;
                     foreach (var step in Settle($"day{day}_afternoon_result")) yield return step;
+                    if (day == 1) Capture("day1_afternoon_noboss");
+                    CheckFighterDamage(day);
 
                     var world = GameLoopManager.Instance.CurrentExpedition;
                     if (world != null)
@@ -436,8 +469,27 @@ namespace AlchemistsArsenal.Core
                     // The first clear unlocks a diary page: its toast, while it is up.
                     if (day == 1) foreach (var step in Settle("day1_evening_toast")) yield return step;
                     // A fight that earned part of the story plays it over the Evening first.
+                    bool wwSeenBefore = Story.StoryDirector.Has(SaveSystem.Instance.State, Story.StoryDirector.WoodwoseSeen);
                     foreach (var step in PlayOutCutscenes($"day{day} evening", expect: false)) yield return step;
                     ExpeditionReport today = GameLoopManager.Instance.LatestReport;
+                    foreach (var step in CheckSpeedBonus(day, today)) yield return step;
+                    var stw = SaveSystem.Instance.State;
+                    if (day == 1)
+                    {
+                        // Day 1 is the first job: waves only, no guardian, nothing of the Woodwose yet.
+                        if (today != null && (today.bossDefeated || !string.IsNullOrEmpty(today.bossId)))
+                            Fail($"Day 1: a guardian was fought (id '{today.bossId}', defeated {today.bossDefeated}); day 1 has none.");
+                        else if (Story.StoryDirector.Has(stw, Story.StoryDirector.WoodwoseSeen) || stw.HasDiary("diary_woodwose"))
+                            Fail("Day 1: the Woodwose's scene or diary page appeared on the first night.");
+                        else Log("Day 1: no guardian, no Woodwose scene, no Woodwose page.");
+                    }
+                    else if (!wwSeenBefore && today != null && today.won && today.bossDefeated && today.bossId == "woodwose")
+                    {
+                        // The first night the Woodwose falls: its scene plays and its page opens.
+                        if (!Story.StoryDirector.Has(stw, Story.StoryDirector.WoodwoseSeen) || !stw.HasDiary("diary_woodwose"))
+                            Fail($"Day {day}: the Woodwose fell for the first time but its scene or diary page did not appear.");
+                        else Log($"Day {day}: the Woodwose fell for the first time (tier {today.bossTier}); its scene played and its page is unlocked.");
+                    }
                     if (today != null && today.won && today.bossDefeated && SaveSystem.Instance.State.TargetBiomeIndex >= 0)
                     {
                         var st0 = SaveSystem.Instance.State;
@@ -447,6 +499,20 @@ namespace AlchemistsArsenal.Core
                             Fail("A guardian fell but its scene was not recorded as watched.");
                     }
                     foreach (var step in Settle($"day{day}_evening_report")) yield return step;
+                    if (!_brokenPageShot && stw.HasDiary("diary_woodwose_broken"))
+                    {
+                        // The broken Woodwose's page, to set beside its fight and its scene.
+                        _brokenPageShot = true;
+                        DiaryScreen.OpenEntryId = "diary_woodwose_broken";
+                        DiaryScreen.FromOpeningCinematic = false;
+                        UIManager.Instance.Show(ScreenId.Diary);
+                        foreach (var step in WaitRealtime(1.5f)) yield return step;
+                        Capture($"day{day}_diary_woodwose_broken");
+                        DiaryScreen.OpenEntryId = null;
+                        UIManager.Instance.Show(ScreenId.Evening);
+                        yield return null;
+                    }
+                    if (day == DaysToRun) foreach (var step in CheckEveningMenu()) yield return step;
                     if (day == 1) foreach (var step in WalkEveningBriefing()) yield return step;
 
                     if (day == 1)
@@ -502,6 +568,9 @@ namespace AlchemistsArsenal.Core
                             Data.HeroCatalog.LevelUpCost(lvlBefore));
                         if (st.roster[0].level != lvlBefore + 1)
                             Fail($"Level up did not take (level {lvlBefore} -> {st.roster[0].level}).");
+                        CheckLevelUpNote(eveningScreen as EveningScreen, st, st.roster[0], lvlBefore);
+                        CallPrivate(eveningScreen, "ShowRoster");
+                        foreach (var step in Settle($"day{day}_evening_levelup")) yield return step;
 
                         Log($"Roster: {st.roster.Count} heroes, lead is {st.roster[0].displayName} " +
                             $"Lv{st.roster[0].level} ({st.roster[0].affinity}), {st.gold} g left.");
@@ -525,20 +594,27 @@ namespace AlchemistsArsenal.Core
                         CallPrivate(eveningScreen, "ShowRoster");
                         foreach (var step in Settle($"day{day}_evening_roster_full")) yield return step;
 
-                        // Every bench upgrade, so day 3 plays the rebuilt benches: the
-                        // clockwork cauldron brews one flask by itself, the draught kiln
-                        // keeps its own fire. A second tier cannot be bought before its first.
-                        st.gold = 2000;
+                    }
+
+                    if (st != null && day == 3)
+                    {
+                        // Every bench machine, so day 4 plays the rebuilt benches (days 1-3
+                        // played them all by hand), and the road kit the Swamp asks for.
+                        // A second tier cannot be bought before its first.
+                        st.gold = 4000;
+                        CallPrivate(eveningScreen, "ShowUpgrades");
                         CallPrivate(eveningScreen, "BuyUpgrade", Data.UpgradeCatalog.TemperedGlass, 160);
                         if (st.HasUpgrade(Data.UpgradeCatalog.TemperedGlass))
                             Fail("Tempered Glass was sold before Heavier Flasks - the tier requirement is not enforced.");
-                        foreach (var up in Data.UpgradeCatalog.All)
-                        {
-                            if (!up.IsBench) continue;
-                            CallPrivate(eveningScreen, "BuyUpgrade", up.Id, up.Cost);
-                            if (!st.HasUpgrade(up.Id)) Fail($"Buying {up.DisplayName} did not take.");
-                        }
-                        Log($"Bench upgrades bought: {string.Join(", ", st.ownedUpgrades)}; {st.gold} g left.");
+                        // First tiers, then second: the Swamp asks for the whole road kit.
+                        for (int pass = 0; pass < 2; pass++)
+                            foreach (var up in Data.UpgradeCatalog.All)
+                            {
+                                if ((up.Requires.Length > 0) != (pass == 1) || st.HasUpgrade(up.Id)) continue;
+                                CallPrivate(eveningScreen, "BuyUpgrade", up.Id, up.Cost);
+                                if (!st.HasUpgrade(up.Id)) Fail($"Buying {up.DisplayName} did not take.");
+                            }
+                        Log($"Upgrades bought: {string.Join(", ", st.ownedUpgrades)}; {st.gold} g left.");
                         foreach (var f in Frames(12)) yield return f;
                         Capture($"day{day}_evening_upgrades_installing");
                         // The reveal runs on real time (the Evening is paused): let it land.
@@ -604,80 +680,210 @@ namespace AlchemistsArsenal.Core
             private int _clockworkBrews;
 
             /// <summary>
-            /// Malt every order of the morning, interleaved: the jar and the kiln each
-            /// work their own order, so the next fighter's grain is poured and steeped
-            /// while the last one's dries. Checks the water really sorts the grain
-            /// (husks float, sound grain sinks) and that every order reaches Prep.
+            /// The Steep bench, every order in turn: pour to the line, steep, skim, turn the
+            /// bed (with the turn lesson's focus checked), then scoop the green malt for the
+            /// kiln. Every frame it checks no order is at two benches at once.
             /// </summary>
-            private IEnumerable DriveMalting(List<ActiveOrder> orders, int day)
+            private IEnumerable DriveSteep(List<ActiveOrder> orders, int day)
             {
-                var bench = Crafting.MaltingBench.Instance;
-                if (bench == null) { Fail("No Malting bench."); yield break; }
+                var bench = Crafting.SteepBench.Instance;
+                var kiln = Crafting.KilnBench.Instance;
+                if (bench == null || kiln == null) { Fail("No Steep or Kiln bench."); yield break; }
 
-                float t = 0f, settle = 0f, nextStoke = 0f, nextSkim = 0f;
+                float t = 0f, settle = 0f, nextSkim = 0f;
                 bool lidDragged = false, maltDragged = false;
-                bool pourShot = false, soakShot = false, turnShot = false, kilnShot = false, buoyancyChecked = false;
-                float limit = 70f * orders.Count;
+                bool pourShot = false, soakShot = false, turnShot = false, buoyancyChecked = false, vatBarShot = false;
+                bool turnLessonChecked = false, turnLessonShot = false;
+                float turnLessonSeenAt = 0f;
+                TimeControl.Handle turnLessonPause = default;
+                RunState runAtStart = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+                bool turnLessonDue = Data.Complexity.TurningOn(Data.Complexity.Level()) && !bench.Vat
+                                     && runAtStart != null && !runAtStart.seenLessons.Contains("turn");
+                float vatWait = 0f;
+                float limit = 50f * orders.Count;
                 while (t < limit && _errorCount == 0)
                 {
                     bool done = true;
-                    foreach (ActiveOrder o in orders) if (o.stage == BrewStage.Malting) done = false;
+                    foreach (ActiveOrder o in orders) if (o.stage == BrewStage.Steep) done = false;
                     if (done) break;
+                    CheckOneBenchEach(bench, kiln);
 
                     ActiveOrder tub = bench.TubOrder;
                     if (tub != null)
                     {
-                        switch (tub.maltStep)
+                        switch (tub.steepStep)
                         {
-                            case MaltStep.Filling:
+                            case SteepStep.Filling:
+                                foreach (var f in ShowLesson("sack", wait: true)) yield return f;
+                                foreach (var f in ShowLesson("lid", wait: false)) yield return f;
                                 bool enough = bench.GoodInJar >= QualityBudget.GrainTarget;
+                                if (!enough && TutorialManager.CurrentLessonId == "lid")
+                                    Fail($"Tutorial: the lid lesson came up with {bench.GoodInJar} of {QualityBudget.GrainTarget} grains in the jar.");
+                                if (bench.Vat)
+                                {
+                                    // The player only pours: the vat seals itself at the line.
+                                    bench.PourHeld = true;
+                                    // Its bar runs to the grains the machine needs, with a small green box at the end.
+                                    if (!vatBarShot && bench.GoodInJar >= QualityBudget.GrainTarget / 2)
+                                    {
+                                        vatBarShot = true;
+                                        var want = Crafting.SteepBench.FillGauge(true);
+                                        Vector2 band = bench.JarGaugeBand;
+                                        if (Mathf.Abs(band.x - want.bandMin01) > 0.001f || Mathf.Abs(band.y - want.bandMax01) > 0.001f)
+                                            Fail($"Steep: the vat's gauge box is {band.x:0.00} to {band.y:0.00}, not {want.bandMin01:0.00} to {want.bandMax01:0.00}.");
+                                        else Log($"Steep: the vat's bar ends at the {QualityBudget.GrainTarget} grains it needs, its green box at the end ({band.x:0.00} to {band.y:0.00}).");
+                                        Capture($"day{day}_morning_steep_fill");
+                                    }
+                                    if (enough && !pourShot) { pourShot = true; Capture($"day{day}_morning_steep_pour"); }
+                                    vatWait = enough ? vatWait + Time.deltaTime : 0f;
+                                    if (vatWait > 3f) Fail("Steep: the grain is at the line but the vat never sealed - no action possible, the player is stuck.");
+                                    break;
+                                }
                                 bench.PourHeld = !enough;
                                 if (!enough) { settle = 0f; break; }
                                 settle += Time.deltaTime;
                                 if (settle < 1.0f) break;   // what is still in the air lands, and the husks rise
                                 if (!buoyancyChecked) { buoyancyChecked = true; CheckBuoyancy(bench); }
-                                if (!pourShot) { pourShot = true; Capture($"day{day}_morning_malting_pour"); }
+                                if (!pourShot) { pourShot = true; Capture($"day{day}_morning_steep_pour"); }
+                                foreach (var f in ShowLesson("lid", wait: true)) yield return f;
                                 if (day == 2 && !lidDragged)
                                 {
                                     // By hand: carry the lid from beside the jar onto its mouth.
                                     lidDragged = true;
-                                    foreach (var f in Drag(bench.LidWorld + new Vector2(0f, 0.15f), bench.JarMouthWorld, $"day{day}_morning_malting_lid_carried"))
+                                    foreach (var f in Drag(bench.LidWorld + new Vector2(0f, 0.15f), bench.JarMouthWorld, $"day{day}_morning_steep_lid_carried"))
                                         yield return f;
-                                    if (tub.maltStep != MaltStep.Soaking)
-                                        Fail($"The lid was carried onto the jar but it did not steep (step {tub.maltStep}).");
-                                    else Log("Malting: the lid carried onto the jar steeped it.");
+                                    if (tub.steepStep != SteepStep.Soaking)
+                                        Fail($"The lid was carried onto the jar but it did not steep (step {tub.steepStep}).");
+                                    else Log("Steep: the lid carried onto the jar steeped it.");
                                 }
                                 else bench.Steep();
                                 settle = 0f;
                                 break;
-                            case MaltStep.Soaking:
-                                if (!soakShot && bench.SoakProgress01 > 0.3f) { soakShot = true; Capture($"day{day}_morning_malting_soak"); }
+                            case SteepStep.Soaking:
+                                if (!soakShot && bench.SoakProgress01 > 0.3f) { soakShot = true; Capture($"day{day}_morning_steep_soak"); }
+                                if (bench.Vat)
+                                {
+                                    if (bench.SoakProgress01 > 0.97f && bench.HusksInJar > 0)
+                                        Fail($"Steep: the soak is ending with {bench.HusksInJar} husks the vat never skimmed.");
+                                    break;
+                                }
                                 if (bench.HusksInJar > 0 && Time.time >= nextSkim) { bench.SkimNext(); nextSkim = Time.time + 0.25f; }
                                 break;
-                            case MaltStep.Germinating:
-                                if (bench.TurnDue)
+                            case SteepStep.Germinating:
+                                if (bench.Hint.Contains("another bench"))
+                                    Fail($"Steep: the sprouting hint sends the player away: \"{bench.Hint}\"");
+                                if (bench.GerminateProgress01 > 0.1f && bench.GerminateProgress01 < Crafting.SteepBench.TurnFrom)
                                 {
-                                    if (!turnShot) { turnShot = true; Capture($"day{day}_morning_malting_sprouting"); }
+                                    // The green box is the window to turn the bed in, while turning is the player's job.
+                                    bool matters = Data.Complexity.TurningOn(Data.Complexity.Level()) && !bench.Vat && bench.TurnPending;
+                                    Vector2 box = bench.JarGaugeBand;
+                                    bool shown = box.y > 0.001f;
+                                    if (matters && (Mathf.Abs(box.x - Crafting.SteepBench.TurnFrom) > 0.001f || Mathf.Abs(box.y - Crafting.SteepBench.TurnBy) > 0.001f))
+                                        Fail($"Steep: sprouting shows its turn window as {box.x:0.00} to {box.y:0.00}, not {Crafting.SteepBench.TurnFrom:0.00} to {Crafting.SteepBench.TurnBy:0.00}.");
+                                    if (!matters && shown)
+                                        Fail($"Steep: a turn window is shown ({box.x:0.00} to {box.y:0.00}) where the bed turns itself.");
+                                }
+                                // The turn lesson: the jar alone lit, and the bench held until it is learnt.
+                                // The spotlight fades and closes in on unscaled time (wall clock under
+                                // batchmode), the bed sprouts on game time: game time is paused until
+                                // it has been photographed, so the bed cannot mat while we wait.
+                                if (turnLessonChecked && !turnLessonShot && Time.unscaledTime - turnLessonSeenAt > 1.4f)   // 0.25 s fade, then the 0.9 s close-in
+                                {
+                                    turnLessonShot = true;
+                                    if (TutorialManager.CurrentLessonId == "turn") Capture($"day{day}_morning_steep_turn_lesson");
+                                    else Fail("The turn lesson closed before it could be photographed.");
+                                    turnLessonPause.Dispose();
+                                }
+                                if (!turnLessonChecked && TutorialManager.CurrentLessonId == "turn")
+                                {
+                                    turnLessonChecked = true;
+                                    turnLessonSeenAt = Time.unscaledTime;
+                                    if (TimeControl.Instance != null) turnLessonPause = TimeControl.Instance.PushPause();
+                                    var screen = UIManager.Instance != null ? UIManager.Instance.ScreenOf(ScreenId.Morning) as MorningScreen : null;
+                                    int before = screen != null ? screen.ActiveTabIndex : -1;
+                                    SwitchMorningTab(screen, "Prep");
+                                    if (screen == null || screen.ActiveTabIndex != before)
+                                        Fail($"The turn lesson was up, but the bench switched away (tab {before} -> {(screen != null ? screen.ActiveTabIndex : -1)}).");
+                                    else Log("Steep: the turn lesson held the bench (a switch to Prep was refused).");
+                                }
+                                if (bench.Vat)
+                                {
+                                    if (!turnShot && bench.GerminateProgress01 > 0.3f) { turnShot = true; Capture($"day{day}_morning_steep_sprouting"); }
+                                    if (bench.TurnDue && bench.GerminateProgress01 > 0.6f)
+                                        Fail("Steep: the bed is due a turn the vat never gave it - the player is stuck with no spoon to turn it.");
+                                    break;
+                                }
+                                if (bench.TurnDue && (!turnLessonChecked || turnLessonShot))
+                                {
+                                    if (!turnShot) { turnShot = true; Capture($"day{day}_morning_steep_sprouting"); }
                                     bench.Turn();
                                 }
                                 break;
-                            case MaltStep.Green:
-                                if (bench.CanLoadKiln && day == 2 && !maltDragged)
+                            case SteepStep.Green:
+                                foreach (var f in ShowLesson("scoop", wait: true)) yield return f;
+                                if ((day == 2 || bench.Vat) && !maltDragged)
                                 {
-                                    // By hand: scoop the green malt out of the jar onto the kiln's tray.
+                                    // By hand: scoop the green malt out of the jar into the sack (the vat's basket) for the kiln.
                                     maltDragged = true;
                                     ActiveOrder moving = tub;
-                                    foreach (var f in Drag(bench.JarWorld, bench.KilnTrayWorld, $"day{day}_morning_malting_malt_carried"))
+                                    foreach (var f in Drag(bench.JarWorld, bench.KilnSackWorld, $"day{day}_morning_steep_scoop_carried"))
                                         yield return f;
-                                    if (bench.KilnOrder != moving)
-                                        Fail("The green malt was carried onto the kiln but the kiln did not take it.");
-                                    else Log("Malting: the malt carried onto the kiln loaded it.");
+                                    if (moving.stage != BrewStage.Kiln)
+                                        Fail($"The green malt was scooped into the kiln's sack, but the order is at {moving.stage}, not Kiln.");
+                                    else Log("Steep: the malt scooped into the sack went on to the Kiln.");
                                 }
-                                else if (bench.CanLoadKiln) bench.LoadKiln();
+                                else bench.Scoop();
                                 break;
                         }
                     }
+                    t += Time.deltaTime;
+                    yield return null;
+                }
+                bench.PourHeld = false;
+                turnLessonPause.Dispose();   // never leave the clock stopped if the loop ended mid-wait
+                if (turnLessonDue && !turnLessonChecked && _errorCount == 0)
+                    Fail("The bed was turned on a turning road, but the turn lesson never came up at the jar.");
+                foreach (ActiveOrder o in orders)
+                    if (o.stage == BrewStage.Steep) Fail($"{o.heroName}'s steeping never finished (step {o.steepStep}) in {limit:0} s.");
+            }
 
+            /// <summary>
+            /// The Kiln bench, every order in turn: take the waiting sack onto the tray, keep
+            /// the fire in the band, let it dry. Checks no order is at two benches at once.
+            /// </summary>
+            private IEnumerable DriveKiln(List<ActiveOrder> orders, int day)
+            {
+                var bench = Crafting.KilnBench.Instance;
+                var steep = Crafting.SteepBench.Instance;
+                if (bench == null || steep == null) { Fail("No Kiln or Steep bench."); yield break; }
+                float t = 0f, nextStoke = 0f;
+                bool loadDragged = false, kilnShot = false;
+                float limit = 30f * orders.Count;
+                while (t < limit && _errorCount == 0)
+                {
+                    bool done = true;
+                    foreach (ActiveOrder o in orders) if (o.stage == BrewStage.Kiln) done = false;
+                    if (done) break;
+                    CheckOneBenchEach(steep, bench);
+
+                    if (bench.CanLoadKiln)
+                    {
+                        CheckRackOnScreen(bench);
+                        foreach (var f in ShowLesson("kiln", wait: true)) yield return f;
+                        if (day == 2 && !loadDragged)
+                        {
+                            // By hand: carry the waiting sack from the rack onto the tray.
+                            loadDragged = true;
+                            ActiveOrder moving = bench.NextWaiting;
+                            foreach (var f in Drag(bench.NextBasketBounds.center, bench.KilnTrayWorld, $"day{day}_morning_kiln_sack_carried"))
+                                yield return f;
+                            if (bench.KilnOrder != moving)
+                                Fail("The sack of green malt was carried onto the tray but the kiln did not take it.");
+                            else Log("Kiln: the sack carried onto the tray loaded it.");
+                        }
+                        else bench.LoadKiln();
+                    }
+                    foreach (var f in ShowLesson("stoke", wait: false)) yield return f;
                     // Keep the kiln in its band: a log whenever it drops toward the bottom of it.
                     if (bench.KilnOrder != null && !bench.Draught && bench.Heat01 < 0.52f && bench.LogsBurning < 3
                         && bench.CanStoke && Time.time >= nextStoke)
@@ -688,22 +894,216 @@ namespace AlchemistsArsenal.Core
                     if (!kilnShot && bench.KilnOrder != null && bench.KilnProgress01 > 0.4f)
                     {
                         kilnShot = true;
-                        Capture($"day{day}_morning_malting_kiln");
+                        Capture($"day{day}_morning_kiln_drying");
                     }
-
                     t += Time.deltaTime;
                     yield return null;
                 }
-                bench.PourHeld = false;
-
                 foreach (ActiveOrder o in orders)
                 {
-                    if (o.stage == BrewStage.Malting)
-                        Fail($"{o.heroName}'s malting never finished (step {o.maltStep}) in {limit:0} s.");
+                    if (o.stage <= BrewStage.Kiln)
+                        Fail($"{o.heroName}'s malt never dried (at {o.stage}, kiln step {o.kilnStep}) in {limit:0} s.");
                     else
-                        Log($"Malting: {o.heroName}'s malt done — quality {o.MaltQuality01:P0} ({o.maltPoints} of {QualityBudget.MaltMax}), flask at {o.qualityScore}");
+                    {
+                        var lines = new List<string>();
+                        foreach (var d in o.deductions)
+                            if (d.station == Crafting.SteepBench.Station || d.station == Crafting.KilnBench.Station)
+                                lines.Add($"{d.station} {(d.pointsDelta >= 0 ? "+" : "")}{d.pointsDelta} {d.reason}");
+                        Log($"Malting: {o.heroName}'s malt done — quality {o.MaltQuality01:P0} ({o.maltPoints} of {QualityBudget.MaltMax}), flask at {o.qualityScore}. Lines: {string.Join("; ", lines)}");
+                    }
                 }
             }
+
+            /// <summary>An order is at one bench at a time, and each bench only holds an order at its own stage.</summary>
+            private void CheckOneBenchEach(Crafting.SteepBench steep, Crafting.KilnBench kiln)
+            {
+                if (steep.TubOrder != null && steep.TubOrder.stage != BrewStage.Steep)
+                    Fail($"The Steep bench holds {steep.TubOrder.heroName}'s order at {steep.TubOrder.stage}.");
+                if (kiln.KilnOrder != null && kiln.KilnOrder.stage != BrewStage.Kiln)
+                    Fail($"The Kiln bench holds {kiln.KilnOrder.heroName}'s order at {kiln.KilnOrder.stage}.");
+                if (steep.TubOrder != null && steep.TubOrder == kiln.KilnOrder)
+                    Fail($"{steep.TubOrder.heroName}'s order is at the Steep and the Kiln bench at once.");
+            }
+
+            /// <summary>Every malting line says which of the two benches it came from (the old shared label is gone).</summary>
+            private void CheckLedgerStations(List<ActiveOrder> orders)
+            {
+                foreach (ActiveOrder o in orders)
+                    foreach (var d in o.deductions)
+                        if (d.station == "Malting")
+                            Fail($"{o.heroName}'s flask has a line from the old shared Malting bench: \"{d.reason}\".");
+            }
+
+            /// <summary>
+            /// The Delivery bench: every sealed flask handed to the fighter who ordered it,
+            /// by hand on the first order of the day (and, with more than one fighter, a
+            /// drop on the wrong one first, which must be refused).
+            /// </summary>
+            private IEnumerable DriveDelivery(List<ActiveOrder> orders, int day)
+            {
+                var bench = Crafting.DeliveryBench.Instance;
+                if (bench == null) { Fail("No Delivery bench."); yield break; }
+                foreach (var step in WaitUntil(() =>
+                {
+                    foreach (ActiveOrder o in orders) if (o.stage != BrewStage.Delivery) return false;
+                    return true;
+                }, 8f, "every sealed flask reaching the Delivery bench")) yield return step;
+                if (_errorCount > 0) yield break;
+                foreach (var step in Settle($"day{day}_morning_delivery")) yield return step;
+
+                for (int k = 0; k < orders.Count && _errorCount == 0; k++)
+                {
+                    ActiveOrder order = orders[k];
+                    if (k == 0)
+                    {
+                        if (orders.Count > 1)
+                        {
+                            // The wrong fighter first: the flask must go back to the tray.
+                            foreach (var f in Drag(bench.FlaskWorld(order), bench.FighterWorld(orders[1].heroId))) yield return f;
+                            foreach (var f in Frames(5)) yield return f;
+                            if (!string.IsNullOrEmpty(order.deliveredTo) || bench.HandingOver)
+                                Fail($"{order.heroName}'s flask was handed to {orders[1].heroName}.");
+                            else Log($"Delivery: {order.heroName}'s flask dropped on {orders[1].heroName} went back to the tray.");
+                        }
+                        // By hand: carry the flask to its fighter, and photograph it on its way into the hand.
+                        foreach (var f in Drag(bench.FlaskWorld(order), bench.FighterWorld(order.heroId))) yield return f;
+                        foreach (var step in WaitRealtime(0.25f)) yield return step;
+                        Capture($"day{day}_morning_delivery_handover");
+                    }
+                    else if (!bench.HandOver(order)) Fail($"{order.heroName}'s flask could not be handed over.");
+                    foreach (var step in WaitUntil(() => order.Finished, 5f, $"{order.heroName}'s flask being handed over")) yield return step;
+                    if (order.deliveredTo != order.heroId)
+                        Fail($"{order.heroName}'s flask went to '{order.deliveredTo}', not to them.");
+                }
+                if (_errorCount > 0) yield break;
+                Log($"Delivery: {orders.Count} flask(s) handed over, each to the fighter who ordered it.");
+                foreach (var step in Settle($"day{day}_morning_delivery_done")) yield return step;
+            }
+
+            /// <summary>Each fighter goes into the arena with the flask that was handed to them.</summary>
+            /// <summary>The level-up line names the same before and after numbers the fight is built from.</summary>
+            private void CheckLevelUpNote(EveningScreen evening, RunState st, HeroRecord hero, int from)
+            {
+                HeroStats a = HeroStats.For(from, st), b = HeroStats.For(from + 1, st);
+                string note = evening != null ? evening.LevelUpNote : null;
+                string want = $"HP {a.Hp} → {b.Hp}, base damage {a.Damage} → {b.Damage}, flasks +{a.FlaskBonus} → +{b.FlaskBonus}";
+                if (note == null || !note.Contains(want)) Fail($"Level-up note '{note}' does not show '{want}'.");
+                else Log($"Level-up shown: {note}");
+            }
+
+            /// <summary>Every fighter goes out with exactly the HP, damage scale and flasks the roster shows for their level.</summary>
+            private void CheckLevelStatsInFight(int day)
+            {
+                var world = GameLoopManager.Instance.CurrentExpedition;
+                var loadouts = GameLoopManager.Instance.PendingLoadouts;
+                var carried = GameLoopManager.Instance.PendingCarried;
+                RunState st = SaveSystem.Instance.State;
+                if (world == null || loadouts == null) return;
+                for (int i = 0; i < world.Party.Count && i < world.PartyRecords.Count; i++)
+                {
+                    HeroRecord h = world.PartyRecords[i];
+                    CombatantBody body = world.Party[i];
+                    if (h == null || body == null) continue;
+                    HeroStats shown = HeroStats.For(h.level, st);
+                    var ai = body.GetComponent<UtilityAI_CombatController>();
+                    ActiveOrder order = carried != null && i < carried.Count ? carried[i] : null;
+                    PotionGrade grade = order != null ? order.GetGrade() : PotionGrade.Poor;
+                    int flasks = 0;
+                    foreach (var slot in loadouts[i].Slots) flasks += slot.count;
+                    int wantFlasks = LoadoutBuilder.AmmoFor(grade) + shown.FlaskBonus;
+                    if (body.MaxHP != shown.Hp || ai == null || !Mathf.Approximately(ai.LevelDamageScale, shown.DamageScale) || flasks != wantFlasks)
+                        Fail($"Day {day}: {h.displayName} Lv{h.level} fights with {body.MaxHP} HP, x{(ai != null ? ai.LevelDamageScale : 0f):0.00} damage, " +
+                             $"{flasks} flasks; the roster shows {shown.Hp} HP, x{shown.DamageScale:0.00}, {wantFlasks} flasks ({grade}).");
+                    else Log($"Day {day}: {h.displayName} Lv{h.level} fights with what the roster shows: {shown.Hp} HP, x{shown.DamageScale:0.00} damage, {flasks} flasks.");
+                }
+            }
+
+            /// <summary>No two of the day's orders share a recipe or a potion name.</summary>
+            private void CheckDistinctRecipes(int day, CraftingManager cm)
+            {
+                if (cm == null || cm.Orders.Count < 2) return;
+                var names = new HashSet<string>();
+                var steps = new HashSet<string>();
+                var list = new List<string>();
+                foreach (ActiveOrder o in cm.Orders)
+                {
+                    PotionRecipe r = o.Mixture?.Recipe;
+                    if (r == null) continue;
+                    names.Add(r.Name);
+                    steps.Add(r.Result + ":" + string.Join(",", r.Steps));
+                    list.Add($"{o.heroName}: {r.Name} ({r.Shorthand})");
+                }
+                if (names.Count != list.Count || steps.Count != list.Count)
+                    Fail($"Day {day}: two fighters share a recipe - {string.Join(" | ", list)}");
+                else Log($"Day {day}: {list.Count} fighters, {list.Count} different recipes - {string.Join(" | ", list)}");
+            }
+
+            /// <summary>The quick-hands bonus is what the formula gives for the morning left, it is in the gold, and the report shows it.</summary>
+            private IEnumerable CheckSpeedBonus(int day, ExpeditionReport r)
+            {
+                if (r == null) yield break;
+                int want = r.won ? Economy.SpeedBonusGold(r.goldPaidByGrade, r.speedLeft01) : 0;
+                if (r.speedBonus != want)
+                    Fail($"Day {day}: quick hands paid {r.speedBonus} g, the formula gives {want} g ({r.speedLeft01:P0} left of the morning, purse {r.goldPaidByGrade} g).");
+                else if (r.TotalGold != r.goldFromLoot + r.goldPaidByGrade + r.speedBonus)
+                    Fail($"Day {day}: the day's gold {r.TotalGold} g leaves out the quick-hands bonus.");
+                else Log($"Day {day}: quick hands +{r.speedBonus} g ({r.speedLeft01:P0} of the morning left, purse {r.goldPaidByGrade} g).");
+                if (r.speedBonus > 0 && !_speedShot)
+                {
+                    _speedShot = true;
+                    foreach (var step in Settle($"day{day}_evening_speed_bonus")) yield return step;
+                }
+            }
+
+            /// <summary>
+            /// After the last brew the pot is cold. Stirring it on (the spoon, both ways, and a hard
+            /// spin of what floats in it) must not light it: only the next mash does.
+            /// </summary>
+            private IEnumerable StirTheColdPot(Crafting.CauldronView view, int day)
+            {
+                var pot = UnityEngine.Object.FindFirstObjectByType<Crafting.PhysicsCauldronManager>();
+                if (view == null || pot == null || pot.Liquid == null) yield break;
+                PhysicsKit.Pointer.Scripted = _pointer;
+                float R = pot.Liquid.Radius, angle = 0f, relitAt = -1f, gripped = 0f;
+                _pointer.Press();
+                for (float t = 0f; t < 2f; t += Time.deltaTime)
+                {
+                    float dir = t < 1f ? 1f : -1f;
+                    angle += dir * pot.FullStirDegPerSec * 0.6f * Time.deltaTime * Mathf.Deg2Rad;
+                    _pointer.World = pot.ToWorld(new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * R * 0.6f);
+                    foreach (var f in pot.Liquid.Floaters)
+                        if (f.Body != null) f.Body.AddTorque(dir * 4f * f.Body.inertia * 10f, ForceMode2D.Force);
+                    if ((view.FireLit || view.LooksBrewing) && relitAt < 0f) relitAt = t;
+                    if (pot.MouseOverCauldron) gripped += Time.deltaTime;
+                    yield return null;
+                }
+                _pointer.Release();
+                if (relitAt >= 0f) Fail($"Day {day}: the brew is done and nothing waits, but stirring the pot lit the fire again (after {relitAt:0.0} s).");
+                else if (gripped > 0f) Fail($"Day {day}: the spoon gripped an empty pot for {gripped:0.0} s; with nothing to brew it must not stir anything.");
+                else Log($"Day {day}: the pot stayed cold through 2 s of stirring after the last brew{(Crafting.PhysicsCauldronManager.AutoStir ? " (clockwork stirrer owned)" : "")}; " +
+                         $"the spoon gripped for {gripped:0.0} s (an empty pot has nothing to stir), the floaters were spun by hand.");
+                Capture($"day{day}_morning_cauldron_cold_stirred");
+            }
+
+            private bool _speedShot;
+            private bool _brokenPageShot;
+
+            private void CheckCarriedFlasks()
+            {
+                var loop = GameLoopManager.Instance;
+                var party = loop.PendingParty;
+                var carried = loop.PendingCarried;
+                if (party == null || carried == null || carried.Count != party.Count)
+                {
+                    Fail($"The afternoon's flasks ({carried?.Count}) do not line up with the party ({party?.Count}).");
+                    return;
+                }
+                for (int i = 0; i < party.Count; i++)
+                    if (carried[i] == null || carried[i].deliveredTo != party[i].id)
+                        Fail($"{party[i].displayName} went into the arena without the flask handed to them ({(carried[i] == null ? "none" : "handed to '" + carried[i].deliveredTo + "'")}).");
+                if (_errorCount == 0) Log($"Afternoon: every fighter carries the flask handed to them ({party.Count}).");
+            }
+
 
             /// <summary>
             /// A hand on the bench: press at <paramref name="from"/>, carry to
@@ -724,7 +1124,7 @@ namespace AlchemistsArsenal.Core
             }
 
             /// <summary>The steep's water must sort the grain: husks float, sound barley sinks.</summary>
-            private void CheckBuoyancy(Crafting.MaltingBench bench)
+            private void CheckBuoyancy(Crafting.SteepBench bench)
             {
                 float huskY = 0f, goodY = 0f; int husks = 0, good = 0;
                 foreach (var g in bench.TubGrains)
@@ -733,12 +1133,12 @@ namespace AlchemistsArsenal.Core
                     if (g.Husk) { huskY += g.Body.position.y; husks++; }
                     else { goodY += g.Body.position.y; good++; }
                 }
-                if (husks == 0 || good == 0) { Log("Malting: no husks in this pour to check the water with."); return; }
+                if (husks == 0 || good == 0) { Log("Steep: no husks in this pour to check the water with."); return; }
                 huskY /= husks; goodY /= good;
                 if (huskY < goodY + 0.3f)
                     Fail($"The steep did not sort the grain: husks sit at {huskY:0.00}, sound grain at {goodY:0.00} (husks must float above it).");
                 else
-                    Log($"Malting: the water sorted the grain — {husks} husks floating at {huskY:0.00}, {good} grains sunk to {goodY:0.00}.");
+                    Log($"Steep: the water sorted the grain — {husks} husks floating at {huskY:0.00}, {good} grains sunk to {goodY:0.00}.");
             }
 
             private IEnumerable DrivePrep(ActiveOrder order, int day)
@@ -776,6 +1176,32 @@ namespace AlchemistsArsenal.Core
                 }
                 if (_errorCount > 0) { PhysicsKit.Pointer.Scripted = null; yield break; }
                 foreach (var step in Settle($"day{day}{_orderTag}_morning_prep_mortar")) yield return step;
+                if (Crafting.PrepBench.Crusher)
+                {
+                    // The auto crusher strikes by itself: the player has nothing to press.
+                    PhysicsKit.Pointer.Scripted = null;
+                    bool midShot = false;
+                    float waited = 0f;
+                    while (!mix.Ground && waited < 20f && _errorCount == 0)
+                    {
+                        if (!midShot && bench.StrikesLeft < QualityBudget.GrindStrikes) { midShot = true; Capture($"day{day}{_orderTag}_morning_prep_crusher"); }
+                        waited += Time.deltaTime;
+                        yield return null;
+                    }
+                    if (!mix.Ground)
+                        Fail($"Prep: the crusher struck {QualityBudget.GrindStrikes - bench.StrikesLeft} of {QualityBudget.GrindStrikes} in 20 s - no action possible, the player is stuck.");
+                    int clean = 0;
+                    foreach (var d in order.deductions) if (d.station == "Prep" && d.reason.StartsWith("Clean strike")) clean++;
+                    Log($"Prep: the crusher struck {clean} clean of {QualityBudget.GrindStrikes} by itself, last at {bench.LastStrikeSpeed:0.00} m/s.");
+                    if (clean < QualityBudget.GrindStrikes)
+                    {
+                        var lines = new List<string>();
+                        foreach (var d in order.deductions) if (d.station == "Prep") lines.Add(d.reason);
+                        Fail($"Prep: the crusher landed only {clean} clean strikes of {QualityBudget.GrindStrikes}: {string.Join("; ", lines)}");
+                    }
+                    if (!mix.Ready) Fail("Prep did not finish: the crusher's mixture is not ready.");
+                    yield break;
+                }
                 if (!bench.PressHintShowing)
                     Fail("The leaves are in, but the bench is not pointing at the bowl (press-here hint missing).");
 
@@ -799,14 +1225,45 @@ namespace AlchemistsArsenal.Core
                     // Lift, let the pestle settle under the hold, then keep lifting to
                     // the height that lands it at the ideal speed.
                     while (!bench.LiftReady && t < 3f) { t += Time.deltaTime; yield return null; }
-                    while (bench.PredictedStrikeSpeed < Crafting.PrepBench.IdealStrike - 0.1f && t < 6f)
-                    { t += Time.deltaTime; yield return null; }
+                    // Every stroke reads up from rest: the needle starts at the bottom.
+                    if (bench.LiftReady && bench.PredictedStrikeSpeed > 1f)
+                        Fail($"Pestle strike {s + 1}: the dial started at {bench.PredictedStrikeSpeed:0.00} m/s, not from rest.");
+                    if (s == 0) Capture($"day{day}{_orderTag}_morning_prep_dial_start");
+                    bool greenShot = s != 0;
+                    // Let go inside the green, at a different place in it each time: low, middle, high.
+                    float[] places = { 0f, -0.7f, 0.7f };
+                    float place = places[(day + s) % places.Length];
+                    float want = Crafting.PrepBench.IdealStrike + place * bench.CurrentBand;
+                    while (bench.PredictedStrikeSpeed < want && t < 6f)
+                    {
+                        if (!greenShot && bench.PredictedStrikeSpeed >= Crafting.PrepBench.IdealStrike - bench.CurrentBand * 0.5f)
+                        {
+                            greenShot = true;
+                            Capture($"day{day}{_orderTag}_morning_prep_dial_green");
+                        }
+                        t += Time.deltaTime; yield return null;
+                    }
                     Log($"Prep lift {s + 1}: ready={bench.LiftReady} pestle at {bench.PestleWorld} (bowl {bench.MortarWorld}), predicted {bench.PredictedStrikeSpeed:0.00} m/s after {t:0.00}s.");
                     _pointer.Release();
                     t = 0f;
                     while (bench.StrikesLeft == left && t < 4f) { t += Time.deltaTime; yield return null; }
                     if (bench.StrikesLeft == left) { Fail($"Pestle strike {s + 1} never registered on the bowl."); break; }
                     Log($"Prep strike {s + 1}: {bench.LastStrikeSpeed:0.00} m/s (clean {Crafting.PrepBench.IdealStrike}±{bench.CurrentBand}) on {bench.LastStrikeWith}");
+
+                    // One number: what the dial said at the release, what the pestle hit at, and what
+                    // the ledger says all agree, and a release inside the green is never penalised.
+                    float predicted = bench.ReleasePrediction, measured = bench.LastStrikeSpeed;
+                    string ledger = "";
+                    for (int i = order.deductions.Count - 1; i >= 0 && ledger == ""; i--)
+                        if (order.deductions[i].station == "Prep" && order.deductions[i].reason.Contains("m/s")) ledger = order.deductions[i].reason;
+                    var m = System.Text.RegularExpressions.Regex.Match(ledger, @"(\d+\.\d) m/s");
+                    float logged = m.Success ? float.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : -1f;
+                    if (Mathf.Abs(predicted - measured) > 0.1f)
+                        Fail($"Prep strike {s + 1}: the dial read {predicted:0.00} m/s at the release but the pestle hit at {measured:0.00}.");
+                    if (Mathf.Abs(logged - measured) > 0.051f)
+                        Fail($"Prep strike {s + 1}: the pestle hit at {measured:0.00} m/s but the ledger says {logged:0.0} ({ledger}).");
+                    if (!ledger.StartsWith("Clean strike"))
+                        Fail($"Prep strike {s + 1}: let go at {predicted:0.00} m/s, inside the green ({want:0.00}), and was penalised: {ledger}");
                     foreach (var f in Frames(25)) yield return f;
                 }
                 PhysicsKit.Pointer.Scripted = null;
@@ -857,6 +1314,9 @@ namespace AlchemistsArsenal.Core
                     yield break;
                 }
                 var mix = order.Mixture;
+                var cauldronView = UnityEngine.Object.FindFirstObjectByType<Crafting.CauldronView>();
+                if (cauldronView != null && !cauldronView.FireLit)
+                    Fail($"Cauldron: {order.heroName}'s mash is in the pot but the fire is out.");
 
                 // Wait for the mash to land on the surface.
                 float w = 0f;
@@ -901,12 +1361,48 @@ namespace AlchemistsArsenal.Core
                         else Log($"Cauldron fumble: the bottom caught and burned (scorch {pot.Scorch01:0.00}), as it should.");
                     }
                     Capture($"day{day}{_orderTag}_morning_cauldron_burning");
+
+                    // Stirred the wrong way for a while, the pot says so; right again, it stops.
+                    if (cauldronView != null && !Crafting.PhysicsCauldronManager.AutoStir)
+                    {
+                        float wrongFor = 0f;
+                        while (wrongFor < 1.7f)
+                        {
+                            angle -= dir * pot.StirBandCentre * pot.FullStirDegPerSec * Time.deltaTime * Mathf.Deg2Rad;
+                            _pointer.World = pot.ToWorld(new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * R * 0.6f);
+                            wrongFor += Time.deltaTime;
+                            if (wrongFor < 0.6f && cauldronView.WrongWayShown) Fail("Cauldron: the wrong-way notice came up before the stir had been wrong for a second.");
+                            yield return null;
+                        }
+                        if (!cauldronView.WrongWayShown) Fail("Cauldron: stirred the wrong way for 1.7 s and the pot said nothing.");
+                        else
+                        {
+                            // Photographed on a lit phase of the blink, with the spoon still going the wrong way.
+                            for (float lit = 0f; lit < 0.6f && cauldronView.WrongWayAlpha < 0.9f; lit += Time.deltaTime)
+                            {
+                                angle -= dir * pot.StirBandCentre * pot.FullStirDegPerSec * Time.deltaTime * Mathf.Deg2Rad;
+                                _pointer.World = pot.ToWorld(new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * R * 0.6f);
+                                yield return null;
+                            }
+                            Capture($"day{day}{_orderTag}_morning_cauldron_wrongway");
+                            Log("Cauldron: the wrong-way notice came up after a second of it.");
+                        }
+                        for (float back = 0f; back < 0.6f; back += Time.deltaTime)
+                        {
+                            angle += dir * pot.StirBandCentre * pot.FullStirDegPerSec * Time.deltaTime * Mathf.Deg2Rad;
+                            _pointer.World = pot.ToWorld(new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * R * 0.6f);
+                            yield return null;
+                        }
+                        if (cauldronView.WrongWayShown) Fail("Cauldron: stirred the right way again and the wrong-way notice stayed up.");
+                    }
                 }
 
                 // With the clockwork stirrer, the second flask is left to the paddle:
                 // the spoon stays off the pot and the brew must still finish.
-                if (Crafting.PhysicsCauldronManager.AutoStir && order.queueIndex == 1)
+                if (Crafting.PhysicsCauldronManager.AutoStir)
                 {
+                    // Bought, the stirrer has the pot: no spoon to pick up at all.
+                    if (GameObject.Find("SpoonArt") != null) Fail("The clockwork stirrer is bought, but the hand spoon is still at the pot.");
                     _pointer.World = pot.ToWorld(new Vector2(R * 4f, R * 3f));
                     float waited = 0f;
                     bool shot = false;
@@ -937,6 +1433,8 @@ namespace AlchemistsArsenal.Core
                     angle += dir * power * pot.FullStirDegPerSec * Time.deltaTime * Mathf.Deg2Rad;
                     _pointer.World = pot.ToWorld(new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * R * 0.6f);
                     elapsed += Time.deltaTime;
+                    if (cauldronView != null && cauldronView.WrongWayShown && pot.StirringCorrectly)
+                        Fail("Cauldron: the wrong-way notice is up while the stir is right.");
                     if (!captured && pot.BrewProgress01 > 0.4f)
                     {
                         captured = true;
@@ -953,7 +1451,9 @@ namespace AlchemistsArsenal.Core
             {
                 var bench = Crafting.BottlingBench.Instance;
                 if (bench == null || order == null) { Fail("No Bottling bench."); yield break; }
-                foreach (var step in WaitUntil(() => bench.Working == order && bench.Current == Crafting.BottlingBench.Step.Pour,
+                // The doser fills the flask on its own, so it may be poured before we get here.
+                foreach (var step in WaitUntil(() => bench.Working == order
+                                                     && (bench.Current == Crafting.BottlingBench.Step.Pour || Crafting.BottlingBench.Funnel),
                              8f, $"the bottling bench taking up {order.heroName}'s brew"))
                     yield return step;
                 if (_errorCount > 0) yield break;
@@ -965,15 +1465,41 @@ namespace AlchemistsArsenal.Core
                     Capture("day1_spotlight_pour");
                 }
 
-                bench.PourHeld = true;
                 float t = 0f;
                 bool captured = false;
+                if (Crafting.BottlingBench.Funnel)
+                {
+                    // The auto doser measures the brew in: no ladle, nothing to hold.
+                    if (GameObject.Find("Ladle") != null) Fail("The auto doser is bought, but the hand ladle is still on the bench.");
+                    while (bench.Current == Crafting.BottlingBench.Step.Pour && t < 12f)
+                    {
+                        t += Time.deltaTime;
+                        if (!captured && bench.Fill01 > 0.35f)
+                        {
+                            captured = true;
+                            Capture($"day{day}{_orderTag}_morning_bottling_pour");
+                            // The window and the drops are the potion's own colour, not a fixed blue.
+                            Color want = PixelArt.Element(order.element);
+                            if (!SameColour(bench.DoserLevelColor, want))
+                                Fail($"Bottling: the doser's window shows {bench.DoserLevelColor}, not the {order.element} potion's {want}.");
+                            if (!SameColour(bench.StreamColor, want))
+                                Fail($"Bottling: the doser's drops are {bench.StreamColor}, not the {order.element} potion's {want}.");
+                        }
+                        yield return null;
+                    }
+                    if (bench.Current == Crafting.BottlingBench.Step.Pour)
+                    { Fail($"Bottling: the doser never finished the pour in 12 s ({bench.Fill01:P0}) - no action possible, the player is stuck."); yield break; }
+                    if (bench.Fill01 < Crafting.BottlingBench.TargetLow || bench.Fill01 > Crafting.BottlingBench.TargetHigh)
+                        Fail($"Bottling: the doser filled the flask to {bench.Fill01:P0}, outside the gold lines.");
+                    Log($"Bottling: the doser measured it to {bench.Fill01:P0} by itself.");
+                }
+                bench.PourHeld = !Crafting.BottlingBench.Funnel;
                 // Let go a little early: what is already in the air still lands. One
                 // flask on day 3 is poured until it brims over instead: a brimful flask
                 // used to keep its pour open for ever and lock the send.
                 bool brim = day == 3 && _orderTag == "_o3";
                 float stopAt = brim ? 1.05f : 0.72f;
-                while (bench.Fill01 < stopAt && t < (brim ? 9f : 12f))
+                while (bench.PourHeld && bench.Fill01 < stopAt && t < (brim ? 9f : 12f))
                 {
                     t += Time.deltaTime;
                     if (!captured && bench.Fill01 > 0.35f) { captured = true; Capture($"day{day}{_orderTag}_morning_bottling_pour"); }
@@ -981,13 +1507,15 @@ namespace AlchemistsArsenal.Core
                 }
                 bench.PourHeld = false;
                 if (brim) Capture($"day{day}{_orderTag}_morning_bottling_brimful");
-                if (!brim && bench.Fill01 < 0.72f) Fail($"Pouring for 12 s only filled the flask to {bench.Fill01:P0}.");
+                if (!brim && bench.Fill01 < 0.72f && !Crafting.BottlingBench.Funnel) Fail($"Pouring for 12 s only filled the flask to {bench.Fill01:P0}.");
                 t = 0f;
                 while (bench.Current == Crafting.BottlingBench.Step.Pour && t < 8f) { t += Time.deltaTime; yield return null; }
                 if (brim && bench.Current != Crafting.BottlingBench.Step.Pour)
                     Log($"Bottling: a brimful flask ({bench.Fill01:P0}) was still scored and moved on.");
                 if (bench.Current == Crafting.BottlingBench.Step.Pour) { Fail("The pour was never scored (droplets never settled)."); yield break; }
                 Log($"Bottling: poured to {bench.Fill01:P0} ({bench.Spilled} spilled), brew drawn up to row {bench.LiquidLevelRow}");
+                int pouredRow = bench.LiquidLevelRow;
+                float pouredFill = bench.Fill01;
 
                 // What is in the flask has to be visible in it: the glass draws the brew
                 // as a level, and a flask poured to the line is most of the way up the
@@ -1046,6 +1574,20 @@ namespace AlchemistsArsenal.Core
                 else bench.ApplyLabel(order.element);
                 if (bench.Current != Crafting.BottlingBench.Step.Done) Fail($"Bottling ended at step {bench.Current}, not Done.");
                 Log($"Bottling: sealed and labelled, quality {order.qualityScore}");
+
+                // The sealed flask slides off the bench: photograph it on the way.
+                float slideWait = 0f;
+                while (bench.SlideProgress01 < 0.7f && slideWait < 6f) { slideWait += Time.unscaledDeltaTime; yield return null; }
+                if (bench.SlideProgress01 < 0.7f) Fail("Bottling: the sealed flask never slid off the bench.");
+                else
+                {
+                    Capture($"day{day}{_orderTag}_morning_bottling_slide");
+                    // The brew goes with the glass: still the level it was poured to, never empty.
+                    if (bench.LiquidLevelRow != pouredRow || bench.LiquidLevelRow >= Art.ShopArt.FlaskH)
+                        Fail($"Bottling: the flask sliding away is drawn to row {bench.LiquidLevelRow} (poured to {pouredRow}, empty is {Art.ShopArt.FlaskH}).");
+                    if (!Mathf.Approximately(bench.Fill01, pouredFill))
+                        Fail($"Bottling: the sealed flask's fill changed from {pouredFill:P0} to {bench.Fill01:P0} on its way out.");
+                }
             }
 
             private void SwitchMorningTab(object morningScreen, string stationTabName)
@@ -1101,8 +1643,18 @@ namespace AlchemistsArsenal.Core
                 string lastTicker = null;
                 int throwLines = 0;
 
+                float bossSeenAt = -1f;
+                bool bossShot = false;
                 while (world.Expedition.Phase != ExpeditionPhase.Won && world.Expedition.Phase != ExpeditionPhase.Lost)
                 {
+                    // The guardian at the end of the waves, once it has come out of the ground.
+                    if (world.Expedition.Phase == ExpeditionPhase.BossFight && world.Expedition.BossInstance != null)
+                    {
+                        if (bossSeenAt < 0f && SaveSystem.Instance.State.day < BiomeLibrary.FirstGuardianDay)
+                            Fail($"Day {SaveSystem.Instance.State.day}: a guardian came out ({world.Expedition.BossInstance.name}); day 1 has none.");
+                        if (bossSeenAt < 0f) bossSeenAt = Time.time;
+                        if (!bossShot && Time.time - bossSeenAt > 2.2f) { bossShot = true; Capture($"{namePrefix}_boss"); Capture($"{namePrefix}_hud_damage"); }
+                    }
                     string line = ticker != null ? ticker.text : null;
                     if (!string.IsNullOrEmpty(line) && line != lastTicker)
                     {
@@ -1194,6 +1746,25 @@ namespace AlchemistsArsenal.Core
                     Log($"First afternoon frame: banner \"{banner.text}\", no shop drawing, arena camera is main.");
             }
 
+            /// <summary>Each party card's damage total is that fighter's share: together they are every bomb's damage.</summary>
+            private void CheckFighterDamage(int day)
+            {
+                var hud = HudScreen() as ExpeditionHudScreen;
+                var world = GameLoopManager.Instance.CurrentExpedition;
+                if (hud == null || world == null || world.Telemetry == null) return;
+                int cards = 0, best = -1, bestDmg = -1;
+                for (int i = 0; i < hud.CardCount; i++)
+                {
+                    cards += hud.CardDamage(i);
+                    if (hud.CardDamage(i) > bestDmg) { bestDmg = hud.CardDamage(i); best = i; }
+                }
+                int bombs = 0;
+                foreach (var b in world.Telemetry.Report.bombs) bombs += b.totalDamage;
+                if (cards != bombs) Fail($"Day {day}: the party cards credit {cards} damage, the bombs did {bombs}.");
+                else if (bombs > 0 && bestDmg <= 0) Fail($"Day {day}: no party card shows any damage.");
+                else Log($"Day {day}: per-fighter damage on the cards adds up to {cards} (most: card {best + 1}, {bestDmg}).");
+            }
+
             private static object HudScreen() =>
                 UIManager.Instance != null ? UIManager.Instance.ScreenOf(ScreenId.ExpeditionHud) : null;
 
@@ -1261,6 +1832,188 @@ namespace AlchemistsArsenal.Core
             }
 
             /// <summary>Let wall-clock time pass (animations run on unscaled time).</summary>
+            private bool ContinueButtonLit()
+            {
+                object title = UIManager.Instance != null ? UIManager.Instance.ScreenOf(ScreenId.MainMenu) : null;
+                var field = title != null ? title.GetType().GetField("_continue", BindingFlags.NonPublic | BindingFlags.Instance) : null;
+                var button = field != null ? field.GetValue(title) as UnityEngine.UI.Button : null;
+                return button != null && button.interactable;
+            }
+
+            /// <summary>
+            /// The pause menu stops the morning dead: no clock, no physics, no music, no
+            /// bench moving, nothing charged; and closing it starts it all again. Then
+            /// MAIN MENU saves the run, the title lights CONTINUE, the slot screen shows
+            /// the slot, and Continue comes back to the same day.
+            /// </summary>
+            private IEnumerable CheckPauseAndTitleRoundTrip()
+            {
+                var morning = UIManager.Instance.ScreenOf(ScreenId.Morning) as MorningScreen;
+                if (morning == null || morning.Pause == null) { Fail("Pause: the morning has no pause menu."); yield break; }
+                var loop = GameLoopManager.Instance;
+                var prep = Crafting.PrepBench.Instance;
+
+                foreach (var f in Frames(10)) yield return f;
+                float clock = loop.MorningRemaining01;
+                Vector2 leaves = Vector2.zero;
+                if (prep != null) foreach (var l in prep.Leaves) if (l.Body != null) leaves += l.Body.position;
+                int charges = 0;
+                if (CraftingManager.Instance != null) foreach (var o in CraftingManager.Instance.Orders) charges += o.deductions.Count;
+
+                morning.Pause.Open();
+                foreach (var step in WaitRealtime(1.5f)) yield return step;
+                Capture("day1_pause_menu");
+                if (!Mathf.Approximately(Time.timeScale, 0f)) Fail($"Pause: time still runs at {Time.timeScale}x.");
+                if (!AudioListener.pause) Fail("Pause: the music and sounds keep playing.");
+                if (!Mathf.Approximately(loop.MorningRemaining01, clock))
+                    Fail($"Pause: the morning clock ran while paused ({clock:0.0000} -> {loop.MorningRemaining01:0.0000}).");
+                Vector2 leavesNow = Vector2.zero;
+                if (prep != null) foreach (var l in prep.Leaves) if (l.Body != null) leavesNow += l.Body.position;
+                if ((leavesNow - leaves).sqrMagnitude > 1e-8f) Fail("Pause: the leaves on the Prep bench moved while paused.");
+                int chargesNow = 0;
+                if (CraftingManager.Instance != null) foreach (var o in CraftingManager.Instance.Orders) chargesNow += o.deductions.Count;
+                if (chargesNow != charges) Fail("Pause: something was charged while paused.");
+
+                morning.Pause.Close();
+                if (Mathf.Approximately(Time.timeScale, 0f) || AudioListener.pause) Fail("Pause: closing it did not start the game again.");
+                foreach (var step in WaitRealtime(0.6f)) yield return step;
+                if (loop.MorningRemaining01 >= clock) Fail("Pause: after RESUME the morning clock does not run.");
+                else Log($"Pause: the clock held at {clock:0.000} for 1.5 s paused, then ran on ({loop.MorningRemaining01:0.000}).");
+
+                // Out to the title: the run is saved, and the same day comes back.
+                int day = SaveSystem.Instance.State.day;
+                int gold = SaveSystem.Instance.State.gold;
+                morning.Pause.Open();
+                morning.Pause.ToMainMenu();
+                foreach (var step in WaitForPhase(GamePhase.MainMenu, 5f)) yield return step;
+                if (Mathf.Approximately(Time.timeScale, 0f) || AudioListener.pause) Fail("Pause: going to the title left the game stopped.");
+                foreach (var step in Settle("main_menu_with_save")) yield return step;
+                RunState onDisk = SaveSystem.Instance.Peek(HarnessSlot);
+                if (onDisk == null || onDisk.day != day || onDisk.gold != gold || onDisk.contracts.Count != 0)
+                    Fail($"Pause: MAIN MENU did not save the run as it was (day {onDisk?.day}, gold {onDisk?.gold}, jobs {onDisk?.contracts.Count}).");
+                if (!ContinueButtonLit()) Fail("Title: CONTINUE stays dark with a save in a slot.");
+
+                SlotScreen.Open(newGame: false);
+                foreach (var step in Settle("slots_continue")) yield return step;
+                SlotScreen.Open(newGame: true);
+                foreach (var step in Settle("slots_new")) yield return step;
+
+                if (!loop.Continue(HarnessSlot)) { Fail("Continue could not load the harness slot."); yield break; }
+                foreach (var step in WaitForPhase(GamePhase.Morning, 15f)) yield return step;
+                if (SaveSystem.Instance.State.day != day) Fail($"Continue came back on day {SaveSystem.Instance.State.day}, not {day}.");
+                else Log($"Title round trip: saved from the pause menu, CONTINUE lit, back on day {day}.");
+            }
+
+            /// <summary>After the last road, the Evening has MENU beside SLEEP (and not before).</summary>
+            private IEnumerable CheckEveningMenu()
+            {
+                var evening = UIManager.Instance.ScreenOf(ScreenId.Evening) as EveningScreen;
+                RunState st = SaveSystem.Instance.State;
+                if (evening == null || st == null) yield break;
+                if (evening.MenuShown != EveningScreen.ShowsMenu(st)) Fail("Evening: MENU is up when it should not be (or missing when it should).");
+                int saved = st.bestGrades[BiomeLibrary.Count - 1];
+                st.bestGrades[BiomeLibrary.Count - 1] = Mathf.Max(1, saved);
+                CallPrivate(evening, "OnShow");   // Show() of the screen already up does not refresh it
+                foreach (var step in Settle("evening_after_last_road_menu")) yield return step;
+                if (!evening.MenuShown) Fail("Evening: the last road is cleared but there is no MENU beside SLEEP.");
+                st.bestGrades[BiomeLibrary.Count - 1] = saved;
+                CallPrivate(evening, "OnShow");
+                yield return null;
+            }
+
+            private readonly HashSet<string> _lessonShots = new HashSet<string>();
+
+            /// <summary>
+            /// Photograph a lesson's spotlight once, with the game held while it fades in
+            /// and closes on its target. With <paramref name="wait"/> a lesson that has not
+            /// been seen yet is waited for (a bench can be driven before the lesson starts).
+            /// </summary>
+            private IEnumerable ShowLesson(string id, bool wait)
+            {
+                if (_lessonShots.Contains(id)) yield break;
+                RunState st = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+                if (wait && st != null && !st.seenLessons.Contains(id))
+                {
+                    float until = Time.realtimeSinceStartup + 1.5f;
+                    while (TutorialManager.CurrentLessonId != id && Time.realtimeSinceStartup < until) yield return null;
+                }
+                if (TutorialManager.CurrentLessonId != id) yield break;
+                _lessonShots.Add(id);
+                CheckLessonCentred(id);
+                TimeControl.Handle hold = default;
+                if (TimeControl.Instance != null) hold = TimeControl.Instance.PushPause();
+                foreach (var step in WaitRealtime(1.4f)) yield return step;
+                if (TutorialManager.CurrentLessonId == id) Capture($"lesson_{id}");
+                hold.Dispose();
+            }
+
+            /// <summary>The first lesson is up; ten clicks on the dark outside its light leave it exactly where it was.</summary>
+            private IEnumerable CheckOutsideClicksDoNotAdvance()
+            {
+                RunState st = SaveSystem.Instance.State;
+                float until = Time.realtimeSinceStartup + 3f;
+                while (TutorialManager.CurrentLessonId != "job" && Time.realtimeSinceStartup < until) yield return null;
+                if (TutorialManager.CurrentLessonId != "job") { Fail("Tutorial: the day-1 'job' lesson never came up."); yield break; }
+                foreach (var f in Frames(30)) yield return f;   // let the dark close in
+                for (int i = 0; i < 10; i++) TutorialManager.Instance.Spot.ClickOutside();
+                yield return null;
+                if (TutorialManager.CurrentLessonId != "job" || st.seenLessons.Contains("job"))
+                    Fail($"Tutorial: ten clicks outside the light moved the lesson on (now {TutorialManager.CurrentLessonId ?? "none"}).");
+                else Log("Tutorial: ten clicks outside the light left the lesson as it was.");
+            }
+
+            /// <summary>
+            /// A lesson's spotlight is centred on what it points at: the target's centre is the
+            /// centre of the art you can see (found in the scene by name, not asked of the bench).
+            /// </summary>
+            private void CheckLessonCentred(string id)
+            {
+                Lesson l = TutorialScript.Lessons.Find(x => x.Id == id);
+                LessonTarget? t = l != null ? l.Where() : null;
+                if (!t.HasValue || !t.Value.IsWorld) return;
+                string root = id == "sack" ? "Sack" : id == "lid" ? "JarLid" : id == "scoop" || id == "turn" ? "SteepingJar" : id == "kiln" ? "RackSack0" : null;
+                if (root == null) return;
+                Bounds seen = default; bool any = false;
+                foreach (var go in UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None))
+                {
+                    if (go.name != root || !go.activeInHierarchy) continue;
+                    foreach (var r in go.GetComponentsInChildren<SpriteRenderer>())
+                        if (r.enabled && r.sprite != null) { seen = r.bounds; any = true; break; }   // the first sprite drawn there
+                    if (any) break;
+                }
+                if (!any) { Fail($"Lesson '{id}': nothing named {root} to centre on."); return; }
+                float off = Vector2.Distance(t.Value.World, seen.center);
+                if (off > 0.02f) Fail($"Lesson '{id}': the spotlight is {off:0.00} off the centre of the {root} it points at (at {t.Value.World}, art centre {(Vector2)seen.center}).");
+                else Log($"Lesson '{id}': the spotlight is on the centre of the {root} ({off:0.000} off).");
+            }
+
+            /// <summary>Every basket on the rack is fully on the bench's view (not under the rail or the dock) and none overlaps another.</summary>
+            private void CheckRackOnScreen(Crafting.KilnBench bench)
+            {
+                Camera cam = ShopWorld.Instance != null ? ShopWorld.Instance.WorldCamera : null;
+                if (cam == null) return;
+                var shown = new List<Bounds>();
+                for (int i = 0; i < RunState.MaxParty; i++)
+                {
+                    GameObject go = GameObject.Find("RackSack" + i);
+                    SpriteRenderer r = go != null ? go.GetComponentInChildren<SpriteRenderer>() : null;
+                    if (r != null && r.enabled) shown.Add(r.bounds);
+                }
+                for (int i = 0; i < shown.Count; i++)
+                {
+                    Vector3 lo = cam.WorldToViewportPoint(shown[i].min), hi = cam.WorldToViewportPoint(shown[i].max);
+                    // The world camera draws the bench's own area: its viewport is the bench, 0 to 1.
+                    if (lo.x < 0.02f || hi.x > 0.98f)
+                        Fail($"Kiln: basket {i + 1} of {shown.Count} on the rack is off the bench's view (viewport x {lo.x:0.00} to {hi.x:0.00}).");
+                    if (i > 0 && shown[i].min.x < shown[i - 1].max.x - 0.3f)
+                        Fail($"Kiln: baskets {i} and {i + 1} on the rack overlap.");
+                }
+                Log($"Kiln: {shown.Count} basket(s) on the rack, all on screen.");
+            }
+
+            private static bool SameColour(Color a, Color b) =>
+                Mathf.Abs(a.r - b.r) < 0.02f && Mathf.Abs(a.g - b.g) < 0.02f && Mathf.Abs(a.b - b.b) < 0.02f;
+
             private IEnumerable WaitRealtime(float seconds)
             {
                 float until = Time.realtimeSinceStartup + seconds;
@@ -1499,9 +2252,23 @@ namespace AlchemistsArsenal.Core
                 // Pure scoring checks - fake combatants, no arena, so they are safe
                 // to run here rather than with the expedition scenarios.
                 go.AddComponent<DebugTools.UtilityAiSimulationTest>();
+                go.AddComponent<DebugTools.BrewFlowSimulationTest>();
+                go.AddComponent<DebugTools.BenchUpgradeSimulationTest>();
+                go.AddComponent<DebugTools.SaveSlotSimulationTest>();
+                go.AddComponent<DebugTools.TutorialFocusSimulationTest>();
+                go.AddComponent<DebugTools.KilnRackSimulationTest>();
+                go.AddComponent<DebugTools.BenchFeelSimulationTest>();
+                go.AddComponent<DebugTools.CombatBossSimulationTest>();
+                go.AddComponent<DebugTools.ProgressionSimulationTest>();
                 yield return null;   // Start() runs on the next frame
                 yield return null;
                 Destroy(go);
+
+                // A full pestle lift must land faster than the top of the widest clean
+                // band, so the dial rises through the green rather than stopping in it.
+                float fullLift = Mathf.Sqrt(2f * Mathf.Abs(Physics2D.gravity.y) * Crafting.PrepBench.MaxLift);
+                float greenTop = Crafting.PrepBench.IdealStrike + Crafting.PrepBench.WidestBand;
+                if (fullLift <= greenTop) Fail($"A full pestle lift lands at {fullLift:0.00} m/s, inside the clean band (top {greenTop:0.00}).");
 
                 Log(_errorCount == 0
                     ? "Meta-layer simulation checks passed."
@@ -1575,6 +2342,34 @@ namespace AlchemistsArsenal.Core
                 var saved = WithRoadKit(BiomeLibrary.RoadTierNeeded[BiomeLibrary.Count - 1]);
                 foreach (var step in RunScenario(BiomeLibrary.Count - 1, 5, "boss_matriarch", capture: true)) yield return step;
                 RestoreUpgrades(saved);
+                foreach (var step in RunLostRoad()) yield return step;
+            }
+
+            /// <summary>
+            /// A road lost on purpose, under the real HUD: one fighter, no road kit, on the
+            /// Swamp (it needs three and the full kit). The slab must say DEFEAT and give two
+            /// or three tips that fit what happened.
+            /// </summary>
+            private IEnumerable RunLostRoad()
+            {
+                var ui = UIManager.Instance;
+                var hud = ui != null ? ui.ScreenOf(ScreenId.ExpeditionHud) as ExpeditionHudScreen : null;
+                if (hud == null) { Fail("Lost road: no HUD screen."); yield break; }
+                RunState st = SaveSystem.Instance.State;
+                var saved = new List<string>(st.ownedUpgrades);
+                foreach (var up in UpgradeCatalog.All) if (!up.IsBench) st.ownedUpgrades.Remove(up.Id);
+                ScreenId back = ui.Current;
+                ui.Show(ScreenId.ExpeditionHud);
+                const int swamp = 3;
+                foreach (var step in RunScenario(swamp, 5, "lost_road", capture: false, partySize: 1, hudWatch: hud)) yield return step;
+                if (_lastScenarioWon) Fail("Lost road: one bare fighter won the Swamp - the curve has moved.");
+                string tips = hud.TipsText;
+                int lines = string.IsNullOrEmpty(tips) ? 0 : tips.Split('\n').Length;
+                if (lines < 2 || lines > 3) Fail($"Lost road: the DEFEAT slab shows {lines} tips, expected 2 or 3 ('{tips}').");
+                else Log($"Lost road: DEFEAT with {lines} tips: {tips.Replace("\n", " | ")}");
+                ui.Show(back);
+                st.ownedUpgrades.Clear();
+                st.ownedUpgrades.AddRange(saved);
             }
 
             /// <summary>
@@ -1584,49 +2379,81 @@ namespace AlchemistsArsenal.Core
             /// </summary>
             private IEnumerable CaptureGuardianPortraits()
             {
+                // The Woodwose as it is met on each of its roads: the Woods, frozen in the Caverns, broken in the Swamp.
                 var guardians = new (string id, BossDefinition def)[]
                 {
-                    ("woodwose", DefaultExpeditionData.Woodwose()),
+                    ("woodwose", DefaultExpeditionData.Woodwose(0)),
+                    ("woodwose_t1", DefaultExpeditionData.Woodwose(1)),
+                    ("woodwose_t2", DefaultExpeditionData.Woodwose(2)),
                     ("matriarch", DefaultExpeditionData.Matriarch()),
                 };
-                const int w = 600, h = 800;
                 foreach (var (id, def) in guardians)
                 {
                     var root = new GameObject($"~Portrait_{id}");
                     root.transform.position = new Vector3(0f, 1000f, 0f);
-                    Vfx.BossVisual.Attach(root, def);
-                    var camGo = new GameObject("~PortraitCamera");
-                    var cam = camGo.AddComponent<Camera>();
-                    cam.orthographic = true;
-                    cam.orthographicSize = 3.8f;
-                    cam.transform.position = new Vector3(0f, 1001.6f, -10f);
-                    cam.clearFlags = CameraClearFlags.SolidColor;
-                    cam.backgroundColor = new Color(0.106f, 0.078f, 0.122f);
-                    cam.enabled = false;
+                    var visual = Vfx.BossVisual.Attach(root, def);
+                    Camera cam = PortraitCamera();
                     foreach (var f in Frames(90)) yield return f;   // settle into its idle pose
+                    RenderPortrait(cam, $"portrait_{id}");
 
-                    var rt = new RenderTexture(w, h, 24);
-                    var prev = RenderTexture.active;
-                    cam.targetTexture = rt;
-                    cam.Render();
-                    RenderTexture.active = rt;
-                    var tex = new Texture2D(w, h, TextureFormat.RGB24, false);
-                    tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
-                    tex.Apply();
-                    RenderTexture.active = prev;
-                    cam.targetTexture = null;
-
-                    string dir = Path.Combine(Directory.GetCurrentDirectory(), ScreensDir);
-                    Directory.CreateDirectory(dir);
-                    File.WriteAllBytes(Path.Combine(dir, $"portrait_{id}.png"), tex.EncodeToPNG());
-                    Log($"Screenshot: {ScreensDir}/portrait_{id}.png");
-                    Destroy(tex);
-                    rt.Release();
-                    Destroy(rt);
-                    Destroy(camGo);
+                    // Every attack the guardian has, once: the windup and the blow, each its own motion.
+                    var seen = new HashSet<Vfx.BossVisual.Motion>();
+                    foreach (BossPhaseData phase in def.Phases)
+                        foreach (BossAttackPattern pattern in phase.AttackPatterns)
+                        {
+                            var motion = Vfx.BossVisual.MotionOf(pattern.Shape, pattern.AreaRadius);
+                            if (id.Contains("_t") || !seen.Add(motion)) continue;   // the tiers move like the first
+                            visual.PreviewAttack(pattern, 0.8f);
+                            visual.PreviewHold = true;
+                            visual.PreviewAt(false, 0.95f);
+                            foreach (var f in Frames(2)) yield return f;
+                            RenderPortrait(cam, $"attack_{id}_{motion.ToString().ToLowerInvariant()}_windup");
+                            visual.PreviewAt(true, motion == Vfx.BossVisual.Motion.Spin ? 0.22f : 0.28f);   // the spin edge-on, mid-turn
+                            foreach (var f in Frames(2)) yield return f;
+                            RenderPortrait(cam, $"attack_{id}_{motion.ToString().ToLowerInvariant()}_release");
+                            visual.PreviewHold = false;
+                            foreach (var f in Frames(40)) yield return f;   // back to idle before the next
+                        }
+                    Log($"Portraits: {id} with {seen.Count} attack motion(s): {string.Join(", ", seen)}.");
+                    Destroy(cam.gameObject);
                     Destroy(root);
                     yield return null;
                 }
+            }
+
+            private static Camera PortraitCamera()
+            {
+                var cam = new GameObject("~PortraitCamera").AddComponent<Camera>();
+                cam.orthographic = true;
+                cam.orthographicSize = 3.8f;
+                cam.transform.position = new Vector3(0f, 1001.6f, -10f);
+                cam.clearFlags = CameraClearFlags.SolidColor;
+                cam.backgroundColor = new Color(0.106f, 0.078f, 0.122f);
+                cam.enabled = false;
+                return cam;
+            }
+
+            private void RenderPortrait(Camera cam, string name)
+            {
+                const int w = 600, h = 800;
+                var rt = new RenderTexture(w, h, 24);
+                var prev = RenderTexture.active;
+                cam.targetTexture = rt;
+                cam.Render();
+                RenderTexture.active = rt;
+                var tex = new Texture2D(w, h, TextureFormat.RGB24, false);
+                tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+                tex.Apply();
+                RenderTexture.active = prev;
+                cam.targetTexture = null;
+
+                string dir = Path.Combine(Directory.GetCurrentDirectory(), ScreensDir);
+                Directory.CreateDirectory(dir);
+                File.WriteAllBytes(Path.Combine(dir, $"{name}.png"), tex.EncodeToPNG());
+                Log($"Screenshot: {ScreensDir}/{name}.png");
+                Destroy(tex);
+                rt.Release();
+                Destroy(rt);
             }
 
             /// <summary>Lend the run the road upgrades up to <paramref name="tier"/>; returns what it owned before.</summary>
@@ -1692,7 +2519,7 @@ namespace AlchemistsArsenal.Core
                 var savedUps = st.ownedUpgrades;
 
                 var four = new List<HeroRecord> { HeroCatalog.NewHire("Rookie", 0) };
-                while (four.Count < 4) four.Add(HeroCatalog.CandidateFor(2, four));
+                while (four.Count < RunState.MaxParty) four.Add(HeroCatalog.CandidateFor(2, four));
                 foreach (HeroRecord h in four) { h.deployed = true; h.level = 1; h.restUntilDay = 0; }
                 st.roster = four;
 
@@ -1704,7 +2531,6 @@ namespace AlchemistsArsenal.Core
                     ("x1_bare", 1, none), ("x1_road1", 1, road1), ("x1_road2", 1, road2),
                     ("x2_bare", 2, none), ("x2_road1", 2, road1),
                     ("x3_bare", 3, none), ("x3_road1", 3, road1), ("x3_road2", 3, road2),
-                    ("x4_bare", 4, none), ("x4_road2", 4, road2),
                 };
                 var won = new Dictionary<string, int>();
                 var table = new StringBuilder();
@@ -1727,6 +2553,46 @@ namespace AlchemistsArsenal.Core
                         table.Append($" {cell.tag}={wins}/{seeds.Length}");
                     }
                 }
+                // Day 1 is the Woods without their guardian (BiomeLibrary.GuardianToday): a first-time
+                // player, solo, nothing bought, must win it even with a weak flask.
+                var firstDay = new StringBuilder();
+                foreach (int q in new[] { 70, 55, 40 })
+                {
+                    int w = 0;
+                    foreach (int seed in seeds)
+                    {
+                        st.ownedUpgrades = new List<string>(none);
+                        foreach (var step in RunScenario(0, seed, $"day1_q{q}_s{seed}", capture: false, quality: q, partySize: 1,
+                                     boss: BiomeLibrary.GuardianToday(1)))
+                            yield return step;
+                        if (_lastScenarioWon) w++;
+                    }
+                    firstDay.Append($" quality {q}: {w}/{seeds.Length}");
+                    // Reported, not failed: the fix would be a stat change, which is the user's call.
+                    if (w < seeds.Length) Log($"DAY-1 CHECK: the Woods (no guardian, solo, nothing bought) lost with a quality-{q} flask: {w}/{seeds.Length} wins.");
+                }
+                Log($"Day 1 (the Woods, no guardian, solo, nothing bought), wins by flask quality:{firstDay}");
+
+                // The same cells with mixed brews, as a real party carries them (book, Broad, Far):
+                // the tight Caverns cell and every Swamp cell. A mixed party must win wherever the plain one does.
+                var mixed = new StringBuilder();
+                foreach (var (biome, cell) in MixedCells(cells))
+                {
+                    int wins = 0;
+                    foreach (int seed in seeds)
+                    {
+                        st.ownedUpgrades = new List<string>(cell.ups);
+                        foreach (var step in RunScenario(biome, seed, $"mix_b{biome}_{cell.tag}_s{seed}", capture: false,
+                                     quality: 85, partySize: cell.party, mixedVariants: true))
+                            yield return step;
+                        if (_lastScenarioWon) wins++;
+                    }
+                    int plain = won.TryGetValue($"b{biome}_{cell.tag}", out int pw) ? pw : -1;
+                    mixed.Append($" b{biome}_{cell.tag}={wins}/{seeds.Length} (plain {plain}/{seeds.Length})");
+                    if (plain == seeds.Length && wins < seeds.Length)
+                        Fail($"Mixed brews: b{biome}_{cell.tag} won {wins}/{seeds.Length} with Broad/Far flasks, the plain party {plain}/{seeds.Length}.");
+                }
+                Log($"Mixed brews (book/Broad/Far), wins of {seeds.Length} seeds:{mixed}");
                 st.roster = savedRoster;
                 st.ownedUpgrades = savedUps;
                 Log($"Difficulty curve (Great flasks, wins of {seeds.Length} seeds):{table}");
@@ -1752,6 +2618,15 @@ namespace AlchemistsArsenal.Core
                 }
             }
 
+            /// <summary>The cells measured again with mixed brews: Caverns x2_road1 and every Swamp cell.</summary>
+            private static IEnumerable<(int biome, (string tag, int party, string[] ups) cell)> MixedCells((string tag, int party, string[] ups)[] cells)
+            {
+                foreach (var c in cells)
+                    if (c.tag == "x2_road1") yield return (2, c);
+                foreach (var c in cells)
+                    if (c.party > 1) yield return (3, c);   // a solo fighter has only the book's recipe
+            }
+
             /// <summary>Full suite only: every biome on five seeds, for win rates and HP margins.</summary>
             private IEnumerable RunBiomeSweep()
             {
@@ -1768,7 +2643,7 @@ namespace AlchemistsArsenal.Core
             /// seeds the monster spawner, so the fight is reproducible.
             /// </summary>
             private IEnumerable RunScenario(int biome, int seedDay, string label, bool capture, int quality = 85, int partySize = 0,
-                float snapAt = -1f)
+                float snapAt = -1f, ExpeditionHudScreen hudWatch = null, bool boss = true, bool mixedVariants = false)
             {
                 RunState st = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
                 if (st == null) { Fail($"Scenario {label}: no run state."); yield break; }
@@ -1778,8 +2653,9 @@ namespace AlchemistsArsenal.Core
                 st.replayBiomeIndex = biome;
 
                 var canvases = new List<Canvas>();
-                foreach (var c in FindObjectsByType<Canvas>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
-                    if (c.enabled) { c.enabled = false; canvases.Add(c); }
+                if (hudWatch == null)
+                    foreach (var c in FindObjectsByType<Canvas>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                        if (c.enabled) { c.enabled = false; canvases.Add(c); }
 
                 BiomeData data = BiomeLibrary.Get(biome);
                 ElementType element = ContractBoard.Counter(ContractBoard.Dominant(ContractBoard.ThreatCounts(data)));
@@ -1787,11 +2663,23 @@ namespace AlchemistsArsenal.Core
                 order.AdjustQuality(quality - order.qualityScore, "HeadlessPlaytest", $"scenario flask ({CombatQuality.GradeFor(quality)})");
                 var party = st.DeployedParty();
                 if (partySize > 0 && party.Count > partySize) party = party.GetRange(0, partySize);
-                var loadouts = LoadoutBuilder.BuildAll(new[] { order }, party);
+                var orders = new List<ActiveOrder> { order };
+                // As the Counter hands them out: fighter i brews take i (the book's, Broad, Far) of the same recipe.
+                for (int i = 1; mixedVariants && i < party.Count; i++)
+                {
+                    var o = new ActiveOrder($"scenario{i}", $"{element} Flask", element)
+                    {
+                        Mixture = new BrewMixture(element, Complexity.RecipeTier(biome), RecipeBook.VariantFor(element, orders.ConvertAll(x => x.element))),
+                    };
+                    o.AdjustQuality(quality - o.qualityScore, "HeadlessPlaytest", $"scenario flask ({CombatQuality.GradeFor(quality)})");
+                    orders.Add(o);
+                }
+                var loadouts = LoadoutBuilder.BuildAll(orders, party);
 
                 var root = new GameObject($"~Scenario_{label}");
                 var world = root.AddComponent<ExpeditionWorld>();
-                world.Build(data, loadouts, party, enableBoss: true);
+                world.Build(data, loadouts, party, enableBoss: boss);
+                if (hudWatch != null) hudWatch.Watch(world, biome);
 
                 float start = Time.time, nextCapture = 0f;
                 const float Timeout = 240f;
@@ -1835,6 +2723,19 @@ namespace AlchemistsArsenal.Core
                         $"{watch.HeroHits} hero hits, phases {watch.PhasePath}.");
                 _fingerprint.Add($"{label}={summary}");
                 _lastScenarioWon = world.Expedition.Phase == ExpeditionPhase.Won;
+                if (hudWatch != null)
+                {
+                    // DEFEAT waits for the party to leave the field (at most ResultWaitCap); then it must be empty.
+                    float waited = 0f;
+                    while (!world.Expedition.ResultShown && waited < ExpeditionManager.ResultWaitCap + 1f) { waited += Time.deltaTime; yield return null; }
+                    if (!world.Expedition.ResultShown) Fail("Lost road: the DEFEAT slab never came up.");
+                    foreach (CombatantBody b in world.Party)
+                        if (b != null && b.gameObject.activeInHierarchy && waited < ExpeditionManager.ResultWaitCap)
+                            Fail($"Lost road: DEFEAT came up while {b.name} was still on the field.");
+                    Log($"Lost road: DEFEAT shown {waited:0.0} s after the loss, with the field empty.");
+                    foreach (var f in Frames(20)) yield return f;   // the slab and its tips settle in
+                    Capture("defeat_tips");
+                }
                 if (capture && world.Expedition.Phase == ExpeditionPhase.Won && watch.Telegraphs > 0)
                 {
                     // Let the guardian come apart on camera before the arena is torn down.
@@ -2025,7 +2926,7 @@ namespace AlchemistsArsenal.Core
                 if (s == null) { Fail("Ending: no run state."); yield break; }
 
                 int peak = BiomeLibrary.Count - 1;
-                var report = new ExpeditionReport { won = true, bossDefeated = true };
+                var report = new ExpeditionReport { won = true, bossDefeated = true, bossId = "matriarch" };
                 Story.DiaryManager.EvaluateAfterExpedition(s, peak, report);
                 Story.StoryDirector.OnDayResolved(s, peak, report);
                 SaveSystem.Instance.MarkDirty();
@@ -2104,7 +3005,7 @@ namespace AlchemistsArsenal.Core
                 Application.logMessageReceived -= OnUnityLog;
                 PhysicsKit.Pointer.Scripted = null;
                 Time.captureDeltaTime = 0f;
-                SaveSystem.SlotOverride = -1;
+                SaveSystem.DirectoryOverride = null;
                 SettingsService.ExpeditionSpeedOverride = null;
                 CutsceneScreen.AutoAdvance = false;
                 StoryStage.SkipIntro = false;

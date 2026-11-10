@@ -56,6 +56,9 @@ namespace AlchemistsArsenal.Core
         /// <summary>The heroes going out today, resolved at BeginAfternoon.</summary>
         public IReadOnlyList<HeroRecord> PendingParty { get; private set; }
 
+        /// <summary>The flask each of <see cref="PendingParty"/> carries, in the same order (null: nothing brewed for them).</summary>
+        public IReadOnlyList<ActiveOrder> PendingCarried { get; private set; }
+
         /// <summary>The lead hero's loadout. Kept for the Handoff screen and tests.</summary>
         public AdventurerLoadout PendingLoadout =>
             PendingLoadouts != null && PendingLoadouts.Count > 0 ? PendingLoadouts[0] : null;
@@ -86,7 +89,7 @@ namespace AlchemistsArsenal.Core
 
         private void Update()
         {
-            if (Phase != GamePhase.Morning) return;
+            if (Phase != GamePhase.Morning || TimeControl.Paused) return;   // paused, the clock stands still
             // While a lesson is up the clock runs slow (BudgetRateMultiplier, set by the
             // TutorialManager), never frozen: the morning still visibly moves.
 
@@ -115,17 +118,17 @@ namespace AlchemistsArsenal.Core
             SetPhase(GamePhase.MainMenu);
         }
 
-        public void StartNewGame()
+        public void StartNewGame(int slot)
         {
-            SaveSystem.Instance.NewGame(0);
+            SaveSystem.Instance.NewGame(slot);
             DiaryManager.UnlockOpening(SaveSystem.Instance.State);
             SaveSystem.Instance.MarkDirty();
             BeginDay();
         }
 
-        public bool Continue()
+        public bool Continue(int slot)
         {
-            if (!SaveSystem.Instance.Load(0)) return false;
+            if (!SaveSystem.Instance.Load(slot)) return false;
 
             // No special case: BeginEvening already advanced the day when it banked
             // the reward (reviewer P13), so a save is always on a day that hasn't
@@ -134,8 +137,25 @@ namespace AlchemistsArsenal.Core
             return true;
         }
 
+        /// <summary>
+        /// Save the run and go back to the title (the pause menu, and the Evening after
+        /// the last road). The day has not been played yet as far as the save knows:
+        /// Continue starts it again from its morning.
+        /// </summary>
+        public void SaveAndGoToMainMenu()
+        {
+            RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+            if (s != null && (Phase == GamePhase.DayIntro || Phase == GamePhase.Morning)) s.contracts?.Clear();
+            if (s != null) { SaveSystem.Instance.MarkDirty(); SaveSystem.Instance.Save(); }
+            GoToMainMenu();
+        }
+
         public void BeginDay()
         {
+            // A day always starts with no job taken: a save from the middle of a morning
+            // (back to the menu, a quit) starts that morning again cleanly.
+            RunState st = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+            st?.contracts?.Clear();
             // Fresh shop every day — no stale brew / herb positions (reviewer P9).
             DestroyWorld(ref _shopRoot);
             BuildShopWorld();
@@ -155,6 +175,7 @@ namespace AlchemistsArsenal.Core
                              + Data.Complexity.ExtraMorningSeconds(Data.Complexity.Level(st));
             _morningRemaining = _morningBudget;
             MorningRemaining01 = 1f;
+            if (st != null) st.morningLeft01 = 0f;
             SetPhase(GamePhase.Morning);
         }
 
@@ -190,6 +211,16 @@ namespace AlchemistsArsenal.Core
         public void BeginHandoff()
         {
             if (Phase != GamePhase.Morning) { Debug.LogWarning($"[Loop] BeginHandoff from {Phase} ignored"); return; }
+            // Quick hands: every flask handed over with the clock still running is worth a bonus at Evening.
+            RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
+            if (s != null)
+            {
+                CraftingManager cm = CraftingManager.Instance;
+                bool allDone = cm != null && cm.AllDone
+                               && s.DeployedParty().TrueForAll(h => cm.OrderFor(h.id) != null);   // nobody sent out on dregs
+                s.morningLeft01 = allDone && _morningRemaining > 0f ? MorningRemaining01 : 0f;
+                SaveSystem.Instance.MarkDirty();
+            }
             SetPhase(GamePhase.Handoff);
         }
 
@@ -198,23 +229,24 @@ namespace AlchemistsArsenal.Core
             if (Phase != GamePhase.Handoff) { Debug.LogWarning($"[Loop] BeginAfternoon from {Phase} ignored"); return; }
             if (_expeditionRoot != null) return; // re-entrancy guard (reviewer P6)
 
-            // Once, here — finished or not. Each fighter carries their OWN order's
-            // flasks: the one they asked for at the Counter, at whatever grade it
-            // reached. A fighter nobody served goes out with the dregs (a null order
-            // is a Poor "Raw Sludge"). Each gets their own loadout instance, because
-            // the AI keeps a private ammo pool per controller.
+            // Once, here — finished or not. Each fighter carries their OWN flask: the
+            // one handed to them at the Delivery bench, or, if the clock ran out first,
+            // their order as far as it got. A fighter nobody served goes out with the
+            // dregs (a null order is a Poor "Raw Sludge"). Each gets their own loadout
+            // instance, because the AI keeps a private ammo pool per controller.
             RunState party = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
             CraftingManager cm = CraftingManager.Instance;
             PendingParty = party != null ? party.DeployedParty() : null;
             var carried = new List<ActiveOrder>();
             if (PendingParty != null)
-                foreach (HeroRecord h in PendingParty) carried.Add(cm != null ? cm.OrderFor(h.id) : null);
+                foreach (HeroRecord h in PendingParty) carried.Add(cm != null ? cm.CarriedBy(h.id) : null);
             // An order with no fighter behind it (the bootstrap demo, the sims) is the lead's.
             if (cm != null && cm.Orders.Count > 0 && string.IsNullOrEmpty(cm.Orders[0].heroId))
             {
                 if (carried.Count == 0) carried.Add(cm.Orders[0]);
                 else if (carried[0] == null) carried[0] = cm.Orders[0];
             }
+            PendingCarried = carried;
             PendingLoadouts = LoadoutBuilder.BuildAll(carried, PendingParty);
 
             BiomeData biome = BiomeLibrary.Get(TargetBiomeIndex);
@@ -228,14 +260,10 @@ namespace AlchemistsArsenal.Core
             _expeditionWorld = _expeditionRoot.AddComponent<ExpeditionWorld>();
             _expeditionWorld.OnFinished += HandleExpeditionFinished;
 
-            // Day 1 is the teaching run — no boss, just the waves. And the Woods'
-            // guardian waits until the Woods have been cleared once: a player who
-            // lost the teaching run walks the same road again on day 2, and must
-            // not find a guardian at the end of it on the retry.
-            RunState run = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
-            bool enableBoss = run == null
-                || (run.day > 1 && !(TargetBiomeIndex == 0 && run.bestGrades != null && run.bestGrades[0] == 0));
-            _expeditionWorld.Build(biome, PendingLoadouts, PendingParty, enableBoss: enableBoss);
+            // Every road that has a guardian ends on it, the first fight included: the
+            // Woods' Elder Woodwose is met on day 1, and again each time it comes back.
+            _expeditionWorld.Build(biome, PendingLoadouts, PendingParty,
+                enableBoss: BiomeLibrary.GuardianToday(party != null ? party.day : 1));
 
             SetPhase(GamePhase.Afternoon);
         }
@@ -244,6 +272,7 @@ namespace AlchemistsArsenal.Core
         // stashes the report here.
         private void HandleExpeditionFinished(ExpeditionReport report)
         {
+            if (report != null) report.roadIndex = TargetBiomeIndex;
             LatestReport = report;
         }
 
@@ -324,6 +353,7 @@ namespace AlchemistsArsenal.Core
             CraftingManager cm = CraftingManager.Instance;
             r.contracts.Clear();
             int paidTotal = 0;
+            var fees = new List<int>();
             bool anyTip = false, allMet = true, anyJob = false;
             PotionGrade worst = PotionGrade.Perfect;
             ContractRecord first = null;
@@ -341,7 +371,7 @@ namespace AlchemistsArsenal.Core
 
                     int fee = 0; bool tip = false, met = false;
                     if (r.won) (fee, tip, met) = Economy.ContractPayout(g, job, s.IsReplayDay);
-                    paidTotal += fee;
+                    fees.Add(fee);
                     anyTip |= tip;
                     allMet &= met;
                     r.contracts.Add(new ExpeditionReport.ContractLine
@@ -354,6 +384,21 @@ namespace AlchemistsArsenal.Core
                     });
                 }
 
+            if (anyJob)
+            {
+                // One purse for the party; each line shows its part of it, so the report adds up.
+                paidTotal = Economy.SharedPurse(fees);
+                int sum = 0;
+                foreach (int f in fees) sum += f;
+                int given = 0;
+                for (int i = 0; i < r.contracts.Count; i++)
+                {
+                    int share = i == r.contracts.Count - 1 ? paidTotal - given
+                        : sum > 0 ? Mathf.RoundToInt(paidTotal * (fees[i] / (float)sum)) : 0;
+                    r.contracts[i].paid = share;
+                    given += share;
+                }
+            }
             if (!anyJob)
             {
                 if (r.won) (paidTotal, anyTip, _) = Economy.ContractPayout(r.craftedGrade, null, s.IsReplayDay);
@@ -367,6 +412,8 @@ namespace AlchemistsArsenal.Core
             r.contractBonus = first != null ? first.bonus : 0;
             r.contractRequired = first != null ? first.RequiredGrade : PotionGrade.Poor;
             r.goldPaidByGrade = paidTotal;
+            r.speedLeft01 = s.morningLeft01;
+            r.speedBonus = r.won ? Economy.SpeedBonusGold(paidTotal, s.morningLeft01) : 0;
             r.perfectTip = anyTip;
             r.contractMet = r.won && allMet;
         }

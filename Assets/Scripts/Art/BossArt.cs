@@ -41,6 +41,9 @@ namespace AlchemistsArsenal.Art
         private static readonly Color32[] Limb = { H(0x2c2436), H(0x4a3f58), H(0x6b5d7b), H(0x8e80a0) };
         private static readonly Color32[] Spire = { H(0x16111c), H(0x2a2233), H(0x3f354c), H(0x594b69) };
         private static readonly Color32 White = new Color32(255, 255, 255, 255);
+        private static readonly Color32[] Ice = { H(0x3d6f8f), H(0x6fa8c8), H(0xa8d8ec), H(0xe6f7ff) };
+        private static readonly Color32[] Bog = { H(0x1c2312), H(0x2e3a1a), H(0x46542a), H(0x60703a) };
+        private static readonly Color32[] Slime = { H(0x5f7a1c), H(0x8fb02e), H(0xb6d84a), H(0xe4f79a) };
 
         public static readonly Color32 Amber = H(0xf6c04a), Ember = H(0xe2683a), HexPink = H(0xc451a8), HexHot = H(0xf49ae6);
         public static readonly Color32 Blood = H(0xff4a3a);
@@ -85,9 +88,18 @@ namespace AlchemistsArsenal.Art
             return S(Bark, Mathf.Clamp01(light * (streak ? 0.55f : 1f) + n), x, y);
         }
 
-        public static Sprite WoodwoseBody() => Part("w_body", WBodyW, WBodyH, new Vector2(0.5f, 2f / WBodyH), c =>
+        public static Sprite WoodwoseBody() => Part("w_body", WBodyW, WBodyH, new Vector2(0.5f, 2f / WBodyH), c => DrawWoodwoseBody(c, false));
+
+        /// <summary>The broken one's body: a chunk torn out of the right shoulder, fresh wood splintered round the wound.</summary>
+        public static Sprite WoodwoseBodyBroken() => Part("w_body_broken", WBodyW, WBodyH, new Vector2(0.5f, 2f / WBodyH), c => DrawWoodwoseBody(c, true));
+
+        /// <summary>The bite out of the broken body's right shoulder, ragged along its edge.</summary>
+        private static bool WChunk(int x, int y) => E(x, y, 41, 5, 7.5f + N(x, 1, 3) * 1.5f, 6.5f + N(1, y, 4) * 1.5f);
+
+        private static void DrawWoodwoseBody(PixelCanvas c, bool broken)
         {
-            c.Fill(WBody, (x, y) => BarkAt(x, y, PixelCanvas.SphereLight(x, y, 22, 20, 21, 24, 0.14f)));
+            Func<int, int, bool> body = broken ? (x, y) => WBody(x, y) && !WChunk(x, y) : (Func<int, int, bool>)WBody;
+            c.Fill(body, (x, y) => BarkAt(x, y, PixelCanvas.SphereLight(x, y, 22, 20, 21, 24, 0.14f)));
 
             // The heart-knot: a hollow with a dark rim (its glow is a separate sprite).
             c.Fill((x, y) => E(x, y, 24, 22, 5.6f, 6.6f) && !WHeart(x, y), (x, y) => Bark[0]);
@@ -99,7 +111,7 @@ namespace AlchemistsArsenal.Art
             foreach (var (x0, y0, x1, y1) in Splits) c.Line(x0, y0, x1, y1, 1f, Bark[0]);
 
             // A mane of moss over the shoulders, ragged along its lower edge, with strands.
-            c.Fill((x, y) => WBody(x, y) && y < 9 + (int)(N(x / 2, 3, 5) * 6f),
+            c.Fill((x, y) => body(x, y) && y < 9 + (int)(N(x / 2, 3, 5) * 6f),
                 (x, y) => S(Moss, PixelCanvas.SphereLight(x, y, 20, 6, 22, 9, 0.2f) + (N(x, y, 9) - 0.5f) * 0.2f, x, y));
             foreach (int sx in new[] { 8, 13, 31, 37, 41 })
             {
@@ -108,7 +120,18 @@ namespace AlchemistsArsenal.Art
             }
             // Fungus shelves on the flank.
             c.Fill((x, y) => E(x, y, 38, 33, 3.2f, 1.4f) || E(x, y, 40, 30, 2.4f, 1.1f), (x, y) => y < 32 ? H(0xd8c49a) : H(0xa08a66));
-        });
+
+            if (!broken) return;
+            // A gouge torn into the chest beside the heart: a hollow, ringed with pale splinters.
+            c.Fill((x, y) => E(x, y, 34, 31, 5f, 6f) && !E(x, y, 34, 31, 3.6f, 4.6f), (x, y) => N(x, y, 39) > 0.4f ? H(0xc9a77a) : Bark[1]);
+            c.Fill((x, y) => E(x, y, 34, 31, 3.6f, 4.6f), (x, y) => y < 29 ? Bark[0] : Hollow);
+            // The wound: pale splintered heartwood just inside the torn edge, a shadow under it.
+            c.Fill((x, y) => body(x, y) && (WChunk(x - 1, y) || WChunk(x, y - 1) || WChunk(x - 1, y - 1)),
+                (x, y) => (x + y) % 3 == 0 ? Bark[1] : H(0xc9a77a));
+            c.Fill((x, y) => body(x, y) && !WChunk(x - 1, y - 2) && WChunk(x - 2, y - 3), (x, y) => Bark[0]);
+            foreach (var (sx, sy) in new[] { (33, 4), (35, 10), (38, 12) })   // splinters standing off the edge
+                c.Line(sx, sy, sx + 2, sy - 3, 1f, H(0xc9a77a));
+        }
 
         /// <summary>Enraged: the splits in its bark burn like a banked fire.</summary>
         public static Sprite WoodwoseCracks() => Part("w_cracks", WBodyW, WBodyH, new Vector2(0.5f, 2f / WBodyH), c =>
@@ -116,6 +139,154 @@ namespace AlchemistsArsenal.Art
             foreach (var (x0, y0, x1, y1) in Burning)
                 c.Line(x0, y0, x1, y1, 1f, (x, y) => (x + y) % 3 == 0 ? Amber : Ember);
         }, outline: false, silhouette: false);
+
+        /// <summary>
+        /// The Broken Woodwose's splits: the same cracks torn wide open, and lit from
+        /// inside with the Coven's violet instead of the Woods' amber.
+        /// </summary>
+        public static Sprite WoodwoseCracksBroken() => Part("w_cracks_broken", WBodyW, WBodyH, new Vector2(0.5f, 2f / WBodyH), c =>
+        {
+            // Each split zig-zags through the bark: a near-black gash with a lit lip of torn wood.
+            foreach (var (x0, y0, x1, y1) in Burning)
+            {
+                var pts = new Vector2[5];
+                for (int i = 0; i < 5; i++)
+                {
+                    float t = i / 4f;
+                    float j = (i % 2 == 0 ? -1f : 1f) * (i == 0 || i == 4 ? 0f : 1.3f);
+                    pts[i] = new Vector2(Mathf.Lerp(x0, x1, t) + j, Mathf.Lerp(y0, y1, t));
+                }
+                c.Stroke(pts, 2.4f, 1f, (x, y) => (x + y) % 4 == 0 ? Bark[1] : Hollow);
+            }
+            // The two widest: far down in them, the Coven's violet still smoulders (the story's mark).
+            c.Line(13.5f, 24, 15, 30, 1f, (x, y) => y % 3 == 0 ? HexHot : new Color32(HexPink.r, HexPink.g, HexPink.b, 200));
+            c.Line(32, 18, 31, 23, 1f, (x, y) => new Color32(HexPink.r, HexPink.g, HexPink.b, 170));
+        }, outline: false, silhouette: false);
+
+        // ------------------------------------------------- the Caverns: frozen
+
+        /// <summary>Where the arms hang from, on the body canvas: the shoulder caps sit over them.</summary>
+        private static readonly (float x, float y)[] WShoulders = { (5f, 10f), (43f, 10f) };
+
+        /// <summary>
+        /// The frozen one's crust: the moss mane iced white, a cap of ice on each shoulder
+        /// (drawn over the arms' tops), long icicles off the mane, rime on the chest.
+        /// </summary>
+        public static Sprite WoodwoseFrostBody() => Part("w_frost_body", WBodyW, WBodyH, new Vector2(0.5f, 2f / WBodyH), c =>
+        {
+            c.Fill((x, y) => WBody(x, y) && y < 6 + (int)(N(x / 2, 3, 5) * 4f),
+                (x, y) => S(Ice, 0.7f + N(x, y, 21) * 0.3f - y * 0.03f, x, y));
+            foreach (var (sx, sy) in WShoulders)
+                c.Fill((x, y) => E(x, y, sx, sy, 6.5f, 4.2f), (x, y) => S(Ice, 1f - (y - sy + 4f) * 0.1f + N(x, y, 28) * 0.12f, x, y));
+            foreach (int ix in new[] { 3, 7, 11, 15, 19, 29, 33, 37, 41, 45 })
+            {
+                int top = ix < 9 || ix > 39 ? 13 : 8;
+                int len = 4 + (int)(N(ix, 2, 22) * 7f);
+                c.Fill((x, y) => (x == ix || (x == ix + 1 && y < top + len / 2)) && y >= top && y <= top + len,
+                    (x, y) => y >= top + len - 1 ? Ice[3] : x == ix ? Ice[2] : Ice[1]);
+            }
+            c.Fill((x, y) => WBody(x, y) && y > 12 && y < 38 && N(x, y, 23) > 0.94f, (x, y) => Ice[2]);
+            c.Fill((x, y) => E(x, y, 24, 22, 7f, 8f) && !E(x, y, 24, 22, 5.4f, 6.4f), (x, y) => y < 22 ? Ice[3] : Ice[1]);
+        }, silhouette: false);
+
+        /// <summary>An arm's frost: rime down the forearm and icicles off it (its shoulder is capped by the body's crust).</summary>
+        public static Sprite WoodwoseFrostArm() => Part("w_frost_arm", WArmW, WArmH, new Vector2(0.5f, 1f - 1.5f / WArmH), c =>
+        {
+            c.Fill((x, y) => E(x, y, 10, 3, 6.8f, 3.8f) && y <= 5, (x, y) => S(Ice, 0.95f - y * 0.08f, x, y));   // over the arm's moss
+            c.Fill((x, y) => y >= 14 && y <= 32 && Mathf.Abs(x - 10) <= 3 && N(x, y, 25) > 0.75f, (x, y) => Ice[2]);
+            foreach (int ix in new[] { 5, 8, 11, 14 })
+            {
+                int len = 3 + (int)(N(ix, 5, 24) * 5f);
+                c.Fill((x, y) => x == ix && y >= 32 && y <= 32 + len, (x, y) => y == 32 + len ? Ice[3] : Ice[1]);
+            }
+        }, silhouette: false);
+
+        /// <summary>Thick snow riding the top of every tine, and long icicles under the low branch.</summary>
+        public static Sprite WoodwoseFrostAntlers() => Part("w_frost_antlers", WAntlerW, WAntlerH, new Vector2(0.5f, 1f / WAntlerH), c =>
+        {
+            Func<int, int, Color32> ice = (x, y) => S(Ice, 0.8f + N(x, y, 26) * 0.2f, x, y);
+            for (int side = 0; side < 2; side++)
+            {
+                int sd = side;
+                Vector2 M(float x, float y) => sd == 0 ? new Vector2(x, y - 1.8f) : new Vector2(WAntlerW - x, y - 1.8f);
+                c.Stroke(new[] { M(28, 29), M(24, 22), M(17, 15), M(11, 7), M(9, 1) }, 3f, 1.6f, ice);
+                c.Stroke(new[] { M(24, 22), M(15, 20), M(9, 23) }, 2.2f, 1.2f, ice);
+                c.Stroke(new[] { M(17, 15), M(21, 8), M(23, 3) }, 2f, 1.1f, ice);
+                c.Stroke(new[] { M(12, 9), M(5, 8), M(2, 10) }, 1.8f, 1f, ice);
+                foreach (int ix in new[] { 11, 14, 17, 20 })
+                {
+                    int x0 = sd == 0 ? ix : WAntlerW - ix;
+                    int len = 4 + (int)(N(ix, sd, 29) * 4f);
+                    c.Fill((x, y) => x == x0 && y >= 21 && y <= Mathf.Min(WAntlerH - 1, 21 + len), (x, y) => y == 21 + len ? Ice[3] : Ice[1]);
+                }
+            }
+        }, silhouette: false);
+
+        /// <summary>Snow on the crown and brow, and icicles hanging from the beard.</summary>
+        public static Sprite WoodwoseFrostHead() => Part("w_frost_head", WHeadW, WHeadH, new Vector2(0.5f, 4f / WHeadH), c =>
+        {
+            c.Fill((x, y) => E(x, y, 15, 3, 9, 3.5f) && y <= 4, (x, y) => S(Ice, 0.95f - y * 0.08f, x, y));
+            c.Fill((x, y) => y == 7 && Mathf.Abs(x + 0.5f - 15) < 9, (x, y) => Ice[3]);
+            foreach (int ix in new[] { 9, 12, 15, 18, 21 })
+            {
+                int len = 2 + (int)(N(ix, 7, 27) * 3f);
+                c.Fill((x, y) => x == ix && y >= 25 && y <= Mathf.Min(WHeadH - 1, 25 + len), (x, y) => y == 25 + len ? Ice[3] : Ice[1]);
+            }
+        }, silhouette: false);
+
+        // ------------------------------------------------- the Swamp: broken and rotting
+
+        /// <summary>
+        /// The bog grown over the broken one: dark moss heaped on the mane and both shoulders
+        /// (over the arms' tops) and hanging in long hanks, poison slime dripping off it, and
+        /// shards of ice the Caverns left behind.
+        /// </summary>
+        public static Sprite WoodwoseSwampBody() => Part("w_swamp_body", WBodyW, WBodyH, new Vector2(0.5f, 2f / WBodyH), c =>
+        {
+            c.Fill((x, y) => WBody(x, y) && !WChunk(x, y) && y < 8 + (int)(N(x / 2, 4, 31) * 5f),
+                (x, y) => S(Bog, 0.3f + N(x, y, 32) * 0.6f, x, y));
+            foreach (var (sx, sy) in WShoulders)
+                c.Fill((x, y) => E(x, y, sx, sy, 6.5f, 4.5f) && !(sx > 24 && WChunk(x, y)), (x, y) => S(Bog, 0.35f + N(x, y, 38) * 0.55f, x, y));
+            foreach (int sx in new[] { 2, 6, 10, 15, 20, 28, 33, 44 })
+            {
+                int len = 8 + (int)(N(sx, 3, 33) * 12f);
+                c.Line(sx, 9, sx + (sx < 24 ? -1 : 1), Mathf.Min(WBodyH - 3, 9 + len), 1.6f, (x, y) => Bog[y % 3 == 0 ? 3 : 1]);
+            }
+            // Slime: pooled on the shoulders and oozing from the splits, dripping in fat strings.
+            foreach (var (sx, sy, len) in new[] { (5, 8, 9), (13, 30, 8), (21, 12, 7), (31, 24, 9), (40, 9, 10), (26, 38, 5) })
+            {
+                c.Fill((x, y) => E(x, y, sx, sy, 2.4f, 1.3f) && N(x, y, 40) > 0.25f, (x, y) => Slime[N(x, y, 41) > 0.6f ? 1 : 0]);
+                c.Fill((x, y) => x == sx && y > sy && y <= Mathf.Min(WBodyH - 2, sy + len),
+                    (x, y) => y == sy + len ? Slime[2] : Slime[y % 2 == 0 ? 1 : 0]);
+            }
+            // What is left of the Caverns: a shard on the left shoulder, a crust on the hip.
+            c.Fill((x, y) => E(x, y, 6, 7, 3.4f, 2f), (x, y) => S(Ice, 0.9f - (y - 5) * 0.08f, x, y));
+            c.Fill((x, y) => (x == 5 || x == 7) && y >= 9 && y <= 12, (x, y) => y == 12 ? Ice[3] : Ice[1]);
+            c.Fill((x, y) => WBody(x, y) && E(x, y, 11, 37, 4f, 2.5f) && N(x, y, 34) > 0.35f, (x, y) => Ice[2]);
+        }, silhouette: false);
+
+        /// <summary>Slime drooling from the mouth, bog moss in the beard, one last icicle.</summary>
+        public static Sprite WoodwoseSwampHead() => Part("w_swamp_head", WHeadW, WHeadH, new Vector2(0.5f, 4f / WHeadH), c =>
+        {
+            c.Fill((x, y) => y >= 23 && Mathf.Abs(x + 0.5f - 15) <= 8 - (y - 23) * 1.1f + N(x, 0, 35) * 2f,
+                (x, y) => S(Bog, 0.3f + N(x, y, 37) * 0.5f, x, y));
+            foreach (var (sx, len) in new[] { (12, 7), (17, 5) })
+                c.Fill((x, y) => (x == sx || x == sx + 1) && y >= 21 && y <= Mathf.Min(WHeadH - 1, 21 + len), (x, y) => y >= 20 + len ? Slime[3] : Slime[2]);
+            c.Fill((x, y) => x == 21 && y >= 24 && y <= 28, (x, y) => y == 28 ? Ice[3] : Ice[1]);
+        }, silhouette: false);
+
+        /// <summary>The antlers with the right one snapped off near the root.</summary>
+        public static Sprite WoodwoseAntlerSnapped() => Part("w_antlers_snapped", WAntlerW, WAntlerH, new Vector2(0.5f, 1f / WAntlerH), c =>
+        {
+            Func<int, int, Color32> col = (x, y) =>
+                S(Bark, 0.4f + (x < 32 ? 0.12f : -0.08f) - y * 0.004f + N(x, y, 6) * 0.15f, x, y);
+            c.Stroke(new[] { new Vector2(28, 29), new Vector2(24, 22), new Vector2(17, 15), new Vector2(11, 7), new Vector2(9, 1) }, 4.5f, 1.8f, col);
+            c.Stroke(new[] { new Vector2(24, 22), new Vector2(15, 20), new Vector2(9, 23) }, 2.6f, 1.2f, col);
+            c.Stroke(new[] { new Vector2(12, 9), new Vector2(5, 8), new Vector2(2, 10) }, 2.0f, 1.0f, col);
+            // The right antler: a jagged stump.
+            c.Stroke(new[] { new Vector2(36, 29), new Vector2(39, 23), new Vector2(42, 20) }, 4.5f, 3.6f, col);
+            c.Fill((x, y) => y >= 17 && y <= 20 && x >= 40 && x <= 44 && (x + y) % 2 == 0, (x, y) => Bark[4]);
+        });
 
         public const int WHeadW = 30, WHeadH = 30;
         /// <summary>The two eye sockets, in world units from the head's pivot.</summary>
@@ -381,6 +552,9 @@ namespace AlchemistsArsenal.Art
         public static Sprite GlowAmber() => PixelCanvas.Glow("g_amber", 12, Amber, PPU);
         public static Sprite GlowHex() => PixelCanvas.Glow("g_hex", 12, HexHot, PPU);
         public static Sprite GlowRed() => PixelCanvas.Glow("g_red", 12, Blood, PPU);
+        public static readonly Color32 Frost = H(0x9fe6ff), Blight = H(0xb6e04a);
+        public static Sprite GlowFrost() => PixelCanvas.Glow("g_frost", 12, Frost, PPU);
+        public static Sprite GlowBlight() => PixelCanvas.Glow("g_blight", 12, Blight, PPU);
 
         /// <summary>A soft dark ellipse for the ground under a boss, 2 units wide at scale 1.</summary>
         public static Sprite Shadow() => Part("boss_shadow", 32, 10, new Vector2(0.5f, 0.5f), c =>

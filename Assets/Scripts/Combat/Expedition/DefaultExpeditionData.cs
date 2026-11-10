@@ -85,18 +85,39 @@ namespace AlchemistsArsenal.Combat
         /// ground (Root Slam: a shockwave the whole party can see coming and must
         /// get clear of), and it moves faster doing it.
         /// </summary>
-        public static BossDefinition Woodwose()
-        {
-            var swipe = BossAttackPattern.Create("Bramble Swipe", BossAttackShape.Strike, ElementType.Nature, 14, 3.8f, 2.0f, 0.6f, 0.7f, 1.8f, 8f);
-            var thorns = BossAttackPattern.Create("Thorn Volley", BossAttackShape.Volley, ElementType.Nature, 9, 11f, 1.1f, 0.75f, 0.6f, 2.0f, 4f,
-                count: 5, spread: 1.7f, projectileSpeed: 13f, lob: false);
-            var slam = BossAttackPattern.Create("Root Slam", BossAttackShape.Shockwave, ElementType.Nature, 20, 0f, 4.4f, 0.95f, 1.1f, 2.6f, 13f);
-            var briar = BossAttackPattern.Create("Briar Pulse", BossAttackShape.Shockwave, ElementType.Nature, 8, 0f, 3.0f, 0.45f, 0.6f, 1.4f, 10f);
+        public static BossDefinition Woodwose() => Woodwose(0);
 
-            var def = BuildBoss("Elder Woodwose", ElementType.Nature, 1500,
+        /// <summary>The Woodwose's health at each meeting: the Woods, back in the Caverns, broken in the Swamp.</summary>
+        public static readonly int[] WoodwoseHealth = { 1500, 900, 1700 };
+        /// <summary>How hard it hits at each meeting, against the Woods.</summary>
+        public static readonly float[] WoodwoseDamage = { 1f, 1f, 1.3f };
+
+        /// <summary>
+        /// The Elder Woodwose, met in the Woods (tier 0). It does not stay down: it is
+        /// back at the end of the Caverns (tier 1), and at the end of the Swamp (tier 2)
+        /// it comes back split down the middle, rot in the cracks, harder and faster.
+        /// </summary>
+        public static BossDefinition Woodwose(int tier)
+        {
+            tier = Mathf.Clamp(tier, 0, 2);
+            float dm = WoodwoseDamage[tier];
+            int D(int d) => Mathf.RoundToInt(d * dm);
+            var swipe = BossAttackPattern.Create("Bramble Swipe", BossAttackShape.Strike, ElementType.Nature, D(14), 3.8f, 2.0f, 0.6f, 0.7f, 1.8f, 8f);
+            var thorns = BossAttackPattern.Create("Thorn Volley", BossAttackShape.Volley, ElementType.Nature, D(9), 11f, 1.1f, 0.75f, 0.6f, 2.0f, 4f,
+                count: 5, spread: 1.7f, projectileSpeed: 13f, lob: false);
+            var slam = BossAttackPattern.Create("Root Slam", BossAttackShape.Shockwave, ElementType.Nature, D(20), 0f, 4.4f, 0.95f, 1.1f, 2.6f, 13f);
+            var briar = BossAttackPattern.Create("Briar Pulse", BossAttackShape.Shockwave, ElementType.Nature, D(8), 0f, 3.0f, 0.45f, 0.6f, 1.4f, 10f);
+
+            string[] names = { "Elder Woodwose", "The Woodwose, Returned", "The Broken Woodwose" };
+            string[] epithets = { "Warden of the Whispering Woods", "It would not stay down", "Split, and filled with something else" };
+            var def = BuildBoss(names[tier], ElementType.Nature, WoodwoseHealth[tier],
                 new[] { swipe, thorns }, new[] { slam, thorns, swipe }, new[] { briar },
-                enragedSpeed: 1.35f, wardSpeed: 0.6f);
-            def.ConfigureIdentity("Warden of the Whispering Woods", "woodwose", 1.6f, new Vector2(0f, 1.1f));
+                enragedSpeed: tier == 2 ? 1.55f : 1.35f, wardSpeed: 0.6f);
+            def.ConfigureIdentity(epithets[tier], "woodwose", 1.6f, new Vector2(0f, 1.1f));
+            def.ConfigureStory("woodwose", tier, broken: tier == 2);
+            // Back on the later roads it barely shrinks for a small party, like the Matriarch:
+            // those roads are tuned to need hired fighters.
+            if (tier > 0) def.ConfigurePartyScale(0.75f, 0.85f, 1f, 1.2f);
             return def;
         }
 
@@ -121,6 +142,7 @@ namespace AlchemistsArsenal.Combat
                 new[] { volley, slam }, new[] { storm, ring, slam }, new[] { pulse, volley },
                 enragedSpeed: 1.3f, wardSpeed: 0.7f);
             def.ConfigureIdentity("Mother of the Peak", "matriarch", 1.8f, new Vector2(0f, 2.7f));
+            def.ConfigureStory("matriarch", 0, broken: false);
             // The last guardian barely shrinks for a small party: the Peak needs hired fighters.
             def.ConfigurePartyScale(0.75f, 0.85f, 1f, 1.2f);
             return def;

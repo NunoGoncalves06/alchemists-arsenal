@@ -31,26 +31,6 @@ namespace AlchemistsArsenal.Art
         // --- customer busts (16 x 16) ---------------------------------------
         // Each buyer reads by silhouette first: helm crest, hood, cap, witch hat.
 
-        private static readonly string[] BUYER_KNIGHT =
-        {
-            "................",
-            "......tttt......",
-            ".....KttttK.....",
-            "....KLLLLLLK....",
-            "...KLLLLLLLLK...",
-            "...KLKKLLKKLK...",
-            "...KLLLLLLLLK...",
-            "...KLKLLLLKLK...",
-            "...KLLKKKKLLK...",
-            "....KLLLLLLK....",
-            "...KlLLLLLLlK...",
-            "..KllLLLLLLllK..",
-            "..KlLLLLLLLLlK..",
-            ".KllLLLLLLLLllK.",
-            ".KlLLLLLLLLLLlK.",
-            ".KKKKKKKKKKKKKK.",
-        };
-
         private static readonly string[] BUYER_HERBALIST =
         {
             "................",
@@ -112,28 +92,6 @@ namespace AlchemistsArsenal.Art
         };
 
         // --- full-body fight views (16 x 18, same build as ROOKIE) -----------
-
-        private static readonly string[] FIGHTER_KNIGHT =
-        {
-            "................",
-            ".....tttt.......",
-            "....KttttK......",
-            "....KLLLLK......",
-            "...KLLLLLLK.....",
-            "...KLKLLKLK.....",
-            "...KLLLLLLK.....",
-            "....KLLLLK......",
-            "...KKllllKK...l.",
-            "..KlLLLLLLlK..l.",
-            "..KlLlLLlLlK..l.",
-            "..LKlLLLLlKL..l.",
-            "..LKllllllKL..l.",
-            "...KllllllK...l.",
-            "...KllKKllK...l.",
-            "...Kll.KllK.....",
-            "..Kll..KllK.....",
-            "..KK....KK......",
-        };
 
         private static readonly string[] FIGHTER_HERBALIST =
         {

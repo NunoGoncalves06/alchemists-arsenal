@@ -92,6 +92,24 @@ namespace AlchemistsArsenal.Data
             this.phases = phases ?? new BossPhaseData[0];
         }
 
+        [SerializeField] private string storyId;
+        [SerializeField] private int tier;
+        [SerializeField] private bool broken;
+
+        /// <summary>Who this is to the story ("woodwose", "matriarch"): the same guardian met again keeps its id. Empty for a boss the story does not know.</summary>
+        public string StoryId => storyId ?? "";
+        /// <summary>How many times it has come back: 0 the first meeting, then 1, 2.</summary>
+        public int Tier => tier;
+        /// <summary>Drawn split and rotten (the Woodwose's last return).</summary>
+        public bool Broken => broken;
+
+        public void ConfigureStory(string storyId, int tier, bool broken)
+        {
+            this.storyId = storyId;
+            this.tier = Mathf.Max(0, tier);
+            this.broken = broken;
+        }
+
         public void ConfigureIdentity(string epithet, string visualId, float entranceSeconds, Vector2 projectileOrigin)
         {
             this.epithet = epithet;

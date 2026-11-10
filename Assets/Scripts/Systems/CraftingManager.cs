@@ -36,9 +36,15 @@ namespace AlchemistsArsenal.Systems
 
         /// <summary>
         /// The bench a brand-new order goes to first: its grain is malted before anything
-        /// else, once the road is far enough along to have a Malting bench (<see cref="Data.Complexity"/>).
+        /// else, once the road is far enough along to have the Steep bench (<see cref="Data.Complexity"/>).
         /// </summary>
-        public static BrewStage FirstStage => Data.Complexity.MaltingOn(Data.Complexity.Level()) ? BrewStage.Malting : BrewStage.Prep;
+        public static BrewStage FirstStage => FirstStageFor(Data.Complexity.Level());
+
+        /// <summary>The first bench on road level <paramref name="level"/>: the Steep bench once the road has malting.</summary>
+        public static BrewStage FirstStageFor(int level) => Data.Complexity.MaltingOn(level) ? BrewStage.Steep : BrewStage.Prep;
+
+        /// <summary>The bench after <paramref name="stage"/>. The one place the order of the benches is decided.</summary>
+        public static BrewStage Next(BrewStage stage) => stage >= BrewStage.Done ? BrewStage.Done : stage + 1;
 
         /// <summary>The most recently accepted order (for the tutorial, tests and old callers).</summary>
         public ActiveOrder CurrentOrder => _orders.Count > 0 ? _orders[_orders.Count - 1] : null;
@@ -84,8 +90,11 @@ namespace AlchemistsArsenal.Systems
                 contract = job,
                 queueIndex = _orders.Count,
                 stage = FirstStage,
-                Mixture = new Data.BrewMixture(job.element, Data.Complexity.RecipeTier(level)),
+                // No two fighters brew the same recipe today: each order of an element already open moves this one to the next take.
+                Mixture = new Data.BrewMixture(job.element, Data.Complexity.RecipeTier(level),
+                    Data.RecipeBook.VariantFor(job.element, _orders.FindAll(o => string.IsNullOrEmpty(job.heroId) || o.heroId != job.heroId).ConvertAll(o => o.element))),
             };
+            order.potionName = order.Mixture.Recipe.Name;   // each fighter's own take, never three "Fire Flask"s
             // Before the road has a Malting bench, the grain comes from the miller
             // already malted: full enzymes, and the malt's share of the score, so a
             // first-road flask can still reach Perfect.
@@ -138,7 +147,18 @@ namespace AlchemistsArsenal.Systems
             return null;
         }
 
-        /// <summary>Every order taken today is sealed and labelled.</summary>
+        /// <summary>
+        /// The flask <paramref name="heroId"/> goes out with: the one handed to them at
+        /// Delivery, or else their own order as far as it got (the clock ran out).
+        /// </summary>
+        public ActiveOrder CarriedBy(string heroId)
+        {
+            if (string.IsNullOrEmpty(heroId)) return null;
+            foreach (ActiveOrder o in _orders) if (o.deliveredTo == heroId) return o;
+            return OrderFor(heroId);
+        }
+
+        /// <summary>Every order taken today is sealed, labelled and handed over.</summary>
         public bool AllDone
         {
             get
@@ -153,8 +173,7 @@ namespace AlchemistsArsenal.Systems
         public void Advance(ActiveOrder order)
         {
             if (order == null || order.Finished) return;
-            order.stage++;
-            order.currentStationIndex = Mathf.Min(3, (int)order.stage);
+            order.stage = Next(order.stage);
             if (order.Finished)
             {
                 Debug.Log($"[Crafting] Sealed {order.heroName}'s {order.potionName} — quality {order.qualityScore} ({order.GetGrade()})");

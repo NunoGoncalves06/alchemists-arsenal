@@ -36,6 +36,7 @@ namespace AlchemistsArsenal.Combat
 
             BombProjectile2D.OnDetonatedGlobal += OnDetonated;
             CombatantBody.OnAnyDied += OnDied;
+            CombatantBody.OnAnyWithdrew += OnWithdrew;
             if (_expedition != null)
             {
                 _expedition.OnWaveStarted += OnWaveStarted;
@@ -49,6 +50,7 @@ namespace AlchemistsArsenal.Combat
         {
             BombProjectile2D.OnDetonatedGlobal -= OnDetonated;
             CombatantBody.OnAnyDied -= OnDied;
+            CombatantBody.OnAnyWithdrew -= OnWithdrew;
             if (_expedition != null)
             {
                 _expedition.OnWaveStarted -= OnWaveStarted;
@@ -70,6 +72,17 @@ namespace AlchemistsArsenal.Combat
             line.totalDamage += d.TotalDamage;
             line.everHadAdvantage |= d.HadElementalAdvantage;
             Report.craftedGrade = d.Grade;       // Phase 0 has one bomb — grades are uniform
+        }
+
+        /// <summary>Out of flasks, off the road: not back for the star, but not hurt, so never benched.</summary>
+        private void OnWithdrew(CombatantBody body)
+        {
+            if (Report == null || body == null || body.Team != Team.Adventurer) return;
+            Report.partyDown++;
+            Report.partyWithdrew++;
+            var hero = body.GetComponent<HeroTag>();
+            if (hero != null && !string.IsNullOrEmpty(hero.heroId) && !Report.withdrawnHeroIds.Contains(hero.heroId))
+                Report.withdrawnHeroIds.Add(hero.heroId);
         }
 
         private void OnDied(CombatantBody body)
@@ -114,6 +127,9 @@ namespace AlchemistsArsenal.Combat
             var boss = _expedition != null ? _expedition.BossInstance : null;
             var bossBody = boss != null ? boss.GetComponent<CombatantBody>() : null;
             Report.bossDefeated = won && bossBody != null && !bossBody.IsAlive;
+            var def = _expedition != null ? _expedition.Boss : null;
+            Report.bossId = Report.bossDefeated && def != null ? def.StoryId : "";
+            Report.bossTier = Report.bossDefeated && def != null ? def.Tier : 0;
 
             Unsubscribe();
         }

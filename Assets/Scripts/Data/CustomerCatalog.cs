@@ -57,17 +57,6 @@ namespace AlchemistsArsenal.Data
             Rookie,
             new CustomerDefinition
             {
-                Id = "knight", DisplayName = "Ser Halden", Title = "wallguard captain",
-                PortraitId = "knight", Favourite = ElementType.Fire, FeeMultiplier = 1.1f, Fussiness = 1,
-                Speech = "wi tch we ne d fla she nau",
-                Greetings = new[]
-                {
-                    "The wall held. Barely. I need something that ends a fight faster than a spear does.",
-                    "Guard pay is slow, but it's real. Brew me something worth carrying.",
-                },
-            },
-            new CustomerDefinition
-            {
                 Id = "herbalist", DisplayName = "Mira Thorn", Title = "hedge-herbalist",
                 PortraitId = "herbalist", Favourite = ElementType.Nature, FeeMultiplier = 0.95f, Fussiness = 0,
                 Speech = "gu d mor ni ng fren d",

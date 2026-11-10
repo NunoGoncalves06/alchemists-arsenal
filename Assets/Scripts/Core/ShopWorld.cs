@@ -7,8 +7,8 @@ using AlchemistsArsenal.Vfx;
 namespace AlchemistsArsenal.Core
 {
     /// <summary>
-    /// The morning shop: four physical benches side by side along one wall — the
-    /// Counter, the Prep bench, the Cauldron and the Bottling bench — and a camera
+    /// The morning shop: its benches side by side along one wall (the Counter, Steep,
+    /// Kiln, Prep, the Cauldron, Bottling and Delivery, in rail order) and a camera
     /// that glides to whichever one the player is working at.
     ///
     /// The camera draws into the whole station column: there is no HUD strip under
@@ -22,11 +22,15 @@ namespace AlchemistsArsenal.Core
     {
         public static ShopWorld Instance { get; private set; }
 
-        /// <summary>Bench centres, in rail order: Counter, Malting, Prep, Cauldron, Bottling.</summary>
+        /// <summary>Bench centres, in rail order: Counter, Steep, Kiln, Prep, Cauldron, Bottling, Delivery.</summary>
         public static readonly Vector2[] BenchCentres =
         {
-            new Vector2(-48f, 0f), new Vector2(-32f, 0f), new Vector2(-16f, 0f), new Vector2(0f, 0f), new Vector2(16f, 0f),
+            new Vector2(-64f, 0f), new Vector2(-48f, 0f), new Vector2(-32f, 0f), new Vector2(-16f, 0f),
+            new Vector2(0f, 0f), new Vector2(16f, 0f), new Vector2(32f, 0f),
         };
+
+        /// <summary>Where the Cauldron sits in <see cref="BenchCentres"/> (it is built by the world, not as a bench).</summary>
+        private const int CauldronIndex = 4;
 
         /// <summary>The station column, top bar to the bottom of the screen, as a fraction of the screen.</summary>
         public static readonly Rect WorldViewport = new Rect(0.085f, 0f, 0.615f, 0.935f);
@@ -38,8 +42,10 @@ namespace AlchemistsArsenal.Core
         public CameraRig Rig { get; private set; }
         public PhysicsCauldronManager Cauldron { get; private set; }
         public PrepBench Prep { get; private set; }
-        public MaltingBench Malting { get; private set; }
+        public SteepBench Steep { get; private set; }
+        public KilnBench Kiln { get; private set; }
         public BottlingBench Bottling { get; private set; }
+        public DeliveryBench Delivery { get; private set; }
 
         private void Awake() => Instance = this;
 
@@ -69,17 +75,23 @@ namespace AlchemistsArsenal.Core
             VfxWorld.Create(transform, seed: 1000 + day);
 
             BuildRoom();
-            BuildCauldron(BenchCentres[3]);
+            BuildCauldron(BenchCentres[CauldronIndex]);
 
-            Malting = NewBench<MaltingBench>("MaltingBench", BenchCentres[1]);
-            Malting.Build(WorldCamera);
+            Steep = NewBench<SteepBench>("SteepBench", BenchCentres[1]);
+            Steep.Build(WorldCamera);
 
-            Prep = NewBench<PrepBench>("PrepBench", BenchCentres[2]);
+            Kiln = NewBench<KilnBench>("KilnBench", BenchCentres[2]);
+            Kiln.Build(WorldCamera);
+
+            Prep = NewBench<PrepBench>("PrepBench", BenchCentres[3]);
             Prep.Build(WorldCamera);
             Prep.NewDay(day);
 
-            Bottling = NewBench<BottlingBench>("BottlingBench", BenchCentres[4]);
+            Bottling = NewBench<BottlingBench>("BottlingBench", BenchCentres[5]);
             Bottling.Build(WorldCamera);
+
+            Delivery = NewBench<DeliveryBench>("DeliveryBench", BenchCentres[6]);
+            Delivery.Build(WorldCamera);
         }
 
         /// <summary>Glide the camera to bench <paramref name="index"/> (rail order). Cuts under the headless playtest.</summary>
@@ -116,8 +128,9 @@ namespace AlchemistsArsenal.Core
                     sr.sortingOrder = -20;
                 }
 
-            // The shop behind each bench: shelves of jars, a candle at the end of each
-            // shelf, and herbs hung up to dry, swinging on real joints in the draught.
+            // The shop behind each bench: shelves of jars and a candle at the end of each
+            // shelf. Herbs hung to dry are the Drying Rack's, on the Prep bench alone
+            // (see PrepBench.BuildRack), not every bench's.
             for (int i = 1; i < BenchCentres.Length; i++)
             {
                 Vector2 c = BenchCentres[i];
@@ -133,14 +146,13 @@ namespace AlchemistsArsenal.Core
                     glow.transform.localScale = Vector3.one * 1.1f;
                     glow.color = new Color(1f, 1f, 1f, 0.4f);
                     Vfx.CandleFlicker.Attach(glow, i * 7 + v);
-                    HangHerbs(new Vector2(c.x + side * 3.6f, 3.45f), v, i * 13 + v);
                 }
             }
 
             // Floorboards under the cauldron, where there is no bench.
             var floor = new GameObject("Floor");
             floor.transform.SetParent(transform, false);
-            floor.transform.position = new Vector3(BenchCentres[3].x, -2.7f, 1f);
+            floor.transform.position = new Vector3(BenchCentres[CauldronIndex].x, -2.7f, 1f);
             PixelArt.AddSprite(floor, ShopArt.Plank(), -5, 12f).color = new Color(0.62f, 0.55f, 0.52f);
         }
 
@@ -156,29 +168,6 @@ namespace AlchemistsArsenal.Core
                 : SpriteMaterials.For(sprite);
             sr.sortingOrder = order;
             return sr;
-        }
-
-        /// <summary>A bundle of herbs on a hinge at <paramref name="knot"/>: a pendulum the draught keeps moving.</summary>
-        private void HangHerbs(Vector2 knot, int variant, int seed)
-        {
-            var sr = Prop("Herbs", ShopProps.HerbBundle(variant), knot, -12);
-            GameObject go = sr.gameObject;
-            var rb = go.AddComponent<Rigidbody2D>();
-            rb.gravityScale = 1f;
-            rb.mass = 0.3f;
-            rb.angularDamping = 0.35f;
-            rb.linearDamping = 0.5f;
-            // Its weight hangs below the knot, so it swings about it.
-            var bob = go.AddComponent<CircleCollider2D>();
-            bob.radius = 0.25f;
-            bob.offset = new Vector2(0f, -1.1f);
-            var hinge = go.AddComponent<HingeJoint2D>();
-            hinge.anchor = Vector2.zero;
-            hinge.autoConfigureConnectedAnchor = true;
-            // Nothing else in the shop is on the Debris layer: it touches nothing.
-            PhysicsKit.GameLayers.Assign(go, PhysicsKit.GameLayers.Debris);
-            PhysicsKit.Draft2D.Attach(go, seed);
-            rb.AddTorque((seed % 2 == 0 ? 1f : -1f) * 0.01f, ForceMode2D.Impulse);
         }
 
         private void BuildCauldron(Vector2 centre)

@@ -67,6 +67,7 @@ namespace AlchemistsArsenal.UI.Stations
             bool cw = pot == null || pot.RequiredClockwise;
             var mix = order.Mixture;
             _noteDirection.text = mix != null && !mix.Ready ? "Waiting on the Prep bench"
+                : PhysicsCauldronManager.AutoStir ? (cw ? "The paddle turns it clockwise" : "The paddle turns it anticlockwise")
                 : cw ? "Stir it clockwise" : "Stir it anticlockwise";
         }
 
@@ -86,7 +87,7 @@ namespace AlchemistsArsenal.UI.Stations
                 return CountAt(Systems.BrewStage.Cauldron) > 0 ? "Brewed. The next mash goes in." : "Brewed. Bottle it.";
             if (!pot.MixtureReady) return "Nothing in the pot yet. Crush the leaves at Prep.";
             if (pot.Burning) return "It's burning on the bottom. Stir faster.";
-            if (pot.ClockworkTurning) return "The clockwork is brewing it. A hand stirs it better.";
+            if (pot.ClockworkTurning) return "The clockwork paddle is stirring it. Go work another bench.";
             if (!pot.MouseOverCauldron)
                 return pot.Sticking ? "It's catching. Get the spoon back in." : "Bring the spoon over the brew and stir.";
             if (pot.StirringBackwards) return pot.RequiredClockwise ? "Wrong way. Stir clockwise." : "Wrong way. Stir anticlockwise.";

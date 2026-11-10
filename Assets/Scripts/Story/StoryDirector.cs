@@ -21,6 +21,8 @@ namespace AlchemistsArsenal.Story
     {
         public const string WoodwosePending = "woodwose_pending";
         public const string WoodwoseSeen = "woodwose_seen";
+        public const string WoodwoseReturnPending = "woodwose_return_pending";
+        public const string WoodwoseReturnSeen = "woodwose_return_seen";
         public const string EndingPending = "ending_pending";
         public const string EndingWatched = "ending";
         public const string Epilogue = "epilogue";
@@ -53,8 +55,10 @@ namespace AlchemistsArsenal.Story
         public static void OnDayResolved(RunState s, int biome, ExpeditionReport r)
         {
             if (s == null || r == null || !r.won || !r.bossDefeated) return;
-            if (biome == 0 && !Has(s, WoodwoseSeen)) Set(s, WoodwosePending);
-            if (biome == BiomeLibrary.Count - 1 && !s.endingSeen) Set(s, EndingPending);
+            // Keyed on who fell, not where: the Woodwose is met on three roads.
+            if (r.bossId == "woodwose" && !Has(s, WoodwoseSeen)) Set(s, WoodwosePending);
+            if (r.bossId == "woodwose" && r.bossTier >= 2 && !Has(s, WoodwoseReturnSeen)) Set(s, WoodwoseReturnPending);
+            if (r.bossId == "matriarch" && !s.endingSeen) Set(s, EndingPending);
         }
 
         /// <summary>The cutscenes waiting to be watched, in the order they play.</summary>
@@ -63,12 +67,13 @@ namespace AlchemistsArsenal.Story
             var list = new List<Cutscene>();
             if (s == null) return list;
             if (Has(s, WoodwosePending)) list.Add(StoryScript.Woodwose);
+            if (Has(s, WoodwoseReturnPending)) list.Add(StoryScript.WoodwoseReturn);
             if (Has(s, EndingPending))
             {
                 if (!Has(s, EndingWatched))
                 {
                     list.Add(StoryScript.Reveal);
-                    list.Add(StoryScript.Ending);
+                    list.Add(StoryScript.EndingFor(s));
                 }
                 list.Add(StoryScript.Credits);
             }
@@ -87,6 +92,10 @@ namespace AlchemistsArsenal.Story
                 case "woodwose":
                     Clear(s, WoodwosePending);
                     Set(s, WoodwoseSeen);
+                    break;
+                case "woodwose_return":
+                    Clear(s, WoodwoseReturnPending);
+                    Set(s, WoodwoseReturnSeen);
                     break;
                 case "ending":
                     Set(s, EndingWatched);

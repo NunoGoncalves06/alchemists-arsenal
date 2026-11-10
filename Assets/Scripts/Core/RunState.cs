@@ -28,6 +28,9 @@ namespace AlchemistsArsenal.Core
         /// <summary>Set when the player chose "replay" on the map — next expedition targets this instead of the current node.</summary>
         public int replayBiomeIndex = -1;
 
+        /// <summary>How much of today's morning was left when the last flask was handed over (0 if the clock ran out). Saved, so a reload keeps the quick-hands bonus.</summary>
+        public float morningLeft01;
+
         public int gold = 0;
 
         /// <summary>Per-biome best grade, 0..3 stars. Length is fixed to the biome count.</summary>
@@ -105,7 +108,7 @@ namespace AlchemistsArsenal.Core
         /// gate: nothing buys capacity any more. The later roads are tuned to need
         /// the bodies (see BiomeLibrary), which is what keeps them hard.
         /// </summary>
-        public const int MaxParty = 4;
+        public const int MaxParty = 3;
 
         public int DeployCap => MaxParty;
 

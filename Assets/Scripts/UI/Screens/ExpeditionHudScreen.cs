@@ -27,6 +27,25 @@ namespace AlchemistsArsenal.UI
         /// <summary>Each party body's display name, resolved once with its dock card so
         /// the ticker and the dock can never disagree about who threw.</summary>
         private readonly Dictionary<ICombatant, string> _throwerNames = new Dictionary<ICombatant, string>();
+
+        /// <summary>Each fighter's card: the running damage total and the strip above it where their throws and hits float up.</summary>
+        private sealed class FighterCard
+        {
+            public TextMeshProUGUI Damage;
+            public RectTransform Above;
+            public int Total;
+            public int Hits;   // staggers successive numbers so they never land on one another
+        }
+        private readonly Dictionary<ICombatant, FighterCard> _cards = new Dictionary<ICombatant, FighterCard>();
+        private readonly List<ICombatant> _cardOrder = new List<ICombatant>();
+        private TextMeshProUGUI _tips;
+
+        /// <summary>Damage credited to party card <paramref name="i"/> (dock order) this road.</summary>
+        public int CardDamage(int i) => i >= 0 && i < _cardOrder.Count ? _cards[_cardOrder[i]].Total : 0;
+        public int CardCount => _cardOrder.Count;
+
+        /// <summary>The tips under DEFEAT, one per line (empty after a win).</summary>
+        public string TipsText => _tips != null && _tips.gameObject.activeSelf ? _tips.text : "";
         private TimeControl.Handle _pauseHandle;
         private TimeControl.Handle _speedHandle;
         private bool _paused, _fast;
@@ -122,6 +141,10 @@ namespace AlchemistsArsenal.UI
             var scrim = UIFactory.Box(_slabPanel, new Color(0f, 0f, 0f, 0.6f), _slabPanel);
             _slab = UIFactory.Title(_slabPanel, "", UITheme.SizeDisplay + 14, UITheme.Candle, TextAlignmentOptions.Center);
             UIFactory.Stretch(_slab.rectTransform);
+            // What to try next, read off the road just lost (DefeatTips).
+            _tips = UIFactory.Label(_slabPanel, "", UITheme.SizeBody, UITheme.TextHi, TextAlignmentOptions.Center);
+            UIFactory.Place(_tips.rectTransform, 0.22f, 0.395f, 0.78f, 0.53f);
+            _tips.gameObject.SetActive(false);
             _continueBtn = UIFactory.Button(_slabPanel, "CONTINUE", () => GameLoopManager.Instance.BeginEvening());
             var cbrt = _continueBtn.image.rectTransform;
             cbrt.anchorMin = new Vector2(0.4f, 0.3f); cbrt.anchorMax = new Vector2(0.6f, 0.38f);
@@ -148,9 +171,23 @@ namespace AlchemistsArsenal.UI
             return b;
         }
 
-        protected override void OnShow()
+        /// <summary>The road being fought, for the defeat tips.</summary>
+        private int _road;
+
+        protected override void OnShow() => Bind(GameLoopManager.Instance != null ? GameLoopManager.Instance.CurrentExpedition : null,
+            GameLoopManager.Instance != null ? GameLoopManager.Instance.TargetBiomeIndex : 0);
+
+        /// <summary>Follow a fight built outside the day loop (the playtest's lost-road scenario) on road <paramref name="road"/>.</summary>
+        public void Watch(ExpeditionWorld world, int road)
         {
-            _world = GameLoopManager.Instance != null ? GameLoopManager.Instance.CurrentExpedition : null;
+            Unbind();
+            Bind(world, road);
+        }
+
+        private void Bind(ExpeditionWorld world, int road)
+        {
+            _world = world;
+            _road = road;
             _slabPanel.gameObject.SetActive(false);
             _title.gameObject.SetActive(false);
             _titleFor = null;
@@ -160,11 +197,13 @@ namespace AlchemistsArsenal.UI
 
             _ai.Clear();
             _throwerNames.Clear();
+            _cards.Clear();
+            _cardOrder.Clear();
             BuildPartyDock();
 
             BombProjectile2D.OnDetonatedGlobal += OnDetonated;
             if (_world != null && _world.Expedition != null)
-                _world.Expedition.OnFinished += OnFinished;
+                _world.Expedition.OnResultShown += OnFinished;
 
             // The screen object is reused day to day, and Update does not run on the
             // frame it is shown — so the first afternoon frame showed yesterday's
@@ -174,10 +213,12 @@ namespace AlchemistsArsenal.UI
             Refresh();
         }
 
-        protected override void OnHide()
+        protected override void OnHide() => Unbind();
+
+        private void Unbind()
         {
             BombProjectile2D.OnDetonatedGlobal -= OnDetonated;
-            if (_world != null && _world.Expedition != null) _world.Expedition.OnFinished -= OnFinished;
+            if (_world != null && _world.Expedition != null) _world.Expedition.OnResultShown -= OnFinished;
             foreach (var ai in _ai) if (ai != null) ai.OnBombThrowRequested -= OnThrow;
             _pauseHandle.Dispose();
             _speedHandle.Dispose();
@@ -213,7 +254,17 @@ namespace AlchemistsArsenal.UI
                 var name = UIFactory.Label(inner, who.ToUpperInvariant(), UITheme.SizeSmall, UITheme.Candle,
                     TextAlignmentOptions.Left, true);
                 name.characterSpacing = 3f;
-                UIFactory.Place(name.rectTransform, 0.29f, 0.68f, 0.98f, 0.95f);
+                UIFactory.Place(name.rectTransform, 0.29f, 0.68f, 0.70f, 0.95f);
+
+                // Who is doing the work: this fighter's damage so far, and a strip just
+                // above the card where each throw and each hit of theirs floats up.
+                var dmg = UIFactory.MonoLabel(inner, "DMG 0", UITheme.SizeSmall, UITheme.CandleHot,
+                    TextAlignmentOptions.Right);
+                UIFactory.Place(dmg.rectTransform, 0.66f, 0.68f, 0.98f, 0.95f);
+                var above = UIFactory.Root(card.transform, "Above");
+                UIFactory.Place(above, 0.05f, 1.0f, 0.95f, 1.55f);
+                _cards[body] = new FighterCard { Damage = dmg, Above = above };
+                _cardOrder.Add(body);
 
                 var hp = UIFactory.Bar(inner, UITheme.Ground, UITheme.Ok, out var hpFill);
                 UIFactory.Place(hp.rectTransform, 0.29f, 0.50f, 0.98f, 0.65f);
@@ -359,12 +410,56 @@ namespace AlchemistsArsenal.UI
             // who never left the shop was credited with the whole party's work.
             if (r.Thrower == null || !_throwerNames.TryGetValue(r.Thrower, out string who)) who = "The party";
             _ticker.text = $"{who} throws <b>{r.Bomb.DisplayName}</b> — {r.Bomb.Element}";
+            if (r.Thrower != null && _cards.TryGetValue(r.Thrower, out FighterCard card))
+                FloatUp(card.Above, "THROW", UITheme.Element(r.Bomb.Element), UITheme.SizeTiny, 0.7f, 0f, 0.3f);
         }
 
         private void OnDetonated(DetonationInfo d)
         {
             string adv = d.HadElementalAdvantage ? "  <color=#f6d873>×2!</color>" : "";
             _ticker.text = $"{d.Element} bomb — {d.TotalDamage} dmg to {d.HitCount}{adv}";
+            if (d.Thrower == null || !_cards.TryGetValue(d.Thrower, out FighterCard card) || d.TotalDamage <= 0) return;
+            card.Total += d.TotalDamage;
+            card.Damage.text = $"DMG {card.Total}";
+            // Hits take the right of the strip, throws the left; each hit a step along from the last.
+            float x0 = 0.35f + (card.Hits++ % 4) * 0.15f;
+            FloatUp(card.Above, d.HadElementalAdvantage ? $"{d.TotalDamage} ×2" : d.TotalDamage.ToString(),
+                d.HadElementalAdvantage ? UITheme.CandleHot : UITheme.TextHi, UITheme.SizeBody, 1.1f, x0, x0 + 0.2f);
+        }
+
+        /// <summary>A word that rises out of <paramref name="strip"/> and fades.</summary>
+        private static void FloatUp(RectTransform strip, string text, Color color, int size, float seconds, float x0, float x1)
+        {
+            var label = UIFactory.Label(strip, text, size, color, TextAlignmentOptions.Center, true);
+            label.raycastTarget = false;
+            label.textWrappingMode = TextWrappingModes.NoWrap;
+            UIFactory.Place(label.rectTransform, x0, 0f, x1, 0.6f);
+            label.gameObject.AddComponent<Rise>().Init(seconds);
+        }
+
+        private sealed class Rise : MonoBehaviour
+        {
+            private float _t, _life;
+            private TextMeshProUGUI _label;
+            private Vector2 _from;
+
+            public void Init(float life)
+            {
+                _life = life;
+                _label = GetComponent<TextMeshProUGUI>();
+                _from = ((RectTransform)transform).anchoredPosition;
+            }
+
+            private void Update()
+            {
+                _t += Time.deltaTime;   // game time: held while paused, quicker at 2x, like the hits it reports
+                float k = Mathf.Clamp01(_t / _life);
+                ((RectTransform)transform).anchoredPosition = _from + new Vector2(0f, 34f * k);
+                Color c = _label.color;
+                c.a = 1f - k * k;
+                _label.color = c;
+                if (k >= 1f) Destroy(gameObject);
+            }
         }
 
         private void OnFinished(bool won)
@@ -372,6 +467,17 @@ namespace AlchemistsArsenal.UI
             _slabPanel.gameObject.SetActive(true);
             _slab.text = won ? "VICTORY" : "DEFEAT";
             _slab.color = won ? UITheme.Ok : UITheme.Danger;
+
+            ExpeditionReport report = _world != null && _world.Telemetry != null ? _world.Telemetry.Report : null;
+            _tips.gameObject.SetActive(!won && report != null);
+            // With tips under it the title moves up out of their way.
+            if (_tips.gameObject.activeSelf) UIFactory.Place(_slab.rectTransform, 0f, 0.54f, 1f, 0.72f);
+            else UIFactory.Stretch(_slab.rectTransform);
+            if (!_tips.gameObject.activeSelf) return;
+            var facts = DefeatTips.Facts.From(report, SaveSystem.Instance != null ? SaveSystem.Instance.State : null, _road);
+            var lines = new List<string>();
+            foreach (DefeatTips.Tip t in DefeatTips.For(facts)) lines.Add("• " + DefeatTips.Text(t, facts));
+            _tips.text = string.Join("\n", lines);
         }
 
         private void SetFast(bool fast)
@@ -502,6 +608,14 @@ namespace AlchemistsArsenal.UI
                 {
                     _card.color = new Color(0.2f, 0.15f, 0.18f);
                     _dead = true;
+                }
+                // Out of flasks and off the road: greyed, and the card says so.
+                if (_body.IsWithdrawn)
+                {
+                    if (!_dead && _card != null) { _card.color = new Color(0.17f, 0.17f, 0.2f); _dead = true; }
+                    if (_flasks != null) { _flasks.text = "WITHDREW"; _flasks.color = UITheme.TextLow; }
+                    if (_cdText != null) _cdText.text = "--";
+                    return;
                 }
 
                 if (_ai == null) return;

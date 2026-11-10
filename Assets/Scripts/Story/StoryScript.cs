@@ -120,6 +120,36 @@ namespace AlchemistsArsenal.Story
             A("woodwose_arm", 0.424f, 0.353f, ActorMotion.Still, scale: 0.75f, rotation: 6f),
         };
 
+        /// <summary>The Woodwose rot tint in the Swamp, the same the fight gives it (BossVisual).</summary>
+        private static readonly Color Rot = new Color(0.66f, 0.7f, 0.58f), RotBack = new Color(0.45f, 0.48f, 0.42f);
+
+        /// <summary>
+        /// The Woodwose fallen in the Swamp, built from the fight's own parts: the body with the chunk
+        /// torn from its shoulder, the snapped antler, the split bark, the bog moss and slime, the last ice.
+        /// </summary>
+        private static CutsceneActor[] BrokenWoodwose(ActorMotion head) => new[]
+        {
+            A("woodwose_arm", 0.576f, 0.353f, ActorMotion.Still, flip: true, scale: 0.75f, tint: RotBack, rotation: -14f),
+            A("woodwose_body_broken", 0.5f, 0.12f, ActorMotion.Breathe, scale: 0.75f, tint: Rot),
+            A("woodwose_split", 0.5f, 0.12f, ActorMotion.Breathe, scale: 0.75f),
+            A("woodwose_swamp_body", 0.5f, 0.12f, ActorMotion.Breathe, scale: 0.75f),
+            A("woodwose_antlers_snapped", 0.5f, 0.476f, ActorMotion.Still, scale: 0.75f, tint: Rot, rotation: -9f),
+            A("woodwose_head", 0.5f, 0.37f, head, scale: 0.75f, tint: Rot, rotation: -9f),
+            A("woodwose_swamp_head", 0.5f, 0.37f, head, scale: 0.75f, rotation: -9f),
+            A("woodwose_arm", 0.424f, 0.353f, ActorMotion.Still, scale: 0.75f, tint: Rot, rotation: 6f),
+        };
+
+        public static readonly Cutscene WoodwoseReturn = Cutscene.Create("woodwose_return", "It Came Back Broken", StoryMusic.Lullaby, new[]
+            {
+                Tell("woods", "It came back from the Woods split down the middle, and the swamp had filled the cracks.",
+                    BrokenWoodwose(ActorMotion.Still))
+                    .WithFx(ShotFx.Motes).Pan(0f, 0f, 1.0f, 1.08f),
+                Say("woods", "Nell", "Someone keeps waking it. Someone wants us off this road.", 0.45f,
+                    BrokenWoodwose(ActorMotion.Tremble))
+                    .WithFx(ShotFx.Motes).Pan(0f, 0.08f, 1.15f, 1.3f),
+                Tell("black", "Under the rot, in the heartwood, there was a mark I knew. The same one is scratched into Gran's kettle."),
+            });
+
         public static readonly Cutscene Woodwose = Cutscene.Create("woodwose", "What the Woodwose Remembered", StoryMusic.Lullaby, new[]
             {
                 Tell("woods", "The heroes found the old guardian where it fell, its heart-knot going dark.",
@@ -169,7 +199,43 @@ namespace AlchemistsArsenal.Story
 
         // -------------------------------------------------------------- ending
 
-        public static readonly Cutscene Ending = Cutscene.Create("ending", "The Kettle, Boiling", StoryMusic.Resolution, new[]
+        /// <summary>
+        /// The fighters this run hired, for the doorway: the Rookie always, then each hire
+        /// the art knows, spaced along the door from the right.
+        /// </summary>
+        public static CutsceneActor[] RosterHeroes(Core.RunState s, bool staggered)
+        {
+            var ids = new System.Collections.Generic.List<string> { "rookie" };
+            if (s != null && s.roster != null)
+                foreach (var h in s.roster)
+                    if (h != null && (h.portraitId == "herbalist" || h.portraitId == "merchant") && !ids.Contains(h.portraitId))
+                        ids.Add(h.portraitId);
+            var actors = new CutsceneActor[ids.Count];
+            for (int i = 0; i < ids.Count; i++)
+                actors[i] = A("hero_" + ids[i], 0.62f - 0.08f * i, HeroFloor, ActorMotion.Still, scale: 2f, tint: Backlit,
+                    delay: staggered ? 0.15f * (ids.Count - 1 - i) : 0f);
+            return actors;
+        }
+
+        private static CutsceneActor[] With(CutsceneActor[] heroes, params CutsceneActor[] others)
+        {
+            var all = new CutsceneActor[others.Length + heroes.Length];
+            others.CopyTo(all, 0);
+            heroes.CopyTo(all, others.Length);
+            return all;
+        }
+
+        private static Cutscene _ending;
+        private static string _endingFor;
+
+        /// <summary>The ending, with this run's roster at the door (built once per roster).</summary>
+        public static Cutscene EndingFor(Core.RunState s)
+        {
+            string key = "";
+            foreach (var a in RosterHeroes(s, false)) key += a.Id + ";";
+            if (_ending != null && _endingFor == key) return _ending;
+            _endingFor = key;
+            return _ending = Cutscene.Create("ending", "The Kettle, Boiling", StoryMusic.Resolution, new[]
             {
                 Tell("shop_night", "The ward would lift only when the one who spoke it let the anger go.",
                     A("kettle_glow", 0.26f, 0.26f, ActorMotion.Still), A("nell_flask", 0.4f, ShopFloor, fromX: 0.5f), A("tam_asleep", 0.66f, 0.333f))
@@ -184,22 +250,14 @@ namespace AlchemistsArsenal.Story
                     A("nell", 0.36f, BedFloor, ActorMotion.Bob))
                     .Pan(-0.05f, -0.08f, 1.08f, 1.16f),
                 Say("doorway", "Sister Veil", "The Coven is more than one Matriarch, witch.", 0.8f,
-                    A("veil", 0.5f, 0.3f, ActorMotion.Still, scale: 0.75f),
-                    A("hero_knight", 0.41f, HeroFloor, ActorMotion.Still, scale: 2f, tint: Backlit),
-                    A("hero_herbalist", 0.48f, HeroFloor, ActorMotion.Still, scale: 2f, tint: Backlit, delay: 0.15f),
-                    A("hero_merchant", 0.55f, HeroFloor, ActorMotion.Still, scale: 2f, tint: Backlit, delay: 0.3f),
-                    A("hero_rookie", 0.62f, HeroFloor, ActorMotion.Still, scale: 2f, tint: Backlit, delay: 0.45f))
+                    With(RosterHeroes(s, true), A("veil", 0.5f, 0.3f, ActorMotion.Still, scale: 0.75f)))
                     .Pan(0f, 0f, 1.02f, 1.1f),
                 Say("doorway", "Nell", "And this shop is more than one witch.", 1f,
-                    A("veil", 0.5f, 0.3f, ActorMotion.Still, scale: 0.75f),
-                    A("hero_knight", 0.41f, HeroFloor, ActorMotion.Still, scale: 2f, tint: Backlit),
-                    A("hero_herbalist", 0.48f, HeroFloor, ActorMotion.Still, scale: 2f, tint: Backlit),
-                    A("hero_merchant", 0.55f, HeroFloor, ActorMotion.Still, scale: 2f, tint: Backlit),
-                    A("hero_rookie", 0.62f, HeroFloor, ActorMotion.Still, scale: 2f, tint: Backlit),
-                    A("nell", 0.18f, ShopFloor, fromX: -0.1f))
+                    With(RosterHeroes(s, false), A("veil", 0.5f, 0.3f, ActorMotion.Still, scale: 0.75f), A("nell", 0.18f, ShopFloor, fromX: -0.1f)))
                     .Pan(-0.03f, 0.02f, 1.1f, 1.14f),
                 Card("THE END", "...for now", ShotStyle.Title, 2.8f),
             });
+        }
 
         // ------------------------------------------------------------- credits
 
@@ -238,11 +296,9 @@ namespace AlchemistsArsenal.Story
                 A("ysolde", 0.5f, 0.22f, ActorMotion.Float)),
             "diary_end" => Picture("bedroom_awake", ShotFx.None, A("nell", 0.36f, BedFloor)),
             "diary_after" => Picture("doorway", ShotFx.None,
-                A("veil", 0.5f, 0.3f, ActorMotion.Still, scale: 0.75f),
-                A("hero_knight", 0.41f, HeroFloor, ActorMotion.Still, scale: 2f, tint: Backlit),
-                A("hero_herbalist", 0.48f, HeroFloor, ActorMotion.Still, scale: 2f, tint: Backlit),
-                A("hero_merchant", 0.55f, HeroFloor, ActorMotion.Still, scale: 2f, tint: Backlit),
-                A("hero_rookie", 0.62f, HeroFloor, ActorMotion.Still, scale: 2f, tint: Backlit)),
+                With(RosterHeroes(Core.SaveSystem.Instance != null ? Core.SaveSystem.Instance.State : null, false),
+                    A("veil", 0.5f, 0.3f, ActorMotion.Still, scale: 0.75f))),
+            "diary_woodwose_broken" => Picture("woods", ShotFx.Motes, BrokenWoodwose(ActorMotion.Still)),
             _ => Picture("black", ShotFx.Motes),
         };
 
@@ -250,8 +306,9 @@ namespace AlchemistsArsenal.Story
         {
             "opening" => Opening,
             "woodwose" => Woodwose,
+            "woodwose_return" => WoodwoseReturn,
             "reveal" => Reveal,
-            "ending" => Ending,
+            "ending" => EndingFor(Core.SaveSystem.Instance != null ? Core.SaveSystem.Instance.State : null),
             "credits" => Credits,
             _ => null,
         };

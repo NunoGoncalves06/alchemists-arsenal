@@ -17,7 +17,8 @@ namespace AlchemistsArsenal.UI
     ///
     /// <para>While a lesson is up the morning clock runs at a third of its speed.
     /// When the lesson's bench is not the one on screen, the circle points at that
-    /// bench on the rail first.</para>
+    /// bench on the rail first. A focus lesson (<see cref="Lesson.Focus"/>) instead
+    /// waits for the player at its bench and holds them there.</para>
     ///
     /// <para>The first Evening gets a briefing the same way: the report, the
     /// upgrades, the party, the diary and sleep, one short line each. A briefing
@@ -43,6 +44,12 @@ namespace AlchemistsArsenal.UI
         private bool _onRail;
         private float _notReadyFor, _shownFor;
 
+        /// <summary>A focus lesson is up: the player stays at its bench until it is learnt.</summary>
+        public static bool BenchHeld => Active && Instance != null && Instance._current != null && Instance._current.Focus;
+
+        /// <summary>The spotlight itself (the harness clicks the dark with it).</summary>
+        public Spotlight Spot => _spot;
+
         /// <summary>The lesson on screen, or null (the harness checks the briefing with it).</summary>
         public static string CurrentLessonId => Instance != null && Instance._current != null ? Instance._current.Id : null;
 
@@ -66,7 +73,6 @@ namespace AlchemistsArsenal.UI
         private void Start()
         {
             _spot = Spotlight.Create(transform, 200);
-            _spot.SkipRequested += () => { if (_current != null) Learnt(_current); };
         }
 
         private static RunState State => SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
@@ -124,6 +130,7 @@ namespace AlchemistsArsenal.UI
             foreach (Lesson l in TutorialScript.Lessons)
             {
                 if (l.MinLevel > level || s.seenLessons.Contains(l.Id) || !OnItsScreen(l)) continue;
+                if (l.Focus && !OnStation(l)) continue;   // a focus lesson waits for the player at its bench
                 if (!Safe(l.Ready)) continue;
                 Begin(l);
                 break;
@@ -157,7 +164,7 @@ namespace AlchemistsArsenal.UI
             Lesson l = _current;
             if (_onRail)
             {
-                int i = Mathf.Clamp(l.Station, 0, 4);
+                int i = Mathf.Clamp(l.Station, 0, TutorialScript.StationNames.Length - 1);
                 string name = TutorialScript.StationNames[i];
                 _spot.ReserveFoot = true;
                 _spot.Show(() => RectPoint(Screen?.RailTabRect(i)), () => RectRadius(Screen?.RailTabRect(i), 6f),
@@ -179,7 +186,8 @@ namespace AlchemistsArsenal.UI
             var rects = new List<Rect>();
             Camera cam = WorldCam;
             if (cam == null || l.Station < 1) return rects;   // the Counter is all UI
-            foreach (Rect w in Crafting.BenchGauge.VisibleWorldRects()) rects.Add(WorldToScreen(cam, w, 6f));
+            if (!l.Focus)   // a focus lesson keeps only its own target and reveal lit
+                foreach (Rect w in Crafting.BenchGauge.VisibleWorldRects()) rects.Add(WorldToScreen(cam, w, 6f));
             Rect? own = null;
             try { own = l.Reveal?.Invoke(); } catch (System.Exception) { own = null; }
             if (own.HasValue) rects.Add(WorldToScreen(cam, own.Value, 8f));

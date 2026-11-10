@@ -71,7 +71,13 @@ namespace AlchemistsArsenal.Vfx
 
         // Woodwose
         private Part _wBody, _wHead, _wAntlers, _wArmF, _wArmB, _wRoots;
-        private SpriteRenderer _wCracks, _wHeart;
+        private SpriteRenderer _wCracks, _wHeart, _wSplit;
+        /// <summary>The Broken Woodwose: rot-dark bark, one antler gone, violet light in the splits.</summary>
+        private bool _broken;
+        /// <summary>The Caverns' Woodwose (tier 1): the same wood, frozen over.</summary>
+        private bool _frozen;
+        /// <summary>What the heart and eyes glow when calm: amber in the Woods, cold blue frozen, bog green broken.</summary>
+        private Color _calmGlow = BossArt.Amber;
         private readonly SpriteRenderer[] _wEyes = new SpriteRenderer[2];
 
         // Matriarch
@@ -94,6 +100,111 @@ namespace AlchemistsArsenal.Vfx
         private Pose _pose;
         private float _poseT, _poseDur;
         private BossAttackShape _poseShape;
+        private Motion _motion;
+
+        /// <summary>How the body moves for an attack: each kind of attack reads differently before it lands.</summary>
+        public enum Motion { Strike, Volley, Slam, Spin }
+
+        /// <summary>A pulse is a small shockwave (Briar Pulse 3.0, Ward Pulse 3.4): a spin, not a ground slam (Root Slam 4.4, Sundering Ring 5.0).</summary>
+        public const float PulseRadius = 4f;
+
+        public static Motion MotionOf(BossAttackShape shape, float areaRadius) => shape switch
+        {
+            BossAttackShape.Volley => Motion.Volley,
+            BossAttackShape.Shockwave => areaRadius < PulseRadius ? Motion.Spin : Motion.Slam,
+            _ => Motion.Strike,
+        };
+
+        /// <summary>
+        /// One frame of an attack's motion. Angles in degrees, distances in world units.
+        /// Lean &gt; 0 is back, away from the target; Step &gt; 0 is toward it; Turn is the
+        /// rig's x scale (a spin turns it round through -1); Dip squashes the roots or hem.
+        /// </summary>
+        private struct RigPose
+        {
+            public float ArmF, ArmB, Lean, Squash, Heart, Step, Rise, Turn, Dip, Shake;
+        }
+
+        private RigPose CurrentRigPose()
+        {
+            var r = new RigPose { Turn = 1f };
+            float p = PoseP;
+            if (_pose == Pose.Windup)
+            {
+                float e = Smooth(p);
+                switch (_motion)
+                {
+                    case Motion.Strike:   // rear back, weight on the back foot
+                        r.ArmF = -120f * e; r.ArmB = 40f * e; r.Lean = 14f * e; r.Step = -0.3f * e; r.Heart = 0.4f * e; break;
+                    case Motion.Volley:   // draw back to throw
+                        r.ArmF = -70f * e; r.ArmB = 70f * e; r.Lean = 7f * e; r.Step = -0.15f * e; r.Heart = e; break;
+                    case Motion.Slam:     // up onto its toes, both arms over the head
+                        r.ArmF = -160f * e; r.ArmB = 160f * e; r.Lean = 4f * e; r.Rise = 0.35f * e; r.Squash = -0.06f * e; r.Heart = 0.5f * e; break;
+                    default:              // crouch and wind round
+                        r.ArmF = -60f * e; r.ArmB = 60f * e; r.Squash = 0.07f * e; r.Rise = -0.1f * e; r.Heart = 0.6f * e;
+                        r.Turn = Mathf.Lerp(1f, 0.85f, e); break;
+                }
+                return r;
+            }
+            if (_pose != Pose.Release) return r;
+
+            float hit = Mathf.Clamp01(p / 0.3f), back = Mathf.Clamp01((p - 0.3f) / 0.7f);
+            bool first = p < 0.3f;
+            switch (_motion)
+            {
+                case Motion.Strike:   // a lunge: lean in, step through the swing, then recover
+                    r.ArmF = first ? Mathf.Lerp(-120f, 40f, hit) : Mathf.Lerp(40f, 0f, back);
+                    r.ArmB = first ? Mathf.Lerp(40f, -30f, hit) : Mathf.Lerp(-30f, 0f, back);
+                    r.Lean = first ? Mathf.Lerp(14f, -16f, hit) : Mathf.Lerp(-16f, 0f, back);
+                    r.Step = first ? Mathf.Lerp(-0.3f, 0.7f, hit) : Mathf.Lerp(0.7f, 0f, back);
+                    break;
+                case Motion.Volley:   // the throw: an arc forward
+                {
+                    float e = 1f - p;
+                    r.ArmF = -70f * e; r.ArmB = 70f * e; r.Lean = 7f * e - 9f * Mathf.Sin(p * Mathf.PI);
+                    r.Step = -0.15f * e + 0.2f * Mathf.Sin(p * Mathf.PI);
+                    break;
+                }
+                case Motion.Slam:     // down onto the ground: squash, roots driven in, the whole rig shakes
+                    r.ArmF = first ? Mathf.Lerp(-160f, 25f, hit) : Mathf.Lerp(25f, 0f, back);
+                    r.ArmB = -r.ArmF;
+                    r.Lean = first ? Mathf.Lerp(4f, -8f, hit) : Mathf.Lerp(-8f, 0f, back);
+                    r.Rise = first ? Mathf.Lerp(0.35f, -0.08f, hit) : Mathf.Lerp(-0.08f, 0f, back);
+                    r.Squash = first ? 0.12f * hit : 0.12f * (1f - back);
+                    r.Dip = first ? 0.3f * hit : 0.3f * (1f - back);
+                    r.Shake = first ? 0f : 0.09f * (1f - back);
+                    break;
+                default:              // the spin: turned right round once, arms flung out, a little hop
+                {
+                    float sp = Mathf.Clamp01(p / 0.75f);
+                    r.Turn = Mathf.Cos(Smooth(sp) * Mathf.PI * 2f);
+                    r.ArmF = -95f * (1f - back * back); r.ArmB = 95f * (1f - back * back);
+                    r.Rise = 0.18f * Mathf.Sin(sp * Mathf.PI);
+                    r.Heart = 1f - p;
+                    break;
+                }
+            }
+            return r;
+        }
+
+        /// <summary>Start <paramref name="pattern"/>'s windup with no executor behind it (the harness's portraits).</summary>
+        public void PreviewAttack(BossAttackPattern pattern, float windup)
+        {
+            _poseT = 0f; _poseDur = windup; _pose = Pose.Windup;
+            _poseShape = pattern.Shape;
+            _motion = MotionOf(pattern.Shape, pattern.AreaRadius);
+        }
+
+        /// <summary>Jump a previewed motion to <paramref name="at01"/> of its windup or release.</summary>
+        public void PreviewAt(bool release, float at01)
+        {
+            if (release) { _pose = Pose.Release; _poseDur = _poseShape == BossAttackShape.Volley ? 0.35f : 0.45f; }
+            else _pose = Pose.Windup;
+            _poseT = _poseDur * Mathf.Clamp01(at01);
+        }
+
+        /// <summary>Holds a previewed pose still (the attack clock stops) while the harness photographs it.</summary>
+        public bool PreviewHold { get; set; }
         private float _t, _walkPhase, _flashT, _staggerT, _deadT = -1f;
         private Vector2 _staggerDir;
         private float _enrage, _wardAmt, _slump, _track;
@@ -109,6 +220,8 @@ namespace AlchemistsArsenal.Vfx
         {
             var v = root.AddComponent<BossVisual>();
             v._id = def != null && def.VisualId == Woodwose ? Woodwose : Matriarch;
+            v._broken = def != null && def.Broken;
+            v._frozen = def != null && !def.Broken && def.Tier == 1;
             v.Build();
             return v;
         }
@@ -145,19 +258,39 @@ namespace AlchemistsArsenal.Vfx
         private void BuildWoodwose()
         {
             _wRoots = AddPart("Roots", _rig, BossArt.WoodwoseRoots(), new Vector3(0f, 1.0f), 2);
-            _wBody = AddPart("Body", _rig, BossArt.WoodwoseBody(), new Vector3(0f, 0.8f), 6);
+            // Frozen: the bark goes cold and blue. Broken: grey-green with rot.
+            Color? tint = _broken ? new Color(0.66f, 0.7f, 0.58f) : _frozen ? new Color(0.72f, 0.82f, 1f) : (Color?)null;
+            _wBody = AddPart("Body", _rig, _broken ? BossArt.WoodwoseBodyBroken() : BossArt.WoodwoseBody(), new Vector3(0f, 0.8f), 6, tint);
             _wCracks = Overlay(_wBody.T, BossArt.WoodwoseCracks(), Vector3.zero, 14);
             _wCracks.enabled = false;
-            _wHeart = Glow(_wBody.T, BossArt.GlowAmber(), BossArt.WHeartLocal, 15, 1.3f);
+            Sprite glow = _broken ? BossArt.GlowBlight() : _frozen ? BossArt.GlowFrost() : BossArt.GlowAmber();
+            // The tier's own colour is in its glow sprite; amber is tinted amber as it always was.
+            _calmGlow = _broken || _frozen ? Color.white : (Color)BossArt.Amber;
+            if (_broken)
+            {
+                _wSplit = Overlay(_wBody.T, BossArt.WoodwoseCracksBroken(), Vector3.zero, 13);
+                Overlay(_wBody.T, BossArt.WoodwoseSwampBody(), Vector3.zero, 13);   // over the arms' tops
+            }
+            if (_frozen) Overlay(_wBody.T, BossArt.WoodwoseFrostBody(), Vector3.zero, 13);   // over the arms' tops
+            _wHeart = Glow(_wBody.T, glow, BossArt.WHeartLocal, 15, 1.3f);
 
             // The arms and the head hang off the body, so they follow its lean.
-            _wArmB = AddPart("ArmBack", _wBody.T, BossArt.WoodwoseArm(), new Vector3(1.22f, 2.1f), 1, new Color(0.68f, 0.68f, 0.72f));
+            Color backTint = (tint ?? Color.white) * new Color(0.68f, 0.68f, 0.72f);
+            _wArmB = AddPart("ArmBack", _wBody.T, BossArt.WoodwoseArm(), new Vector3(1.22f, 2.1f), 1, backTint);
             _wArmB.T.localScale = new Vector3(-1f, 1f, 1f);
-            _wHead = AddPart("Head", _wBody.T, BossArt.WoodwoseHead(), new Vector3(0f, 2.25f), 10);
-            _wAntlers = AddPart("Antlers", _wHead.T, BossArt.WoodwoseAntlers(), new Vector3(0f, 0.95f), 9);
+            _wHead = AddPart("Head", _wBody.T, BossArt.WoodwoseHead(), new Vector3(0f, 2.25f), 10, tint);
+            _wAntlers = AddPart("Antlers", _wHead.T, _broken ? BossArt.WoodwoseAntlerSnapped() : BossArt.WoodwoseAntlers(), new Vector3(0f, 0.95f), 9, tint);
             for (int i = 0; i < 2; i++)
-                _wEyes[i] = Glow(_wHead.T, BossArt.GlowAmber(), BossArt.WEyesLocal[i], 22, 0.5f);
-            _wArmF = AddPart("ArmFront", _wBody.T, BossArt.WoodwoseArm(), new Vector3(-1.22f, 2.1f), 12);
+                _wEyes[i] = Glow(_wHead.T, glow, BossArt.WEyesLocal[i], 22, 0.5f);
+            _wArmF = AddPart("ArmFront", _wBody.T, BossArt.WoodwoseArm(), new Vector3(-1.22f, 2.1f), 12, tint);
+            if (_frozen)
+            {
+                Overlay(_wHead.T, BossArt.WoodwoseFrostHead(), Vector3.zero, 11);
+                Overlay(_wAntlers.T, BossArt.WoodwoseFrostAntlers(), Vector3.zero, 10);
+                Overlay(_wArmF.T, BossArt.WoodwoseFrostArm(), Vector3.zero, 13);
+                Overlay(_wArmB.T, BossArt.WoodwoseFrostArm(), Vector3.zero, 2).color = new Color(0.7f, 0.7f, 0.75f);
+            }
+            if (_broken) Overlay(_wHead.T, BossArt.WoodwoseSwampHead(), Vector3.zero, 11);
         }
 
         private void BuildMatriarch()
@@ -341,6 +474,7 @@ namespace AlchemistsArsenal.Vfx
             _poseT = 0f;
             _poseDur = windup;
             _poseShape = pattern.Shape;
+            _motion = MotionOf(pattern.Shape, pattern.AreaRadius);
 
             Color fill = ElementColor(pattern.Element);
             Vector2 from = _exec != null ? _exec.LaunchPoint(origin) : origin;
@@ -365,6 +499,8 @@ namespace AlchemistsArsenal.Vfx
             _pose = Pose.Release;
             _poseT = 0f;
             _poseDur = pattern.Shape == BossAttackShape.Volley ? 0.35f : 0.45f;
+            _poseShape = pattern.Shape;
+            _motion = MotionOf(pattern.Shape, pattern.AreaRadius);
             if (pattern.Shape == BossAttackShape.Volley)
             {
                 VfxWorld.Active?.Flash(at, Signature, 1.6f, 0.18f);
@@ -483,8 +619,8 @@ namespace AlchemistsArsenal.Vfx
         {
             float dt = Time.deltaTime;
             _t += dt;
-            _poseT += dt;
-            if (_pose != Pose.Idle && _poseT >= _poseDur + (_pose == Pose.Windup ? 0.25f : 0f)) _pose = Pose.Idle;
+            if (!PreviewHold) _poseT += dt;
+            if (!PreviewHold && _pose != Pose.Idle && _poseT >= _poseDur + (_pose == Pose.Windup ? 0.25f : 0f)) _pose = Pose.Idle;
 
             bool alive = _body == null || _body.IsAlive;
             float Ease(float cur, float target, float rate) => Mathf.MoveTowards(cur, target, rate * dt);
@@ -535,31 +671,8 @@ namespace AlchemistsArsenal.Vfx
             float bob = Mathf.Abs(Mathf.Sin(_walkPhase)) * 0.07f * moving;
             float sway = Mathf.Sin(_t * 0.9f) * 1.5f + Mathf.Sin(_walkPhase) * 3f * moving;
 
-            float armF = 0f, armB = 0f, lean = 0f, heart = 0f, squash = 0f;
-            float p = PoseP;
-            if (_pose == Pose.Windup)
-            {
-                float e = Smooth(p);
-                if (_poseShape == BossAttackShape.Volley) { armF = -70f * e; armB = 70f * e; lean = 7f * e; heart = e; }
-                else { armF = -155f * e; armB = 155f * e; lean = 9f * e; squash = -0.04f * e; heart = 0.4f * e; }
-            }
-            else if (_pose == Pose.Release)
-            {
-                if (_poseShape == BossAttackShape.Volley)
-                {
-                    float e = 1f - p;
-                    armF = -70f * e; armB = 70f * e; lean = 7f * e - 5f * Mathf.Sin(p * Mathf.PI);
-                }
-                else
-                {
-                    // The slam: over in a third of the release, then a slow recovery.
-                    float hit = Mathf.Clamp01(p / 0.3f), back = Mathf.Clamp01((p - 0.3f) / 0.7f);
-                    armF = p < 0.3f ? Mathf.Lerp(-155f, 25f, hit) : Mathf.Lerp(25f, 0f, back);
-                    armB = -armF;
-                    lean = p < 0.3f ? Mathf.Lerp(9f, -10f, hit) : Mathf.Lerp(-10f, 0f, back);
-                    squash = p < 0.3f ? 0.07f * hit : 0.07f * (1f - back);
-                }
-            }
+            RigPose rp = CurrentRigPose();
+            float armF = rp.ArmF, armB = rp.ArmB, lean = rp.Lean, heart = rp.Heart, squash = rp.Squash;
 
             float swing = Mathf.Sin(_t * 1.1f) * 3f + Mathf.Sin(_walkPhase) * 6f * moving;
             armF += swing + 8f * _slump;
@@ -577,32 +690,40 @@ namespace AlchemistsArsenal.Vfx
             _wHead.T.localRotation = Quaternion.Euler(0f, 0f, Mathf.Sin(_t * 0.7f + 1f) * 2f + 12f * _slump * faceSign - _track * 3f);
             _wArmF.T.localRotation = Quaternion.Euler(0f, 0f, armF);
             _wArmB.T.localRotation = Quaternion.Euler(0f, 0f, armB);
-            _wRoots.T.localScale = new Vector3(1f + 0.05f * Mathf.Sin(_walkPhase) * moving, 1f, 1f);
+            _wRoots.T.localScale = new Vector3(1f + 0.05f * Mathf.Sin(_walkPhase) * moving + 0.3f * rp.Dip, 1f - rp.Dip, 1f);
 
             // Arrival: it tears up out of the ground, too big for a moment, then settles.
             float ent = Entrance01;
             float grow = ent >= 1f ? 1f : Mathf.Max(0.05f, OutBack(ent));
-            _rig.localScale = new Vector3(Mathf.Lerp(1.3f, 1f, Mathf.Min(1f, ent * 1.2f)), grow, 1f);
-            _rig.localPosition = new Vector3(_staggerDir.x * 0.14f * _staggerT * _staggerT, 0f, 0f);
+            _rig.localScale = new Vector3(Mathf.Lerp(1.3f, 1f, Mathf.Min(1f, ent * 1.2f)) * rp.Turn, grow, 1f);
+            _rig.localPosition = new Vector3(_staggerDir.x * 0.14f * _staggerT * _staggerT, 0f, 0f) + RigOffset(rp, faceSign);
 
             // The heart beats: twice, then a rest. Faster, and red, when enraged.
             float period = Mathf.Lerp(1.15f, 0.6f, _enrage);
             float ph = (_t % period) / period;
             float beat = Mathf.Max(Pulse(ph, 0.05f), 0.7f * Pulse(ph, 0.22f));
-            Color heartCol = Color.Lerp(BossArt.Amber, BossArt.Blood, _enrage);
+            Color heartCol = Color.Lerp(_calmGlow, BossArt.Blood, _enrage);
             _wHeart.color = new Color(heartCol.r, heartCol.g, heartCol.b, Mathf.Clamp01(0.45f + 0.5f * beat + 0.3f * heart) * (1f - 0.5f * _slump));
             _wHeart.transform.localScale = Vector3.one * (1.2f + 0.35f * beat + 0.9f * heart);
 
             float eyes = Mathf.Clamp01((ent - 0.6f) / 0.4f) * (1f - 0.5f * _slump) * (0.85f + 0.15f * Mathf.Sin(_t * 9f));
-            Color eyeCol = Color.Lerp(BossArt.Amber, BossArt.Blood, _enrage);
+            Color eyeCol = Color.Lerp(_calmGlow, BossArt.Blood, _enrage);
             for (int i = 0; i < 2; i++)
             {
                 _wEyes[i].color = new Color(eyeCol.r, eyeCol.g, eyeCol.b, eyes);
                 _wEyes[i].transform.localPosition = (Vector3)BossArt.WEyesLocal[i] + new Vector3(_track * 0.04f, 0f, 0f);
             }
 
+            if (_wSplit != null) _wSplit.color = new Color(1f, 1f, 1f, 0.65f + 0.35f * Mathf.Sin(_t * 3.2f));
             _wCracks.enabled = _enrage > 0.01f;
             if (_wCracks.enabled) _wCracks.color = new Color(1f, 1f, 1f, _enrage * (0.75f + 0.25f * Mathf.Sin(_t * 11f)));
+        }
+
+        /// <summary>The rig's shift for a motion: a step toward the target, a rise, the slam's shake.</summary>
+        private Vector3 RigOffset(in RigPose rp, float faceSign)
+        {
+            float shake = rp.Shake > 0f ? rp.Shake * Mathf.Sin(_t * 70f) : 0f;
+            return new Vector3(-faceSign * rp.Step + shake, rp.Rise, 0f);
         }
 
         private static float Pulse(float ph, float at) => Mathf.Clamp01(1f - Mathf.Abs(ph - at) / 0.08f);
@@ -613,17 +734,20 @@ namespace AlchemistsArsenal.Vfx
 
             float p = PoseP;
             float lift = 0f;
+            RigPose rp = CurrentRigPose();
+            float faceSign = _track <= 0f ? 1f : -1f;
+            bool wide = _motion == Motion.Volley || _motion == Motion.Spin;
             float[] spread = { MArmRest[0], MArmRest[1], MArmRest[2] };
             if (_pose == Pose.Windup)
             {
                 float e = Smooth(p);
-                float[] to = _poseShape == BossAttackShape.Volley ? MArmSpread : MArmRaised;
+                float[] to = wide ? MArmSpread : MArmRaised;
                 for (int k = 0; k < 3; k++) spread[k] = Mathf.Lerp(MArmRest[k], to[k], e);
                 lift = 0.3f * e;
             }
             else if (_pose == Pose.Release)
             {
-                float[] from = _poseShape == BossAttackShape.Volley ? MArmSpread : MArmRaised;
+                float[] from = wide ? MArmSpread : MArmRaised;
                 float hit = Mathf.Clamp01(p / 0.3f), back = Mathf.Clamp01((p - 0.3f) / 0.7f);
                 for (int k = 0; k < 3; k++)
                     spread[k] = p < 0.3f ? Mathf.Lerp(from[k], 8f, hit) : Mathf.Lerp(8f, MArmRest[k], back);
@@ -634,10 +758,13 @@ namespace AlchemistsArsenal.Vfx
             float ent = Entrance01;
             float down = ent >= 1f ? 0f : (1f - ent) * (1f - ent) * 5f;
             float floatY = Mathf.Lerp(0.45f + 0.12f * Mathf.Sin(_t * 1.3f), 0.15f, _slump) + lift + down;
-            _mFloat.localPosition = new Vector3(_staggerDir.x * 0.14f * _staggerT * _staggerT, floatY, 0f);
+            _mFloat.localPosition = new Vector3(_staggerDir.x * 0.14f * _staggerT * _staggerT, floatY, 0f) + RigOffset(rp, faceSign);
+            // She tilts with the motion (into a lunge, back to throw) and turns round in a spin.
+            _mFloat.localRotation = Quaternion.Euler(0f, 0f, -rp.Lean * faceSign * 0.6f);
+            _mFloat.localScale = new Vector3(rp.Turn, 1f - 0.5f * rp.Squash, 1f);
             float fade = Mathf.Clamp01(ent * 1.6f);
 
-            _mRobe.T.localScale = new Vector3(1f + 0.025f * Mathf.Sin(_t * 1.9f), 1f + 0.015f * Mathf.Sin(_t * 1.3f + 1f), 1f);
+            _mRobe.T.localScale = new Vector3(1f + 0.025f * Mathf.Sin(_t * 1.9f) + 0.25f * rp.Dip, 1f + 0.015f * Mathf.Sin(_t * 1.3f + 1f) - 0.3f * rp.Dip, 1f);
             _mHead.T.localPosition = _mHead.Pos + new Vector3(_track * 0.05f, 0.03f * Mathf.Sin(_t * 1.3f + 0.5f) - 0.08f * _slump, 0f);
             _mHead.T.localRotation = Quaternion.Euler(0f, 0f, 3f * Mathf.Sin(_t * 0.6f) - _track * 5f + 12f * _slump * (_track <= 0f ? 1f : -1f));
 
@@ -754,6 +881,9 @@ namespace AlchemistsArsenal.Vfx
         {
             _deadT = 0f;
             OnCancelled();
+            // Whatever motion it was in (mid-spin it is mirrored or edge-on), it falls square.
+            if (_rig != null) { _rig.localScale = Vector3.one; _rig.localPosition = Vector3.zero; }
+            if (_mFloat != null) { _mFloat.localRotation = Quaternion.identity; _mFloat.localScale = Vector3.one; }
             _ward.enabled = false;
             // Out of the fight at once: nothing walks into it or throws at it now.
             PhysicsKit.GameLayers.Assign(gameObject, PhysicsKit.GameLayers.Debris, includeChildren: false);

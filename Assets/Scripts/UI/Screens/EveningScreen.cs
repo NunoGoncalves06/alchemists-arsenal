@@ -39,6 +39,16 @@ namespace AlchemistsArsenal.UI
         public RectTransform BodyRect => _body;
         public RectTransform SleepRect => _sleepBtn != null ? (RectTransform)_sleepBtn.transform : null;
 
+        private Button _menuBtn;
+
+        /// <summary>The Evening offers MENU beside SLEEP only once the last road has been cleared.</summary>
+        public static bool ShowsMenu(RunState s) =>
+            s != null && s.bestGrades != null && s.bestGrades.Length >= Combat.BiomeLibrary.Count
+            && s.bestGrades[Combat.BiomeLibrary.Count - 1] > 0;
+
+        /// <summary>Whether the MENU button is up right now (for the playtest).</summary>
+        public bool MenuShown => _menuBtn != null && _menuBtn.gameObject.activeSelf;
+
         protected override void Build()
         {
             UIFactory.Box(transform, UITheme.Ground, Rt);
@@ -77,6 +87,11 @@ namespace AlchemistsArsenal.UI
 
             var sleep = _sleepBtn = UIFactory.Button(transform, "SLEEP", () => GameLoopManager.Instance.BeginBiomeMap());
             UIFactory.Place(sleep.image.rectTransform, 0.80f, 0.025f, 0.975f, 0.09f);
+
+            // Once the last road is cleared, the way back to the title sits beside SLEEP.
+            _menuBtn = UIFactory.Button(transform, "MENU", () => GameLoopManager.Instance.SaveAndGoToMainMenu(), primary: false);
+            UIFactory.Place(_menuBtn.image.rectTransform, 0.665f, 0.025f, 0.79f, 0.09f);
+            _menuBtn.gameObject.SetActive(false);
         }
 
         private Button Tab(float xMin, float xMax, string text, System.Action onClick)
@@ -88,6 +103,7 @@ namespace AlchemistsArsenal.UI
 
         protected override void OnShow()
         {
+            LevelUpNote = null;   // a new evening: yesterday's level-up is old news
             RunState s = SaveSystem.Instance.State;
 
             // Whatever part of the story today's fight earned plays first, over the
@@ -102,6 +118,7 @@ namespace AlchemistsArsenal.UI
             // BeginEvening already rolled the day over, so the run that just ended
             // was yesterday's.
             _title.text = $"Evening of day {Mathf.Max(1, s.day - 1)}";
+            if (_menuBtn != null) _menuBtn.gameObject.SetActive(ShowsMenu(s));
             _gold.text = $"{s.gold} g";
             ShowReport();
 
@@ -171,21 +188,29 @@ namespace AlchemistsArsenal.UI
 
             UIKit.KeyValue(c, "Waves cleared", $"{r.wavesCleared} / {r.totalWaves}");
             UIKit.KeyValue(c, "Boss", r.bossDefeated ? "defeated" : "—");
-            UIKit.KeyValue(c, "Party returned", $"{r.partyTotal - r.partyDown} / {r.partyTotal}");
-            if (r.downedHeroIds.Count > 0)
+            UIKit.KeyValue(c, "Stayed to the end", $"{r.partyTotal - r.partyDown} / {r.partyTotal}");
+            // Everyone who did not: fallen (benched tomorrow) or walked off with an empty belt (fit).
+            foreach (string id in r.downedHeroIds)
             {
-                var fallen = new List<string>();
-                foreach (string id in r.downedHeroIds)
-                {
-                    HeroRecord h = SaveSystem.Instance.State.FindHero(id);
-                    if (h != null) fallen.Add(h.displayName);
-                }
-                var hurt = UIFactory.Label(c,
-                    $"Fell on the road: {string.Join(", ", fallen)}. They sit tomorrow out.",
-                    UITheme.SizeSmall, UITheme.Danger, TextAlignmentOptions.TopLeft);
-                UIFactory.Flex(hurt.gameObject, 1f, 0f, minHeight: 34f);
+                HeroRecord h = SaveSystem.Instance.State.FindHero(id);
+                if (h != null) UIKit.KeyValue(c, h.displayName, "Fell in battle (sits tomorrow out)");
+            }
+            foreach (string id in r.withdrawnHeroIds)
+            {
+                HeroRecord h = SaveSystem.Instance.State.FindHero(id);
+                if (h != null) UIKit.KeyValue(c, h.displayName, "Withdrew: out of flasks");
             }
             UIKit.KeyValue(c, "Time on the road", $"{r.durationSeconds:0}s");
+            if (!r.won)
+            {
+                int road = r.roadIndex >= 0 ? r.roadIndex : GameLoopManager.Instance != null ? GameLoopManager.Instance.TargetBiomeIndex : 0;
+                var facts = DefeatTips.Facts.From(r, SaveSystem.Instance.State, road);
+                foreach (DefeatTips.Tip t in DefeatTips.For(facts))
+                {
+                    var tip = UIFactory.Label(c, "• " + DefeatTips.Text(t, facts), UITheme.SizeSmall, UITheme.CandleHot, TextAlignmentOptions.TopLeft);
+                    UIFactory.Flex(tip.gameObject, 1f, 0f, minHeight: 30f);
+                }
+            }
         }
 
         private void BuildJob(ExpeditionReport r)
@@ -238,6 +263,7 @@ namespace AlchemistsArsenal.UI
             if (r.perfectTip) UIKit.KeyValue(c, "Perfect tip", $"+{Economy.PerfectTip} g", valueColor: UITheme.Ok);
             if (r.replayDay) UIKit.KeyValue(c, "Replayed road", "x0.50", valueColor: UITheme.Danger);
             UIKit.KeyValue(c, "Paid", $"{r.goldPaidByGrade} g", keyColor: UITheme.Candle, valueColor: UITheme.Candle);
+            QuickHands(c, r);
         }
 
         /// <summary>Several fighters, several jobs: one line each — what they asked for, what they carried, what it paid.</summary>
@@ -274,6 +300,20 @@ namespace AlchemistsArsenal.UI
             if (r.perfectTip) UIKit.KeyValue(c, "Perfect tips", "included", valueColor: UITheme.Ok);
             if (r.replayDay) UIKit.KeyValue(c, "Replayed road", "x0.50", valueColor: UITheme.Danger);
             UIKit.KeyValue(c, "Paid", $"{r.goldPaidByGrade} g", keyColor: UITheme.Candle, valueColor: UITheme.Candle);
+            QuickHands(c, r);
+        }
+
+        /// <summary>The quick-hands bonus as its own line: what it added and why, or why there was none.</summary>
+        private static void QuickHands(Transform c, ExpeditionReport r)
+        {
+            int left = Mathf.RoundToInt(r.speedLeft01 * 100f);
+            if (r.speedBonus > 0)
+                UIKit.KeyValue(c, $"Quick hands (+{Mathf.RoundToInt(Economy.SpeedBonus(r.speedLeft01) * 100f)} %, {left} % of the morning left)",
+                    $"+{r.speedBonus} g", valueColor: UITheme.Ok);
+            else
+                UIKit.KeyValue(c, "Quick hands",
+                    !r.won ? "no pay to add to" : r.speedLeft01 <= 0f ? "the clock ran out" : $"too slow ({left} % left)",
+                    valueColor: UITheme.TextLow);
         }
 
         private static string BuyerIdFor(ExpeditionReport r)
@@ -324,7 +364,7 @@ namespace AlchemistsArsenal.UI
             UIFactory.Flex(row.gameObject, 1f, 1f, minHeight: 60f);
 
             var gold = UIFactory.Label(row.transform,
-                $"<size=160%><b>{r.TotalGold} g</b></size>\n<size=85%>{r.goldPaidByGrade} g fee  ·  {r.goldFromLoot} g loot</size>",
+                $"<size=160%><b>{r.TotalGold} g</b></size>\n<size=85%>{r.goldPaidByGrade} g fee  ·  {r.goldFromLoot} g loot{(r.speedBonus > 0 ? $"  ·  {r.speedBonus} g quick hands" : "")}</size>",
                 UITheme.SizeBody, UITheme.Candle, TextAlignmentOptions.TopLeft);
             UIFactory.Flex(gold.gameObject, 0.6f, 1f, minWidth: 220f);
 
@@ -399,7 +439,9 @@ namespace AlchemistsArsenal.UI
             // What it installs, drawn as it will look.
             var box = UIFactory.Panel(inner, UITheme.Alpha(UITheme.Ground, 0.6f), "Preview");
             UIFactory.Place(box.rectTransform, 0.02f, 0.06f, 0.30f, 0.94f);
-            foreach (Sprite sp in Preview(up.Id))
+            var composed = ComposedPreview(up.Id);
+            if (composed != null) ShopPreview.Compose(box.rectTransform, composed);
+            else foreach (Sprite sp in Preview(up.Id))
             {
                 var icon = UIFactory.Icon(box.transform, sp, 64f);
                 icon.preserveAspect = true;
@@ -426,18 +468,51 @@ namespace AlchemistsArsenal.UI
             if (id == _justBought) UpgradeReveal.Play(card.rectTransform);
         }
 
+        /// <summary>
+        /// The two machines that are built from several pieces, laid out as they stand on the bench
+        /// (back to front, in the bench's own draw order), or null for a card with one picture.
+        /// </summary>
+        private static List<ShopPreview.Layer> ComposedPreview(string id)
+        {
+            if (id == UpgradeCatalog.ClockworkStirrer)
+            {
+                Vector2 crown = Crafting.CauldronView.CrownOffset;
+                float k = Crafting.CauldronView.PotScale;
+                return new List<ShopPreview.Layer>
+                {
+                    new ShopPreview.Layer(Art.ShopArt.PotBack(true), Vector2.zero, k),
+                    new ShopPreview.Layer(Art.ShopArt.Liquid(ElementType.Nature), Vector2.zero, k),
+                    new ShopPreview.Layer(Art.ShopArt.Paddle(), crown, k * 0.95f),
+                    new ShopPreview.Layer(Art.ShopArt.PotFront(true), Vector2.zero, k),
+                    new ShopPreview.Layer(Art.ShopArt.Gantry(), crown, k),
+                    new ShopPreview.Layer(Art.ShopArt.Gear(), crown + new Vector2(0f, 0.55f), k),
+                };
+            }
+            if (id == UpgradeCatalog.SteepingVat)
+            {
+                float k = Crafting.SteepBench.JarScale;
+                return new List<ShopPreview.Layer>
+                {
+                    new ShopPreview.Layer(Art.MaltArt.JarBack(), Vector2.zero, k),
+                    new ShopPreview.Layer(Art.MaltArt.JarWater(Crafting.SteepBench.WaterRow), Vector2.zero, k),
+                    new ShopPreview.Layer(Art.ShopArt.Paddle(), Crafting.SteepBench.JarOffset(Art.MaltArt.JarW * 0.5f, -1f), k * 0.8f),
+                    new ShopPreview.Layer(Art.MaltArt.JarFront(true), Vector2.zero, k),
+                    new ShopPreview.Layer(Art.ShopArt.Gear(), Crafting.SteepBench.JarOffset(Art.MaltArt.JarW * 0.5f, -2f), k),
+                };
+            }
+            return null;
+        }
+
         /// <summary>The sprites (back to front) that show what an upgrade installs.</summary>
         private static Sprite[] Preview(string id) => id switch
         {
-            UpgradeCatalog.ClockworkStirrer => new[] { Art.ShopArt.PotBack(true), Art.ShopArt.Liquid(ElementType.Nature), Art.ShopArt.PotFront(true) },
             UpgradeCatalog.DraughtKiln => new[] { Art.MaltArt.Kiln(true) },
-            UpgradeCatalog.SteepingVat => new[] { Art.MaltArt.JarBack(), Art.MaltArt.JarWater(12), Art.MaltArt.JarFront(true) },
-            UpgradeCatalog.DryingRack => new[] { Art.ShopProps.HerbBundle(4) },
-            UpgradeCatalog.BrassMortar => new[] { Art.ShopArt.MortarBack(true), Art.ShopArt.MortarFront(true) },
-            UpgradeCatalog.GlassFunnel => new[] { Art.ShopArt.Funnel() },
+            UpgradeCatalog.DryingRack => new[] { Art.ShopArt.DryingRack(), Art.ShopProps.HerbBundle(4) },
+            UpgradeCatalog.BrassMortar => new[] { Art.ShopArt.CrusherFrame(), Art.ShopArt.MortarBack(true), Art.ShopArt.CrusherRam(), Art.ShopArt.MortarFront(true) },
+            UpgradeCatalog.GlassFunnel => new[] { Art.ShopArt.Doser() },
             UpgradeCatalog.HeavierFlasks or UpgradeCatalog.TemperedGlass => new[] { Art.PixelSprites.Flask(ElementType.Fire) },
             UpgradeCatalog.SpareVials or UpgradeCatalog.Bandolier => new[] { Art.PixelSprites.Flask(ElementType.Water) },
-            UpgradeCatalog.ThickBoots or UpgradeCatalog.HardLeathers => new[] { Art.PixelSprites.Fighter("knight") },
+            UpgradeCatalog.ThickBoots or UpgradeCatalog.HardLeathers => new[] { Art.PixelSprites.Fighter("rookie") },
             _ => new[] { Art.PixelSprites.Star() },
         };
 
@@ -466,6 +541,9 @@ namespace AlchemistsArsenal.UI
         /// project has no ScrollRect anywhere, and five rows plus the hire shelf
         /// is what the body can show without one.
         /// </summary>
+        /// <summary>The last level-up's before and after, shown over the roster (and read by the playtest).</summary>
+        public string LevelUpNote { get; private set; }
+
         private void ShowRoster()
         {
             Clear();
@@ -479,6 +557,13 @@ namespace AlchemistsArsenal.UI
                 $"Party — {outToday} / {cap} going out · {s.gold} g on hand",
                 out Transform c, spacing: 8f);
             UIFactory.Stretch(card.rectTransform);
+
+            // What the last level-up changed, until the roster is left.
+            if (!string.IsNullOrEmpty(LevelUpNote))
+            {
+                var note = UIFactory.Label(c, LevelUpNote, UITheme.SizeSmall, UITheme.CandleHot, TextAlignmentOptions.Left);
+                UIFactory.FixedHeight(note.gameObject, 24f);
+            }
 
             foreach (HeroRecord hero in s.roster)
                 BuildHeroRow(c, s, hero, outToday, cap);
@@ -509,6 +594,16 @@ namespace AlchemistsArsenal.UI
             var sub = UIFactory.Label(name.transform, hero.Subtitle, UITheme.SizeSmall,
                 UITheme.Element(hero.affinity), TextAlignmentOptions.TopLeft);
             UIFactory.Flex(sub.gameObject, 1f, 1f);
+            // The numbers the next fight builds this fighter from, and the next level's.
+            HeroStats now = HeroStats.For(hero.level, s);
+            string stats = $"Lv {hero.level} · {now.Hp} HP · {now.Damage} base dmg · +{now.FlaskBonus} flasks";
+            if (HeroCatalog.CanLevel(hero))
+            {
+                HeroStats next = HeroStats.For(hero.level + 1, s);
+                stats += $"   <color=#{ColorUtility.ToHtmlStringRGB(UITheme.TextLow)}>next: {next.Hp} HP · {next.Damage} dmg · +{next.FlaskBonus}</color>";
+            }
+            var statLine = UIFactory.MonoLabel(name.transform, stats, UITheme.SizeTiny, UITheme.TextMid, TextAlignmentOptions.TopLeft);
+            UIFactory.FixedHeight(statLine.gameObject, 18f);
 
             var perk = UIFactory.VStack(inner, 2f, new RectOffset(8, 8, 12, 12));
             UIFactory.Place((RectTransform)perk.transform, 0.46f, 0f, 0.725f, 1f);
@@ -599,8 +694,12 @@ namespace AlchemistsArsenal.UI
             HeroRecord hero = s.FindHero(heroId);
             if (hero == null || !HeroCatalog.CanLevel(hero) || s.gold < cost) return;
 
+            HeroStats before = HeroStats.For(hero.level, s);
             s.AddGold(-cost);
             hero.level++;
+            HeroStats after = HeroStats.For(hero.level, s);
+            LevelUpNote = $"{hero.displayName} reached Lv {hero.level}: HP {before.Hp} → {after.Hp}, " +
+                          $"base damage {before.Damage} → {after.Damage}, flasks +{before.FlaskBonus} → +{after.FlaskBonus}";
             SaveSystem.Instance.MarkDirty();
             AudioManager.Play(Sfx.Coin);
             _gold.text = $"{s.gold} g";

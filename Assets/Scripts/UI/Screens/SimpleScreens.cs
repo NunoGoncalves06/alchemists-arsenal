@@ -74,10 +74,9 @@ namespace AlchemistsArsenal.UI
             rt.anchorMax = new Vector2(0.34f, 0.68f);
             rt.offsetMin = rt.offsetMax = Vector2.zero;
 
-            _continue = UIFactory.Button(col.transform, "CONTINUE",
-                () => { if (GameLoopManager.Instance != null) GameLoopManager.Instance.Continue(); });
+            _continue = UIFactory.Button(col.transform, "CONTINUE", () => SlotScreen.Open(newGame: false));
             Fix(_continue, 56);
-            Fix(UIFactory.Button(col.transform, "NEW GAME", () => GameLoopManager.Instance.StartNewGame(), primary: false), 56);
+            Fix(UIFactory.Button(col.transform, "NEW GAME", () => SlotScreen.Open(newGame: true), primary: false), 56);
             Fix(UIFactory.Button(col.transform, "SETTINGS", () => UIManager.Instance.Show(ScreenId.Settings), primary: false), 56);
             Fix(UIFactory.Button(col.transform, "CREDITS", () => UIManager.Instance.Show(ScreenId.Credits), primary: false), 56);
             Fix(UIFactory.Button(col.transform, "QUIT", Quit, primary: false), 56);
@@ -89,16 +88,22 @@ namespace AlchemistsArsenal.UI
         protected override void OnShow()
         {
             if (SaveSystem.Instance == null) return;
-            bool exists = SaveSystem.Instance.SlotExists(0);
-            bool corrupt = exists && SaveSystem.Instance.SlotCorrupt(0);
-            if (_continue != null) _continue.interactable = exists && !corrupt;
-            if (_warn != null)
-                _warn.text = corrupt
-                    ? "Save file unreadable. NEW GAME will overwrite it."
-                    : "";
+            bool any = SaveSystem.Instance.AnyContinuable();
+            if (_continue != null)
+            {
+                // Nothing to continue: the button goes dark and does nothing.
+                _continue.interactable = any;
+                if (any) UIFactory.TintButton(_continue, UITheme.Candle, UITheme.CandleHot, UITheme.Ink900);
+                else UIFactory.TintButton(_continue, UITheme.SurfaceHi, UITheme.SurfaceHi, UITheme.TextLow);
+                if (!any) { var c = _continue.colors; c.disabledColor = Color.white; _continue.colors = c; }
+            }
+            bool corrupt = false;
+            for (int i = 0; i < SaveSystem.Slots; i++) corrupt |= SaveSystem.Instance.SlotCorrupt(i);
+            if (_warn != null) _warn.text = corrupt ? "A save file is unreadable. Its slot says so." : "";
 
-            // Once the story is over, the picture and the line say so.
-            RunState saved = exists && !corrupt ? SaveSystem.Instance.Peek(0) : null;
+            // Once the story is over, the picture and the line say so (for the run played last).
+            int recent = SaveSlots.MostRecent(SaveSystem.Instance);
+            RunState saved = recent >= 0 ? SaveSystem.Instance.Peek(recent) : null;
             bool after = saved != null && saved.endingSeen;
             if (_sub != null) _sub.text = Story.StoryDirector.MenuSubtitle(saved);
             if (_keyArt != null) _keyArt.Play(after ? KeyArtAfter : KeyArtBefore, seed: 5);
@@ -159,7 +164,6 @@ namespace AlchemistsArsenal.UI
             Slider(col.transform, "Sound", () => SettingsService.SfxVolume, v => SettingsService.SfxVolume = v);
             Toggle(col.transform, "Reduce motion", () => SettingsService.ReduceMotion, v => SettingsService.ReduceMotion = v);
             Toggle(col.transform, "Screen shake", () => SettingsService.ScreenShake, v => SettingsService.ScreenShake = v);
-            Toggle(col.transform, "Show adventurer thinking", () => SettingsService.ShowAiThinking, v => SettingsService.ShowAiThinking = v);
 
             var back = UIFactory.Button(col.transform, "BACK", () =>
                 UIManager.Instance.Show(GameLoopManager.Instance != null && GameLoopManager.Instance.Phase != GamePhase.Boot
@@ -175,7 +179,8 @@ namespace AlchemistsArsenal.UI
             _ => ScreenId.MainMenu,
         };
 
-        private static void Slider(Transform parent, string label, System.Func<float> get, System.Action<float> set)
+        /// <summary>A labelled 0..1 slider (shared with the pause menu).</summary>
+        internal static void Slider(Transform parent, string label, System.Func<float> get, System.Action<float> set)
         {
             var row = UIFactory.HStack(parent, 12f);
             row.gameObject.AddComponent<LayoutElement>().minHeight = 34;
@@ -190,14 +195,133 @@ namespace AlchemistsArsenal.UI
             var le = s.gameObject.AddComponent<LayoutElement>(); le.minWidth = 220; le.minHeight = 22;
         }
 
-        private static void Toggle(Transform parent, string label, System.Func<bool> get, System.Action<bool> set)
+        /// <summary>A labelled ON/OFF switch (shared with the pause menu); it shows its new state when clicked.</summary>
+        internal static void Toggle(Transform parent, string label, System.Func<bool> get, System.Action<bool> set)
         {
             var row = UIFactory.HStack(parent, 12f);
             row.gameObject.AddComponent<LayoutElement>().minHeight = 34;
             UIFactory.Label(row.transform, label, 18, UITheme.Parchment).rectTransform.sizeDelta = new Vector2(300, 30);
             Button btn = null;
-            btn = UIFactory.Button(row.transform, get() ? "ON" : "OFF", () => { set(!get()); }, primary: get());
+            void Show()
+            {
+                bool on = get();
+                UIFactory.SetButtonText(btn, on ? "ON" : "OFF");
+                if (on) UIFactory.TintButton(btn, UITheme.Candle, UITheme.CandleHot, UITheme.Ink900);
+                else UIFactory.TintButton(btn, UITheme.Wood, new Color(0.52f, 0.37f, 0.24f), UITheme.Parchment);
+            }
+            btn = UIFactory.Button(row.transform, get() ? "ON" : "OFF", () => { set(!get()); Show(); }, primary: get());
             var le = btn.gameObject.AddComponent<LayoutElement>(); le.minWidth = 90; le.minHeight = 30;
+        }
+    }
+
+    // -------------------------------------------------------------------- Slots
+
+    /// <summary>
+    /// The three save slots, for NEW GAME (where to start) or CONTINUE (which run).
+    /// Each card names the road, the nights slept and when it was last played. A new
+    /// game over an existing save asks twice.
+    /// </summary>
+    public class SlotScreen : GameScreen
+    {
+        private static bool _newGame;
+        private TextMeshProUGUI _title;
+        private readonly TextMeshProUGUI[] _head = new TextMeshProUGUI[SaveSystem.Slots];
+        private readonly TextMeshProUGUI[] _body = new TextMeshProUGUI[SaveSystem.Slots];
+        private readonly Button[] _go = new Button[SaveSystem.Slots];
+        private int _confirm = -1;
+
+        /// <summary>True when the screen is choosing where to start a new game.</summary>
+        public static bool NewGameMode => _newGame;
+
+        public static void Open(bool newGame)
+        {
+            _newGame = newGame;
+            // Already up (switching mode in place): Show would not refresh it.
+            if (UIManager.Instance.Current == ScreenId.Slots && UIManager.Instance.ScreenOf(ScreenId.Slots) is SlotScreen up)
+            {
+                up._confirm = -1;
+                up.Refresh();
+                return;
+            }
+            UIManager.Instance.Show(ScreenId.Slots);
+        }
+
+        protected override void Build()
+        {
+            UIFactory.Box(transform, UITheme.Ground, Rt);
+            _title = UIFactory.Title(transform, "", UITheme.SizeTitle, UITheme.Candle);
+            UIFactory.Place(_title.rectTransform, 0.06f, 0.80f, 0.94f, 0.90f);
+
+            for (int i = 0; i < SaveSystem.Slots; i++)
+            {
+                int slot = i;
+                float x0 = 0.06f + i * 0.30f;
+                var card = UIFactory.Panel(transform, UITheme.Surface, "Slot" + i);
+                UIFactory.Place(card.rectTransform, x0, 0.26f, x0 + 0.28f, 0.74f);
+                _head[i] = UIFactory.Heading(card.transform, $"Slot {i + 1}", UITheme.TextHi);
+                UIFactory.Place(_head[i].rectTransform, 0.08f, 0.80f, 0.92f, 0.94f);
+                _body[i] = UIFactory.Label(card.transform, "", UITheme.SizeBody, UITheme.TextMid, TextAlignmentOptions.TopLeft);
+                UIFactory.Place(_body[i].rectTransform, 0.08f, 0.30f, 0.92f, 0.78f);
+                _go[i] = UIFactory.Button(card.transform, "", () => Choose(slot));
+                UIFactory.Place(_go[i].image.rectTransform, 0.08f, 0.06f, 0.92f, 0.22f);
+            }
+
+            var back = UIFactory.Button(transform, "BACK", () => UIManager.Instance.Show(ScreenId.MainMenu), primary: false);
+            UIFactory.Place(back.image.rectTransform, 0.06f, 0.10f, 0.22f, 0.18f);
+        }
+
+        protected override void OnShow()
+        {
+            _confirm = -1;
+            Refresh();
+        }
+
+        private void Refresh()
+        {
+            SaveSystem save = SaveSystem.Instance;
+            _title.text = _newGame ? "Start a new game in which slot?" : "Continue which game?";
+            long now = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            for (int i = 0; i < SaveSystem.Slots; i++)
+            {
+                bool exists = save != null && save.SlotExists(i);
+                RunState s = exists ? save.Peek(i) : null;
+                bool corrupt = exists && s == null;
+                if (s != null)
+                {
+                    SaveSlots.SlotSummary sum = SaveSlots.Describe(s, now);
+                    _body[i].text = $"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.TextHi)}>{sum.Road}</color>\n{sum.Night}\n\n" +
+                                    $"<size=85%>Last played\n{sum.LastPlayed}</size>";
+                }
+                else _body[i].text = corrupt ? "Unreadable save." : "Empty.";
+
+                string label = _newGame
+                    ? (exists ? (_confirm == i ? "Sure? Click again" : "OVERWRITE") : "START HERE")
+                    : "CONTINUE";
+                UIFactory.SetButtonText(_go[i], label);
+                bool can = _newGame || s != null;
+                _go[i].interactable = can;
+                // Nothing to continue here: dark, like the title's CONTINUE.
+                if (can) UIFactory.TintButton(_go[i], UITheme.Candle, UITheme.CandleHot, UITheme.Ink900);
+                else { UIFactory.TintButton(_go[i], UITheme.SurfaceHi, UITheme.SurfaceHi, UITheme.TextLow); var c = _go[i].colors; c.disabledColor = Color.white; _go[i].colors = c; }
+            }
+        }
+
+        private void Choose(int slot)
+        {
+            SaveSystem save = SaveSystem.Instance;
+            if (save == null || GameLoopManager.Instance == null) return;
+            if (!_newGame)
+            {
+                if (save.Peek(slot) != null) GameLoopManager.Instance.Continue(slot);
+                return;
+            }
+            if (save.SlotExists(slot) && _confirm != slot)
+            {
+                _confirm = slot;   // an existing save is only overwritten on the second click
+                Refresh();
+                return;
+            }
+            GameLoopManager.Instance.StartNewGame(slot);
         }
     }
 
@@ -331,7 +455,7 @@ namespace AlchemistsArsenal.UI
 
             foreach (HeroRecord hero in party)
             {
-                Systems.ActiveOrder order = cm != null ? cm.OrderFor(hero.id) : null;
+                Systems.ActiveOrder order = cm != null ? cm.CarriedBy(hero.id) : null;
                 // An order with no fighter behind it (a test) belongs to the lead.
                 if (order == null && hero == party[0] && cm != null && cm.Orders.Count > 0
                     && string.IsNullOrEmpty(cm.Orders[0].heroId))
@@ -372,7 +496,7 @@ namespace AlchemistsArsenal.UI
             var grade = order.GetGrade();
             what.text = $"{order.potionName}\n<color=#{ColorUtility.ToHtmlStringRGB(UITheme.GradeColor(grade))}>" +
                         $"{grade.ToString()}</color>  <size=85%>{order.qualityScore} / 100" +
-                        (order.Finished ? "" : " · unfinished") + "</size>";
+                        (order.deliveredTo == hero.id ? " · handed over" : order.Finished ? "" : " · unfinished, not handed over") + "</size>";
             terms.text = job != null && job.accepted
                 ? job.Meets(grade)
                     ? $"Wanted {job.RequiredGrade.ToString()} or better — this clears it."

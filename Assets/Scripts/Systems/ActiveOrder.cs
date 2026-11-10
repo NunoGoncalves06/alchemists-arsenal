@@ -22,17 +22,20 @@ namespace AlchemistsArsenal.Systems
     }
 
     /// <summary>
-    /// Where an order is in the shop: the next bench it needs. Benches take orders
-    /// in exactly this sequence and no other, so a flask can never skip a stage.
+    /// Where an order is in the shop: the bench it is at. Benches take orders in
+    /// exactly this sequence and no other (<see cref="CraftingManager.Next"/>), so a
+    /// flask can never skip a bench or be at two at once.
     /// </summary>
-    public enum BrewStage { Malting = 0, Prep = 1, Cauldron = 2, Bottling = 3, Done = 4 }
+    public enum BrewStage { Steep = 0, Kiln = 1, Prep = 2, Cauldron = 3, Bottling = 4, Delivery = 5, Done = 6 }
 
     /// <summary>
-    /// Where an order's grain is at the Malting bench: waiting for the jar, being
-    /// poured, soaking, germinating, green (sprouted, waiting for the kiln), in the
-    /// kiln, or malted. Each step only follows the one before.
+    /// Where an order's grain is at the Steep bench: waiting for the jar, being
+    /// poured, soaking, germinating, then green (sprouted, ready to scoop for the kiln).
     /// </summary>
-    public enum MaltStep { Waiting = 0, Filling = 1, Soaking = 2, Germinating = 3, Green = 4, Kilning = 5, Malted = 6 }
+    public enum SteepStep { Waiting = 0, Filling = 1, Soaking = 2, Germinating = 3, Green = 4 }
+
+    /// <summary>Where an order's green malt is at the Kiln bench: waiting in its basket, drying on the tray, dried.</summary>
+    public enum KilnStep { Waiting = 0, Drying = 1, Dried = 2 }
 
     /// <summary>
     /// One fighter's potion order. Created only by the Counter (DESIGN.md §7.6.1),
@@ -52,14 +55,13 @@ namespace AlchemistsArsenal.Systems
         public string orderId;
         public string potionName;
         public ElementType element = ElementType.Fire;
-        public int currentStationIndex; // 0..3
         public int qualityScore = StartingQuality;
 
         /// <summary>The fighter who ordered it, and who will carry it out of the shop.</summary>
         public string heroId = "";
         public string heroName = "";
 
-        /// <summary>The next bench this order needs.</summary>
+        /// <summary>The bench this order is at.</summary>
         public BrewStage stage = BrewStage.Prep;
 
         /// <summary>0 for the first fighter served today, 1 for the next…</summary>
@@ -77,8 +79,21 @@ namespace AlchemistsArsenal.Systems
 
         public bool Finished => stage == BrewStage.Done;
 
-        /// <summary>Where this order's grain is at the Malting bench.</summary>
-        public MaltStep maltStep = MaltStep.Waiting;
+        /// <summary>Where this order's grain is at the Steep bench.</summary>
+        public SteepStep steepStep = SteepStep.Waiting;
+
+        /// <summary>Where this order's green malt is at the Kiln bench.</summary>
+        public KilnStep kilnStep = KilnStep.Waiting;
+
+        /// <summary>The sound grain scooped out of the jar: what the kiln dries.</summary>
+        public int steepedGrains;
+
+        /// <summary>The fighter this flask was handed to at the Delivery bench, or empty.</summary>
+        public string deliveredTo = "";
+
+        /// <summary>The sealed flask is at Delivery and <paramref name="toHeroId"/> is the fighter who ordered it.</summary>
+        public bool CanHandTo(string toHeroId) =>
+            stage == BrewStage.Delivery && !string.IsNullOrEmpty(toHeroId) && toHeroId == heroId;
 
         /// <summary>Points the malting has earned (bonuses less charges), for <see cref="MaltQuality01"/>.</summary>
         public int maltPoints;
@@ -99,7 +114,6 @@ namespace AlchemistsArsenal.Systems
             orderId = id;
             potionName = name;
             this.element = element;
-            currentStationIndex = 0;
             qualityScore = StartingQuality;
             deductions = new List<DeductionLog>();
         }
@@ -135,10 +149,6 @@ namespace AlchemistsArsenal.Systems
             AdjustQuality(points, stationName, reason, timeStamp);
         }
 
-        public void AdvanceStation()
-        {
-            if (currentStationIndex < 3) currentStationIndex++;
-        }
 
         /// <summary>0..1 quality, the form the combat layer consumes.</summary>
         public float Quality01 => qualityScore / 100f;

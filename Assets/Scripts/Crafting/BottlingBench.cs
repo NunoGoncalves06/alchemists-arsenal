@@ -128,7 +128,7 @@ namespace AlchemistsArsenal.Crafting
                 if (Order == null) return Working != null && Working.stage > BrewStage.Bottling ? "Sealed and labelled." : "Waiting for a brew from the cauldron.";
                 return Current switch
                 {
-                    Step.Pour => "Drag the ladle down to pour. Stop between the gold lines.",
+                    Step.Pour => Funnel ? "The doser is measuring it out." : "Drag the ladle down to pour. Stop between the gold lines.",
                     Step.Seal => CorkSeated ? "" : "Carry the cork to the neck and let go.",
                     Step.Label => "Drag the right label onto the flask.",
                     _ => "",
@@ -183,6 +183,9 @@ namespace AlchemistsArsenal.Crafting
         /// <summary>The order the bench can still act on: <see cref="Working"/>, while it is at Bottling.</summary>
         private ActiveOrder Order => Working != null && Working.stage == BrewStage.Bottling ? Working : null;
         private float _lingerUntil;
+        private Vector2 _flaskHome;
+        private bool _sliding;
+        private const float LingerSeconds = 2f;
 
         /// <summary>Take up the next brewed order: a clean flask, the ladle back, the cork on its rest.</summary>
         private void BindNext()
@@ -229,7 +232,7 @@ namespace AlchemistsArsenal.Crafting
             GameLayers.Assign(plank, GameLayers.ShopStatic);
 
             BuildFlask(new Vector2(0.6f, BenchTopY));
-            BuildLadle();
+            if (Funnel) BuildDoser(); else BuildLadle();
             BuildCork();
             BuildTags();
 
@@ -256,17 +259,13 @@ namespace AlchemistsArsenal.Crafting
             go.transform.SetParent(transform, false);
             go.transform.localPosition = local;
             _flask = go.transform;
+            _flaskHome = local;
 
             AddArt(go.transform, ShopArt.FlaskBack(), 10, "GlassBack", FlaskScale);
             _liquidArt = AddArt(go.transform, ShopArt.FlaskLiquid(ShopArt.FlaskH), OrderLiquid, "Brew", FlaskScale);
             AddArt(go.transform, ShopArt.FlaskFront(), OrderGlass, "GlassFront", FlaskScale);
             // The line to pour to: ticks on the glass at the target band's two edges.
             AddArt(go.transform, ShopArt.FlaskMarks(RowAtFill(TargetLow), RowAtFill(TargetHigh)), OrderGlass + 1, "Line", FlaskScale);
-            if (Funnel)
-            {
-                var funnel = AddArt(go.transform, ShopArt.Funnel(), OrderGlass + 1, "Funnel", FlaskScale);
-                funnel.transform.localPosition = new Vector3(0f, (ShopArt.FlaskH - 2f) / ShopArt.PPU * FlaskScale, 0f);
-            }
             // The label, once one is stuck on: a tag pressed flat on the bulb.
             _flaskLabel = AddArt(go.transform, ShopArt.LabelTag(ElementType.Fire), OrderGlass + 2, "Label", 0.9f);
             _flaskLabel.enabled = false;
@@ -319,6 +318,42 @@ namespace AlchemistsArsenal.Crafting
             _hinge.useLimits = false;
             _hinge.useMotor = false;
         }
+
+        /// <summary>
+        /// The auto doser (the Glass Funnel upgrade): a copper tank with a tap on a bracket
+        /// over the flask, in place of the ladle. It lets out a measured dose by itself.
+        /// </summary>
+        private void BuildDoser()
+        {
+            var go = new GameObject("Doser");
+            go.transform.SetParent(transform, false);
+            go.transform.position = DoserSpoutWorld;
+            SpriteRenderer body = AddArt(go.transform, ShopArt.Doser(), 18, "Art", LadleScale);
+            _doser = go.transform;
+            // The window: the potion's own colour, running down as the dose goes out. It
+            // sits where the body's recess is (rows 5 to 13 of 28, from the spout's tip).
+            _doserLevel = AddArt(body.transform, ShopArt.DoserLevel(), 19, "Level", 1f);
+            _doserLevel.transform.localPosition = new Vector3(0f, 14f / ShopArt.PPU, 0f);
+        }
+
+        /// <summary>The doser's spout, just above the cork's resting height so the cork comes down under it.</summary>
+        private Vector2 DoserSpoutWorld => FlaskMouthWorld + new Vector2(0f, CorkRestAbove + 0.55f);
+
+        /// <summary>Droplets for a flask of <paramref name="capacity"/> filled to the middle of the gold lines.</summary>
+        public static int DoseFor(int capacity) => Mathf.RoundToInt(capacity * (TargetLow + TargetHigh) * 0.5f);
+
+        /// <summary>The doser is letting the brew out: a dose still to give.</summary>
+        private bool Dosing => _doser != null && Current == Step.Pour && Order != null && _stream != null
+                               && _stream.Emitted < DoseFor(_capacity);
+
+        private Transform _doser;
+        private SpriteRenderer _doserLevel;
+
+        /// <summary>The colour of the brew in the doser's window (clear without a doser).</summary>
+        public Color DoserLevelColor => _doserLevel != null ? _doserLevel.color : Color.clear;
+
+        /// <summary>The colour the pour's droplets are drawn in.</summary>
+        public Color StreamColor => _stream != null ? _stream.CurrentColor : Color.clear;
 
         private Vector2 CorkRestWorld => FlaskMouthWorld + new Vector2(0f, CorkRestAbove);
 
@@ -403,9 +438,37 @@ namespace AlchemistsArsenal.Crafting
             ResetBench();
         }
 
+        /// <summary>
+        /// Sealed and labelled, the flask does not sit on the bench or vanish: for the
+        /// second half of the linger it slides off the end of the bench, toward the
+        /// Delivery bench where it turns up on the tray, its cork going with it.
+        /// </summary>
+        private void SlideSealedFlaskAway()
+        {
+            if (_flask == null) return;
+            float slide = SlideProgress01;
+            if (slide <= 0f) return;
+            if (!_sliding) { _sliding = true; if (_stream != null) _stream.ResetAll(); }   // the brew goes with the glass
+            _flask.localPosition = _flaskHome + new Vector2(6.5f * slide, 0f);
+            if (_cork != null && _cork.gameObject.activeSelf) _cork.position = CorkSeatWorld;
+        }
+
+        /// <summary>0..1 through the slide off the bench; 0 until the sealed flask starts to go.</summary>
+        public float SlideProgress01
+        {
+            get
+            {
+                if (Working == null || Current != Step.Done) return 0f;
+                float k = Mathf.Clamp01((LingerSeconds - (_lingerUntil - Time.time)) / LingerSeconds);
+                return Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((k - 0.5f) * 2f));
+            }
+        }
+
         /// <summary>A clean flask for the next order.</summary>
         private void ResetBench()
         {
+            if (_flask != null) _flask.localPosition = _flaskHome;
+            _sliding = false;
             Current = Step.Pour;
             SealsLeft = QualityBudget.SealAttempts;
             SealHalfWidth = 0.09f;
@@ -417,6 +480,7 @@ namespace AlchemistsArsenal.Crafting
             _corkCarried = false;
             _tagCarried = -1;
             if (_flaskLabel != null) _flaskLabel.enabled = false;
+            if (_doserLevel != null) _doserLevel.transform.localScale = Vector3.one;
             foreach (var t in _tags) if (t.t != null) t.t.position = t.home;
             if (_tagRail != null) _tagRail.gameObject.SetActive(Complexity.LabelsOn(Complexity.Level()));
             if (_stream != null) _stream.ResetAll();
@@ -467,7 +531,9 @@ namespace AlchemistsArsenal.Crafting
 
         private void Update()
         {
+            if (AlchemistsArsenal.Core.TimeControl.Paused) return;   // the pause menu: nothing here moves or reads the pointer
             BindNext();
+            SlideSealedFlaskAway();
             var order = Order;
             if (Working != null)
             {
@@ -475,11 +541,23 @@ namespace AlchemistsArsenal.Crafting
                 if (_stream != null) _stream.SetColor(_brewColor);
             }
 
-            if (Attended && order != null) Hands(order);
+            if (Attended && order != null && !(Funnel && Current == Step.Pour)) Hands(order);
             else { _pointerPour = false; _dragTilt01 = 0f; DropCarried(); }
 
             DrawBrew();
+            DrawDoser();
             DrawFillGauge();
+        }
+
+        /// <summary>The doser's window shows the potion's colour and how much of the dose is left to give.</summary>
+        private void DrawDoser()
+        {
+            if (_doserLevel == null) return;
+            _doserLevel.enabled = Working != null;   // an empty recess until a brew is in the flask's queue
+            _doserLevel.color = _brewColor;
+            if (Current != Step.Pour || _stream == null) return;
+            float left = 1f - _stream.Emitted / (float)Mathf.Max(1, DoseFor(_capacity));
+            _doserLevel.transform.localScale = new Vector3(1f, Mathf.Clamp01(left), 1f);
         }
 
         /// <summary>
@@ -649,11 +727,12 @@ namespace AlchemistsArsenal.Crafting
             // faster the steeper the tilt. Below ~27 degrees nothing comes out (and the
             // lip would still be outside the neck).
             float tilt = Tilt01;
-            if (Current == Step.Pour && tilt > PourStart && Order != null)
+            bool dosing = Dosing;
+            if (dosing || (Current == Step.Pour && tilt > PourStart && Order != null))
             {
-                _emitDebt += dt * Mathf.Lerp(8f, 36f, Mathf.InverseLerp(PourStart, 1f, tilt));
-                Vector2 lip = _ladle.transform.TransformPoint(LipLocal);
-                while (_emitDebt >= 1f)
+                _emitDebt += dt * (dosing ? 36f : Mathf.Lerp(8f, 36f, Mathf.InverseLerp(PourStart, 1f, tilt)));
+                Vector2 lip = dosing ? DoserSpoutWorld : (Vector2)_ladle.transform.TransformPoint(LipLocal);
+                while (_emitDebt >= 1f && (!dosing || Dosing))
                 {
                     _emitDebt -= 1f;
                     float j = ((_stream.Emitted * 37) % 11) / 11f - 0.5f;   // deterministic scatter
@@ -681,7 +760,9 @@ namespace AlchemistsArsenal.Crafting
 
         private void MeasureFill()
         {
-            if (_stream == null || _flask == null) return;
+            // Only while pouring: once the pour is scored the droplets are cleared with the
+            // slide, and counting them again read an empty flask for one that was full.
+            if (_stream == null || _flask == null || Current != Step.Pour) return;
             Fill01 = _stream.Count(_insideGlass) / (float)Mathf.Max(1, _capacity);
             _benchY = transform.position.y + BenchTopY + 0.35f;
             Spilled = _stream.Count(_onBench);
@@ -851,7 +932,7 @@ namespace AlchemistsArsenal.Crafting
             }
             Current = Step.Done;
             if (CraftingManager.Instance != null) CraftingManager.Instance.Advance(order);
-            _lingerUntil = Time.time + 2f;   // the sealed flask stays up for a moment
+            _lingerUntil = Time.time + LingerSeconds;   // the sealed flask stays up for a moment
             Changed?.Invoke();
         }
     }

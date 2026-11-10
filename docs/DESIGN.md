@@ -906,7 +906,7 @@ an older section above, this one wins.
   scripted pointer for the harness), `Grabbable2D`, `PointerGrabber`,
   `ImpactSensor2D`, `LiquidBody2D`, `PourStream2D`, `PhysicsMaterials`,
   `ImpulseQueue` (pushes decided outside the step are applied at the top of
-  `FixedUpdate`), `Draft2D`. Every force runs in `FixedUpdate`.
+  `FixedUpdate`). Every force runs in `FixedUpdate`.
 - **Art + Vfx.** Grid sprites live in `PixelSprites` and its partial files;
   geometric and organic art is drawn from shapes with `PixelCanvas` (`ShopArt`,
   `ShopProps`, `BossArt`, `StoryArt`, `BiomeArt`, `ParticleArt`).
@@ -971,8 +971,9 @@ Prep, Cauldron, Bottling — and a flask cannot skip one (§12.6).
 | Elder Woodwose (Nature) | 1500 | Bramble Swipe, Thorn Volley, Root Slam, Briar Pulse |
 | Coven Matriarch (Arcane) | 1250 | Hex Volley, Hex Storm, Coven Slam, Sundering Ring, Ward Pulse |
 
-The Woodwose appears only once the Woods have been cleared, so a failed day-1
-retry never meets it. How hard each road is, and what it takes, is in §12.6.
+Day 1 has no guardian anywhere (`BiomeLibrary.GuardianToday`): the Woods are waves only,
+and the Woodwose ends them from day 2 on. Its scene and diary page come on the
+evening it first falls. How hard each road is, and what it takes, is in §12.6.
 
 ### 12.4 Arenas
 - **Backdrops:** `BiomeArt` draws each road (floor, skyline, margins, vignette),

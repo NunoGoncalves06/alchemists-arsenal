@@ -32,6 +32,7 @@ namespace AlchemistsArsenal.PhysicsKit
 
         private void Update()
         {
+            if (AlchemistsArsenal.Core.TimeControl.Paused) return;   // the pause menu: nothing here moves or reads the pointer
             bool on = Enabled == null || Enabled();
             if (!on)
             {

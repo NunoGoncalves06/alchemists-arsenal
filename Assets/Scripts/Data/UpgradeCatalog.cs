@@ -11,7 +11,7 @@ namespace AlchemistsArsenal.Data
         public readonly string DisplayName;
         public readonly string Description;
         public readonly int Cost;
-        /// <summary>The bench it changes ("Malting", "Prep", "Cauldron", "Bottling"), or "" for the road.</summary>
+        /// <summary>The bench it changes ("Steep", "Kiln", "Prep", "Cauldron", "Bottling"), or "" for the road.</summary>
         public readonly string Bench;
         /// <summary>An upgrade that must be owned first (a second tier), or "".</summary>
         public readonly string Requires;
@@ -74,24 +74,27 @@ namespace AlchemistsArsenal.Data
 
         public static readonly UpgradeDefinition[] All =
         {
+            // Bench machines. Priced by when their mechanic arrives (the later, the dearer),
+            // so a saver first affords one on the evening of day 3 (even with the full quick-hands bonus), and a good player owns
+            // them all near the end of road 4: see GameLoopSimulationTest.TestCurveIsAffordable.
+            new UpgradeDefinition(DryingRack, "Drying Rack",
+                "Herbs hung to dry over the Prep bench. No leaf comes wilted any more, and every one is sound and potent.",
+                80, "Prep"),
+            new UpgradeDefinition(GlassFunnel, "Auto Doser",
+                "A copper tank with a tap over the flask: it measures the brew in to the line. You only cork and label.",
+                356, "Bottling"),
+            new UpgradeDefinition(BrassMortar, "Auto Crusher",
+                "A brass ram on a frame over the mortar: it strikes the leaves itself, clean every time. You only put the leaves in.",
+                358, "Prep"),
             new UpgradeDefinition(ClockworkStirrer, "Clockwork Stirrer",
-                "A copper pot with a wind-up paddle: it keeps the brew turning by itself while you work elsewhere. A good hand still brews faster, and a little better.",
-                220, "Cauldron"),
+                "A wind-up paddle over a copper pot stirs the whole brew, the right way round. No spoon: a little less than a perfect hand, but you are free.",
+                360, "Cauldron"),
             new UpgradeDefinition(DraughtKiln, "Draught Kiln",
                 "A damper and a stoker: the kiln keeps its own fire in the band, and dries a quarter faster.",
-                170, "Malting"),
-            new UpgradeDefinition(SteepingVat, "Steeping Vat",
-                "A copper-banded vat: the soak and the sprouting run a third faster.",
-                120, "Malting"),
-            new UpgradeDefinition(DryingRack, "Drying Rack",
-                "Herbs hung to dry properly over the Prep bench: no more wilted leaves, and each one a little plumper.",
-                110, "Prep"),
-            new UpgradeDefinition(BrassMortar, "Brass Mortar",
-                "A heavier pestle in a brass bowl: the clean-strike band is a third wider.",
-                100, "Prep"),
-            new UpgradeDefinition(GlassFunnel, "Glass Funnel",
-                "A funnel in the flask's neck: a wider line to pour to.",
-                90, "Bottling"),
+                362, "Kiln"),
+            new UpgradeDefinition(SteepingVat, "Turning Vat",
+                "A copper vat with a paddle and a strainer: it seals at the line, skims the husks and turns the bed. You pour the grain in and take the malt out to its basket.",
+                364, "Steep"),
 
             new UpgradeDefinition(HeavierFlasks, "Heavier Flasks", "+25% bomb damage", 40),
             new UpgradeDefinition(SpareVials, "Spare Vials", "+5 ammo per expedition", 30),

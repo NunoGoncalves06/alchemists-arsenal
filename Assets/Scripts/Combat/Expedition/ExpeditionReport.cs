@@ -15,6 +15,9 @@ namespace AlchemistsArsenal.Combat
         public string biomeName = "";
         public bool won;
         public bool bossDefeated;
+        /// <summary>Who fell, to the story ("woodwose", "matriarch"), and how many times it had come back. Empty if no guardian fell.</summary>
+        public string bossId = "";
+        public int bossTier;
         public int wavesCleared;
         public int totalWaves;
         public float durationSeconds;
@@ -29,8 +32,19 @@ namespace AlchemistsArsenal.Combat
         /// BeginEvening benches them for a day (<see cref="Data.HeroCatalog.ApplyInjuries"/>).</summary>
         public readonly List<string> downedHeroIds = new List<string>();
 
+        /// <summary>Of <see cref="partyDown"/>, those who walked off the road out of flasks: not hurt, so not benched.</summary>
+        public int partyWithdrew;
+
+        /// <summary>The road walked (BiomeLibrary index), stamped when the fight ends: the evening has moved the road on by then.</summary>
+        public int roadIndex = -1;
+        public readonly List<string> withdrawnHeroIds = new List<string>();
+
         public int goldFromLoot;
         public int goldPaidByGrade;   // filled by Economy at hand-off to Evening
+
+        /// <summary>The quick-hands bonus on the purse (<see cref="Economy.SpeedBonusGold"/>), and the share of the morning left that earned it.</summary>
+        public int speedBonus;
+        public float speedLeft01;
         public bool perfectTip;
         public PotionGrade craftedGrade = PotionGrade.Poor;
 
@@ -84,7 +98,7 @@ namespace AlchemistsArsenal.Combat
             public bool everHadAdvantage;
         }
 
-        public int TotalGold => goldFromLoot + goldPaidByGrade;
+        public int TotalGold => goldFromLoot + goldPaidByGrade + speedBonus;
 
         // ------------------------------------------------------------------ stars
         //
@@ -98,8 +112,8 @@ namespace AlchemistsArsenal.Combat
         //
         // The third star is the flask: the grade that actually detonated on the
         // road (the same craftedGrade the fee is paid on). It is the one axis a win
-        // does not imply, it is reachable on every road on every day (bossless
-        // biomes 1-3 and the boss-free day 1 included), and it is the morning's
+        // does not imply, it is reachable on every road on every day (the
+        // bossless Cinder Peaks included), and it is the morning's
         // work showing up in the afternoon's grade.
 
         /// <summary>The worst flask grade that still earns the third star.</summary>

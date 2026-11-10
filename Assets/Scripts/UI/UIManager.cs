@@ -9,7 +9,7 @@ namespace AlchemistsArsenal.UI
 {
     public enum ScreenId
     {
-        Boot, MainMenu, Settings, Credits, DayIntro, Morning, Handoff, ExpeditionHud, Evening, Diary, BiomeMap, Cutscene
+        Boot, MainMenu, Settings, Credits, DayIntro, Morning, Handoff, ExpeditionHud, Evening, Diary, BiomeMap, Cutscene, Slots
     }
 
     /// <summary>
@@ -88,6 +88,7 @@ namespace AlchemistsArsenal.UI
             Register(ScreenId.Diary,       typeof(DiaryScreen));
             Register(ScreenId.BiomeMap,    typeof(BiomeMapScreen));
             Register(ScreenId.Cutscene,    typeof(CutsceneScreen));
+            Register(ScreenId.Slots,       typeof(SlotScreen));
         }
 
         private void Register(ScreenId id, Type screenType)

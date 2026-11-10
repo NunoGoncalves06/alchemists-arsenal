@@ -230,6 +230,9 @@ namespace AlchemistsArsenal.Combat
         /// Who is throwing. Separate from <see cref="Configure"/> so the
         /// bootstrap/demo paths that have no roster keep working at the defaults.
         /// </summary>
+        /// <summary>The hero's level damage scale this fighter was given (HeroStats.DamageScale).</summary>
+        public float LevelDamageScale => levelDamageScale;
+
         public void ConfigureHero(ElementType heroAffinity, float heroLevelDamageScale)
         {
             affinity = heroAffinity;

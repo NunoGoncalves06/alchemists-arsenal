@@ -21,7 +21,7 @@ namespace AlchemistsArsenal.Core
     public static class LoadoutBuilder
     {
         /// <summary>Ammo the bomb ships with, by grade — a cleaner brew fills more flasks.</summary>
-        private static int AmmoFor(PotionGrade grade) => grade switch
+        public static int AmmoFor(PotionGrade grade) => grade switch
         {
             PotionGrade.Perfect => 32,
             PotionGrade.Great => 28,
@@ -71,12 +71,9 @@ namespace AlchemistsArsenal.Core
                   ?? (string.IsNullOrWhiteSpace(order.potionName) ? "Raw Sludge" : order.potionName);
 
             RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
-            float dmgMult = (s != null && s.HasUpgrade(UpgradeCatalog.HeavierFlasks) ? 1.25f : 1f)
-                            * (s != null && s.HasUpgrade(UpgradeCatalog.TemperedGlass) ? 1.25f : 1f);
+            float dmgMult = HeroStats.KitDamage(s);
             float cdMult = s != null && s.HasUpgrade(UpgradeCatalog.QuickHands) ? 0.75f : 1f;
-            int ammoBonus = (s != null && s.HasUpgrade(UpgradeCatalog.SpareVials) ? 5 : 0)
-                            + (s != null && s.HasUpgrade(UpgradeCatalog.Bandolier) ? 8 : 0)
-                            + Mathf.Max(0, heroAmmoBonus);
+            int ammoBonus = HeroStats.KitFlasks(s) + Mathf.Max(0, heroAmmoBonus);
 
             // Day 1 is a first-timer's fight with whatever quality potion they
             // managed on their very first try at the cauldron — a flat "beginner's
@@ -86,10 +83,15 @@ namespace AlchemistsArsenal.Core
 
             // Base stats are the "spec" of the potion; the 0..1 quality that scales
             // damage/blast/elemental is carried separately via the live ActiveOrder.
+            // The day's other takes on a recipe throw a little differently: Broad bursts wider and
+            // reaches less far, Far the other way. Damage, ammo and cooldown are the same for all.
+            int variant = order?.Mixture?.Recipe?.Variant ?? 0;
+            float blast = variant == 1 ? 3.0f : variant == 2 ? 2.3f : 2.6f;
+            float reach = variant == 1 ? 12f : variant == 2 ? 15f : 13f;
             BombData bomb = BombData.Create(
                 name, element,
-                baseDamage: Mathf.RoundToInt(22 * dmgMult), blastRadius: 2.6f, throwSpeed: 13f,
-                idealRange: 6f, minSafeRange: 2f, maxRange: 13f, cooldownSeconds: 1.4f * cdMult);
+                baseDamage: Mathf.RoundToInt(HeroStats.BaseDamage * dmgMult), blastRadius: blast, throwSpeed: 13f,
+                idealRange: 6f, minSafeRange: 2f, maxRange: reach, cooldownSeconds: 1.4f * cdMult);
 
             var loadout = ScriptableObject.CreateInstance<AdventurerLoadout>();
             loadout.name = $"Loadout_{name}";

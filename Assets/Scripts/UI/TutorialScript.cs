@@ -38,7 +38,7 @@ namespace AlchemistsArsenal.UI
         public string Id;
         /// <summary>The first level (road) that uses this mechanic; see <see cref="Complexity"/>.</summary>
         public int MinLevel;
-        /// <summary>The bench's rail index (0 Counter .. 4 Bottling), or -1 for none.</summary>
+        /// <summary>The bench's rail index (0 Counter .. 6 Delivery), or -1 for none.</summary>
         public int Station = -1;
         public Func<bool> Ready, Done;
         public Func<LessonTarget?> Where;
@@ -49,6 +49,12 @@ namespace AlchemistsArsenal.UI
         public ScreenId OnScreen = ScreenId.Morning;
         /// <summary>A briefing, not a task: it is done when the player clicks to go on.</summary>
         public bool ClickToGo;
+        /// <summary>
+        /// A focus lesson: it only starts with the player already at its bench (it
+        /// never sends them anywhere), keeps them there until it is learnt, and lights
+        /// nothing but its target and its own <see cref="Reveal"/>.
+        /// </summary>
+        public bool Focus;
     }
 
     /// <summary>
@@ -63,14 +69,16 @@ namespace AlchemistsArsenal.UI
         public static readonly string[] BasicLessonIds = { "job", "leaves", "pestle", "stir", "pour", "cork", "send" };
 
         private static CraftingManager Crafting => CraftingManager.Instance;
-        private static MaltingBench Malt => MaltingBench.Instance;
+        private static SteepBench Malt => SteepBench.Instance;
+        private static KilnBench Kiln => KilnBench.Instance;
+        private static DeliveryBench Delivery => DeliveryBench.Instance;
         private static PrepBench Prep => PrepBench.Instance;
         private static PhysicsCauldronManager Pot => PhysicsCauldronManager.Instance;
         private static BottlingBench Bottle => BottlingBench.Instance;
         private static MorningScreen Screen =>
             UIManager.Instance != null ? UIManager.Instance.ScreenOf(ScreenId.Morning) as MorningScreen : null;
 
-        private static MaltStep TubStep => Malt != null && Malt.TubOrder != null ? Malt.TubOrder.maltStep : MaltStep.Waiting;
+        private static SteepStep TubStep => Malt != null && Malt.TubOrder != null ? Malt.TubOrder.steepStep : SteepStep.Waiting;
         private static BrewMixture PrepMix => Prep != null && Prep.Working != null ? Prep.Working.Mixture : null;
 
         public static readonly List<Lesson> Lessons = new List<Lesson>
@@ -90,56 +98,70 @@ namespace AlchemistsArsenal.UI
             new Lesson
             {
                 Id = "sack", MinLevel = 1, Station = 1,
-                Ready = () => TubStep == MaltStep.Filling && !Malt.CanSteep,
-                Done = () => Malt == null || Malt.CanSteep || TubStep != MaltStep.Filling,
-                Where = () => LessonTarget.At(Malt.SackWorld, 1.3f),
+                Ready = () => TubStep == SteepStep.Filling && !Malt.LineReached,
+                Done = () => Malt == null || Malt.LineReached || TubStep != SteepStep.Filling,
+                Where = () => LessonTarget.At(Malt.SackBounds.center, 1.3f),
                 Say = () => "Hold the sack to pour grain up to the green band.",
             },
             new Lesson
             {
                 Id = "lid", MinLevel = 1, Station = 1,
-                Ready = () => Malt != null && Malt.CanSteep,
-                Done = () => TubStep != MaltStep.Filling,
-                Where = () => Malt.Carrying ? LessonTarget.At(Malt.JarMouthWorld, 1.3f) : LessonTarget.At(Malt.LidWorld, 0.9f),
+                Ready = () => Malt != null && Malt.LineReached && !Malt.Vat,
+                Done = () => TubStep != SteepStep.Filling,
+                Where = () => Malt.Carrying ? LessonTarget.At(Malt.JarMouthWorld, 1.3f) : LessonTarget.At(Malt.LidBounds.center, 0.9f),
                 Say = () => Malt.Carrying ? "Set the lid on the jar." : "Pick up the lid.",
             },
             new Lesson
             {
                 Id = "skim", MinLevel = 2, Station = 1,
-                Ready = () => FloatingHusk().HasValue,
+                Ready = () => FloatingHusk().HasValue && !Malt.Vat,
                 Done = () => !FloatingHusk().HasValue,
                 Where = () => FloatingHusk() is Vector2 h ? LessonTarget.At(h, 0.7f) : (LessonTarget?)null,
                 Say = () => "Husks float. Click them out before they spoil the steep.",
             },
             new Lesson
             {
-                Id = "turn", MinLevel = 2, Station = 1,
-                Ready = () => Malt != null && Malt.TurnDue,
-                Done = () => Malt == null || !Malt.TurnDue,
-                Where = () => LessonTarget.At(Malt.JarWorld, 1.4f),
-                Say = () => "The bed is packing down. Click the jar to turn it.",
+                // From the moment it starts to sprout until it is turned: a warning
+                // first, then the turn, with the player kept at the jar the whole time.
+                Id = "turn", MinLevel = 2, Station = 1, Focus = true,
+                Ready = () => Malt != null && Malt.TurnPending && !Malt.Vat,
+                Done = () => Malt == null || !Malt.TurnPending,
+                Where = () => LessonTarget.At(Malt.JarBounds.center, 1.4f),
+                Reveal = () => Malt.JarArea,
+                Say = () => Malt.TurnDue ? "Now: click the jar to turn the bed."
+                                         : "As it sprouts the bed packs down. Stay, and turn it while the needle is in the green.",
             },
             new Lesson
             {
-                Id = "kiln", MinLevel = 1, Station = 1,
-                Ready = () => Malt != null && Malt.CanLoadKiln,
-                Done = () => Malt == null || Malt.KilnOrder != null,
-                Where = () => Malt.Carrying ? LessonTarget.At(Malt.KilnTrayWorld, 1.4f) : LessonTarget.At(Malt.JarWorld, 1.4f),
-                Say = () => Malt.Carrying ? "Spread it on the kiln tray." : "Scoop the green malt from the jar.",
+                Id = "scoop", MinLevel = 1, Station = 1,
+                Ready = () => Malt != null && Malt.CanScoop,
+                Done = () => Malt == null || !Malt.CanScoop,
+                Where = () => Malt.Carrying ? LessonTarget.At(Malt.KilnSackBounds.center, 1.1f) : LessonTarget.At(Malt.JarBounds.center, 1.4f),
+                Say = () => Malt.Carrying ? (Malt.Vat ? "Into the basket for the kiln." : "Into the sack for the kiln.")
+                                          : "Sprouted. Scoop the green malt from the jar.",
             },
             new Lesson
             {
-                Id = "stoke", MinLevel = 1, Station = 1,
-                Ready = () => Malt != null && Malt.KilnOrder != null && Malt.CanStoke,
-                Done = () => Malt == null || Malt.LogsBurning > 0 || Malt.KilnOrder == null,
-                Where = () => Malt.Carrying ? LessonTarget.At(Malt.FireboxWorld, 1.1f) : LessonTarget.At(Malt.PileWorld, 1.0f),
-                Say = () => Malt.Carrying ? "Into the firebox." : "Feed a log to the fire. Keep the heat in the band.",
+                Id = "kiln", MinLevel = 1, Station = 2,
+                Ready = () => Kiln != null && Kiln.CanLoadKiln,
+                Done = () => Kiln == null || Kiln.KilnOrder != null,
+                Where = () => Kiln.Carrying ? LessonTarget.At(Kiln.KilnTrayWorld, 1.4f) : LessonTarget.At(Kiln.NextBasketBounds.center, 1.1f),
+                Say = () => Kiln.Carrying ? "Spread it on the kiln tray."
+                           : Malt != null && Malt.Vat ? "Take the basket of green malt from the rack." : "Take the sack of green malt from the rack.",
+            },
+            new Lesson
+            {
+                Id = "stoke", MinLevel = 1, Station = 2,
+                Ready = () => Kiln != null && Kiln.KilnOrder != null && Kiln.CanStoke,
+                Done = () => Kiln == null || Kiln.LogsBurning > 0 || Kiln.KilnOrder == null,
+                Where = () => Kiln.Carrying ? LessonTarget.At(Kiln.FireboxWorld, 1.1f) : LessonTarget.At(Kiln.PileWorld, 1.0f),
+                Say = () => Kiln.Carrying ? "Into the firebox." : "Feed a log to the fire. Keep the heat in the band.",
             },
 
             // ------------------------------------------------------------- prep
             new Lesson
             {
-                Id = "leaves", MinLevel = 0, Station = 2,
+                Id = "leaves", MinLevel = 0, Station = 3,
                 Ready = () => PrepMix != null && !PrepMix.AllLeavesIn,
                 Done = () => PrepMix == null || PrepMix.AllLeavesIn,
                 Where = () => HeldLeaf() ? LessonTarget.At(Prep.MortarWorld, 1.3f)
@@ -148,8 +170,8 @@ namespace AlchemistsArsenal.UI
             },
             new Lesson
             {
-                Id = "pestle", MinLevel = 0, Station = 2,
-                Ready = () => PrepMix != null && PrepMix.AllLeavesIn && !PrepMix.Ground,
+                Id = "pestle", MinLevel = 0, Station = 3,
+                Ready = () => PrepMix != null && PrepMix.AllLeavesIn && !PrepMix.Ground && !PrepBench.Crusher,
                 Done = () => PrepMix == null || PrepMix.Ground,
                 Where = () => LessonTarget.At(Prep.MortarWorld, 1.6f),
                 Say = () => "Press and hold the bowl, then let go to strike.",
@@ -158,8 +180,8 @@ namespace AlchemistsArsenal.UI
             // ---------------------------------------------------------- cauldron
             new Lesson
             {
-                Id = "stir", MinLevel = 0, Station = 3,
-                Ready = () => Pot != null && Pot.Working != null && !Pot.IsBrewComplete,
+                Id = "stir", MinLevel = 0, Station = 4,
+                Ready = () => Pot != null && Pot.Working != null && !Pot.IsBrewComplete && !PhysicsCauldronManager.AutoStir,
                 Done = () => Pot == null || Pot.Working == null || Pot.BrewProgress01 >= 0.2f,
                 Where = () => LessonTarget.At(Pot.MouthCentre, Pot.MouthRadiusX + 0.8f),
                 Say = () => Pot.RequiredClockwise ? "Circle over the pot, clockwise. Keep the needle green."
@@ -167,8 +189,8 @@ namespace AlchemistsArsenal.UI
             },
             new Lesson
             {
-                Id = "flip", MinLevel = 2, Station = 3,
-                Ready = () => Pot != null && Pot.Working != null && !Pot.RequiredClockwise && !Pot.IsBrewComplete,
+                Id = "flip", MinLevel = 2, Station = 4,
+                Ready = () => Pot != null && Pot.Working != null && !Pot.RequiredClockwise && !Pot.IsBrewComplete && !PhysicsCauldronManager.AutoStir,
                 Done = () => Pot == null || Pot.Working == null || Pot.StirringCorrectly || Pot.IsBrewComplete,
                 Where = () => LessonTarget.At(Pot.MouthCentre, Pot.MouthRadiusX + 0.8f),
                 Say = () => "Today's brew turns the other way: counter-clockwise.",
@@ -177,8 +199,8 @@ namespace AlchemistsArsenal.UI
             // ---------------------------------------------------------- bottling
             new Lesson
             {
-                Id = "pour", MinLevel = 0, Station = 4,
-                Ready = () => Bottle != null && Bottle.Working != null && Bottle.Current == BottlingBench.Step.Pour,
+                Id = "pour", MinLevel = 0, Station = 5,
+                Ready = () => Bottle != null && Bottle.Working != null && Bottle.Current == BottlingBench.Step.Pour && !BottlingBench.Funnel,
                 Done = () => Bottle == null || Bottle.Working == null || Bottle.Current != BottlingBench.Step.Pour,
                 Where = () => LessonTarget.At(Bottle.LadleWorld, 1.2f),
                 Reveal = () => Bottle.FlaskWorldRect,
@@ -188,7 +210,7 @@ namespace AlchemistsArsenal.UI
             },
             new Lesson
             {
-                Id = "cork", MinLevel = 0, Station = 4,
+                Id = "cork", MinLevel = 0, Station = 5,
                 Ready = () => Bottle != null && Bottle.Working != null && Bottle.Current == BottlingBench.Step.Seal,
                 Done = () => Bottle == null || Bottle.Working == null || Bottle.CorkSeated || Bottle.Current != BottlingBench.Step.Seal,
                 Where = () => Bottle.CorkCarried ? LessonTarget.At(Bottle.FlaskMouthWorld, 1.0f) : LessonTarget.At(Bottle.CorkDishWorld, 0.8f),
@@ -196,12 +218,26 @@ namespace AlchemistsArsenal.UI
             },
             new Lesson
             {
-                Id = "label", MinLevel = 1, Station = 4,
+                Id = "label", MinLevel = 1, Station = 5,
                 Ready = () => Bottle != null && Bottle.Working != null && Bottle.Current == BottlingBench.Step.Label && !Bottle.Labelled,
                 Done = () => Bottle == null || Bottle.Working == null || Bottle.Labelled,
                 Where = () => Bottle.LabelCarried ? LessonTarget.At(Bottle.LabelSpotWorld, 1.1f)
                                                   : LessonTarget.At(Bottle.TagWorld(Bottle.Working.element), 0.7f),
                 Say = () => Bottle.LabelCarried ? "Stick it on the flask." : "Drag the matching label onto the flask.",
+            },
+
+            // ---------------------------------------------------------- delivery
+            new Lesson
+            {
+                Id = "deliver", MinLevel = 0, Station = 6,
+                Ready = () => Delivery != null && Delivery.Waiting != null,
+                Done = () => Delivery == null || Delivery.Waiting == null,
+                Where = () => Delivery.Waiting is ActiveOrder w ? LessonTarget.At(Delivery.FlaskWorld(w), 0.8f) : (LessonTarget?)null,
+                Reveal = () => Delivery.Waiting is ActiveOrder w
+                    ? Rect.MinMaxRect(Delivery.FighterWorld(w.heroId).x - 0.9f, Delivery.FighterWorld(w.heroId).y - 1.3f,
+                                      Delivery.FighterWorld(w.heroId).x + 0.5f, Delivery.FighterWorld(w.heroId).y + 1.0f)
+                    : (Rect?)null,
+                Say = () => Delivery.Waiting is ActiveOrder w ? $"Drag the flask to {w.heroName}. It is theirs to carry." : "",
             },
 
             // -------------------------------------------------------------- send
@@ -280,7 +316,7 @@ namespace AlchemistsArsenal.UI
             UIManager.Instance != null ? UIManager.Instance.ScreenOf(ScreenId.Evening) as EveningScreen : null;
 
         /// <summary>The rail names, for "Open the Prep bench."</summary>
-        public static readonly string[] StationNames = { "Counter", "Malting", "Prep", "Cauldron", "Bottling" };
+        public static readonly string[] StationNames = { "Counter", "Steep", "Kiln", "Prep", "Cauldron", "Bottling", "Delivery" };
 
         // ------------------------------------------------------------ helpers
 
@@ -313,7 +349,7 @@ namespace AlchemistsArsenal.UI
 
         private static Vector2? FloatingHusk()
         {
-            if (Malt == null || TubStep != MaltStep.Soaking) return null;
+            if (Malt == null || TubStep != SteepStep.Soaking) return null;
             foreach (var g in Malt.TubGrains)
                 if (g != null && g.Husk && !g.Skimmed && g.Body != null) return g.Body.position;
             return null;

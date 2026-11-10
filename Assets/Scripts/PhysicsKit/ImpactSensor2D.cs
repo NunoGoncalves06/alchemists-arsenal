@@ -10,12 +10,14 @@ namespace AlchemistsArsenal.PhysicsKit
         public readonly float Speed;
         /// <summary>Sum of the solver's normal impulses at the contacts (N·s).</summary>
         public readonly float Impulse;
+        /// <summary>How fast this body was moving up or down when it touched (m/s, always positive): what a blow from above is measured by.</summary>
+        public readonly float Vertical;
         public readonly Vector2 Point;
         public readonly Collider2D Other;
 
-        public Impact(float speed, float impulse, Vector2 point, Collider2D other)
+        public Impact(float speed, float impulse, Vector2 point, Collider2D other, float vertical = 0f)
         {
-            Speed = speed; Impulse = impulse; Point = point; Other = other;
+            Speed = speed; Impulse = impulse; Point = point; Other = other; Vertical = vertical;
         }
     }
 
@@ -57,7 +59,7 @@ namespace AlchemistsArsenal.PhysicsKit
             if (n == 0) speed = c.relativeVelocity.magnitude;
             if (speed < minSpeed) return;
 
-            OnImpact?.Invoke(this, new Impact(speed, impulse, point, c.collider));
+            OnImpact?.Invoke(this, new Impact(speed, impulse, point, c.collider, Mathf.Abs(c.relativeVelocity.y)));
         }
     }
 }

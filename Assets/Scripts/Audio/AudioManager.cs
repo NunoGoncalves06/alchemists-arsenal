@@ -9,10 +9,10 @@ namespace AlchemistsArsenal.Audio
     public enum Sfx { Confirm, Deny, Tab, Seal, Detonate, Coin, Chime, Hurt }
 
     /// <summary>
-    /// Fully procedural audio for the slice (DESIGN.md §5.6):
-    /// two adaptive music beds (cozy shop / tense forest) that crossfade on phase
-    /// change, a bank of synthesised SFX, and an "Animalese" speech synth. No audio
-    /// asset files — everything is generated with <see cref="AudioClip.Create"/>.
+    /// Audio for the game (DESIGN.md §5.6): a soundtrack that
+    /// crossfades by phase, road and boss fight (clips in <c>Resources/Music</c>, with
+    /// procedural beds standing in for any track not there yet), a bank of
+    /// synthesised SFX, and an "Animalese" speech synth.
     /// Volumes come live from <see cref="SettingsService"/>.
     /// </summary>
     public class AudioManager : MonoBehaviour
@@ -27,7 +27,20 @@ namespace AlchemistsArsenal.Audio
         private AudioClip _shopBed, _forestBed;
         private AudioClip _lullaby, _reveal, _resolution;
         private AlchemistsArsenal.Story.StoryMusic? _story;
-        private bool _forest;
+
+        /// <summary>
+        /// The soundtrack: one clip per key under <c>Assets/Resources/Music/</c>
+        /// (menu, shop, evening, story, ending, defeat, the five roads, and the two
+        /// guardians). A missing file falls back to the procedural bed it replaces.
+        /// </summary>
+        private static readonly string[] RoadTracks = { "road_woods", "road_cinder", "road_frost", "road_swamp", "road_peak" };
+        private readonly Dictionary<string, AudioClip> _tracks = new Dictionary<string, AudioClip>();
+        private string _playing;
+
+        /// <summary>The music track playing now (by its Resources key), for the playtest.</summary>
+        public string PlayingKey => _playing;
+        private bool _defeatHeard;
+        private ExpeditionManager _watched;
 
         private void Awake()
         {
@@ -37,8 +50,12 @@ namespace AlchemistsArsenal.Audio
             _musicA = Child("MusicA", loop: true);
             _musicB = Child("MusicB", loop: true);
             _sfx = Child("Sfx", loop: false);
+            _sfx.ignoreListenerPause = true;   // the pause menu's own clicks still sound
             _speech = Child("Speech", loop: false);
             _activeMusic = _musicA;
+            // The cameras are all code-built and none carries a listener, so without this
+            // one nothing the game plays reaches the speakers.
+            if (FindAnyObjectByType<AudioListener>() == null) gameObject.AddComponent<AudioListener>();
 
             _shopBed = BuildBed(cozy: true);
             _forestBed = BuildBed(cozy: false);
@@ -56,13 +73,20 @@ namespace AlchemistsArsenal.Audio
             SettingsService.OnChanged -= ApplyVolumes;
             if (GameLoopManager.Instance != null) GameLoopManager.Instance.OnPhaseChanged -= OnPhase;
             BombProjectile2D.OnDetonatedGlobal -= OnDetonated;
+            if (_watched != null) { _watched.OnPhaseChanged -= OnExpeditionPhase; _watched.OnResultShown -= OnResultShown; }
         }
 
         private void Start()
         {
             if (GameLoopManager.Instance != null) GameLoopManager.Instance.OnPhaseChanged += OnPhase;
             BombProjectile2D.OnDetonatedGlobal += OnDetonated;
-            PlayBed(forest: false);
+            Refresh();
+        }
+
+        private void Update()
+        {
+            // The defeat cue plays once; when it ends the evening's own music takes over.
+            if (_playing == "defeat" && !_activeMusic.isPlaying) { _defeatHeard = true; Refresh(); }
         }
 
         private AudioSource Child(string name, bool loop)
@@ -89,8 +113,87 @@ namespace AlchemistsArsenal.Audio
 
         private void OnPhase(GamePhase phase)
         {
-            bool forest = phase == GamePhase.Afternoon;
-            if (forest != _forest) PlayBed(forest);
+            if (phase == GamePhase.Afternoon)
+            {
+                // The arena is built before the phase flips, so its manager exists now.
+                _defeatHeard = false;
+                if (_watched != null) { _watched.OnPhaseChanged -= OnExpeditionPhase; _watched.OnResultShown -= OnResultShown; }
+                ExpeditionWorld world = GameLoopManager.Instance.CurrentExpedition;
+                _watched = world != null ? world.Expedition : null;
+                if (_watched != null) { _watched.OnPhaseChanged += OnExpeditionPhase; _watched.OnResultShown += OnResultShown; }
+            }
+            Refresh();
+        }
+
+        private void OnExpeditionPhase(ExpeditionPhase p)
+        {
+            // The defeat cue comes with the DEFEAT slab (OnResultShown); the evening carries it on unbroken.
+            if (p == ExpeditionPhase.BossFight) Refresh();
+        }
+
+        private void OnResultShown(bool won) => Refresh();
+
+        /// <summary>
+        /// The afternoon's track: the road's own, its guardian's in the boss fight, and the
+        /// defeat cue the moment the road is lost (once; the evening carries it on unbroken).
+        /// </summary>
+        public static string AfternoonTrack(int road, ExpeditionPhase phase, bool defeatHeard, bool hasDefeat, bool resultShown = true)
+        {
+            // The cue waits with the DEFEAT slab, until the party has left the field.
+            if (phase == ExpeditionPhase.Lost && resultShown && !defeatHeard && hasDefeat) return "defeat";
+            road = Mathf.Clamp(road, 0, RoadTracks.Length - 1);
+            if (phase == ExpeditionPhase.BossFight) return road == 0 ? "boss_guardian" : "boss_final";
+            return RoadTracks[road];
+        }
+
+        /// <summary>Which track this moment of the game calls for.</summary>
+        private string TrackKey()
+        {
+            switch (_story)
+            {
+                case AlchemistsArsenal.Story.StoryMusic.Lullaby:
+                case AlchemistsArsenal.Story.StoryMusic.Reveal: return "story";
+                case AlchemistsArsenal.Story.StoryMusic.Resolution: return "ending";
+            }
+
+            GameLoopManager loop = GameLoopManager.Instance;
+            switch (loop != null ? loop.Phase : GamePhase.MainMenu)
+            {
+                case GamePhase.DayIntro:
+                case GamePhase.Morning:
+                case GamePhase.Handoff:
+                    return "shop";
+                case GamePhase.Afternoon:
+                    return AfternoonTrack(loop.TargetBiomeIndex, _watched != null ? _watched.Phase : ExpeditionPhase.Warmup,
+                        _defeatHeard, Load("defeat") != null, _watched == null || _watched.ResultShown);
+                case GamePhase.Evening:
+                case GamePhase.BiomeMap:
+                    bool lost = loop.LatestReport != null && !loop.LatestReport.won;
+                    return lost && !_defeatHeard && Load("defeat") != null ? "defeat" : "evening";
+                default:
+                    return "menu";
+            }
+        }
+
+        private AudioClip Load(string key)
+        {
+            if (!_tracks.TryGetValue(key, out AudioClip clip))
+                _tracks[key] = clip = Resources.Load<AudioClip>("Music/" + key);
+            return clip;
+        }
+
+        /// <summary>The track's clip, or the procedural bed that stands in until it exists.</summary>
+        private AudioClip MusicClip(string key)
+        {
+            AudioClip clip = Load(key);
+            if (clip != null) return clip;
+            return key switch
+            {
+                "story" => _story == AlchemistsArsenal.Story.StoryMusic.Reveal ? _reveal : _lullaby,
+                "ending" => _resolution,
+                "shop" or "menu" or "evening" => _shopBed,
+                _ => _forestBed,
+            };
         }
 
         /// <summary>
@@ -102,21 +205,21 @@ namespace AlchemistsArsenal.Audio
         {
             if (Instance == null || Instance._story == music) return;
             Instance._story = music;
-            Instance.PlayBed(Instance._forest);
+            if (Instance.Load("story") == null) Instance._playing = null;   // the procedural stand-ins differ per story beat
+            Instance.Refresh();
         }
 
-        private void PlayBed(bool forest)
+        private void Refresh()
         {
-            _forest = forest;
+            string key = TrackKey();
+            if (key == _playing) return;
+            _playing = key;
+
             AudioSource from = _activeMusic;
             AudioSource to = _activeMusic == _musicA ? _musicB : _musicA;
-            to.clip = _story switch
-            {
-                AlchemistsArsenal.Story.StoryMusic.Lullaby => _lullaby,
-                AlchemistsArsenal.Story.StoryMusic.Reveal => _reveal,
-                AlchemistsArsenal.Story.StoryMusic.Resolution => _resolution,
-                _ => forest ? _forestBed : _shopBed,
-            };
+            to.clip = MusicClip(key);
+            // The defeat cue and the credits theme end on a cadence; everything else loops.
+            to.loop = key != "defeat" && !(key == "ending" && Load(key) != null);
             to.time = 0f;
             to.Play();
             _activeMusic = to;
@@ -140,6 +243,9 @@ namespace AlchemistsArsenal.Audio
         }
 
         // ------------------------------------------------------------- sfx
+
+        /// <summary>The pause menu: every sound stops where it is (the music too) and picks up again on resume.</summary>
+        public static void SetPaused(bool paused) => AudioListener.pause = paused;
 
         public static void Play(Sfx cue)
         {

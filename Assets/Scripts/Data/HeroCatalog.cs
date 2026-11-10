@@ -17,10 +17,10 @@ namespace AlchemistsArsenal.Data
         public const int MaxLevel = 5;
 
         /// <summary>
-        /// Five is not arbitrary: it is one hero per element, and it is also what
-        /// the Evening body can show without a scroll view (the project has none).
+        /// Three: the Rookie and the two fighters who sign on (Mira Thorn and Otho
+        /// Vance). There is nobody else to hire, and a duplicate reads as a bug.
         /// </summary>
-        public const int MaxRoster = 5;
+        public const int MaxRoster = 3;
 
         // ------------------------------------------------------------ level curve
 
@@ -123,7 +123,7 @@ namespace AlchemistsArsenal.Data
             int count = roster != null ? roster.Count : 0;
             var rng = new System.Random(day * 6151 + count * 97);
 
-            // Nobody already on the roster: two "Ser Halden"s side by side read as a
+            // Nobody already on the roster: two "Otho Vance"s side by side read as a
             // bug, and the notice board is meant to be filling a set.
             var pool = new List<CustomerDefinition>();
             // Sister Veil is the Coven's envoy, not a sword for hire: she visits the

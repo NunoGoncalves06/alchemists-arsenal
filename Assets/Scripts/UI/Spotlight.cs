@@ -32,9 +32,8 @@ namespace AlchemistsArsenal.UI
         private const float Dim = 0.74f;
         private const float IntroSeconds = 0.9f;
         private const int MaskW = 320;
-        private const float EdgePx = 1.6f;   // mask pixels of soft edge: a crisp rim, not a glow
+        private const float RectSoftPx = 3f;   // mask pixels the lit boxes (gauges) fade over, outside their own edge
 
-        public event Action SkipRequested;
 
         /// <summary>The strip along the foot of the screen is taken (a bench's own caption lives there).</summary>
         public bool ReserveFoot = true;
@@ -53,7 +52,6 @@ namespace AlchemistsArsenal.UI
         private Func<string> _text;
         private Func<List<Rect>> _reveals;
         private float _introT = 1f, _fade;
-        private int _darkClicks;
         private Vector2 _centre, _vel;
         private Vector2 _r;   // radii in x and y, pixels
         private readonly List<Rect> _revealNow = new List<Rect>();
@@ -119,7 +117,6 @@ namespace AlchemistsArsenal.UI
             _text = text;
             _reveals = reveals;
             _introT = 0f;
-            _darkClicks = 0;
             _centre = new Vector2(Screen.width, Screen.height) * 0.5f;
             _vel = Vector2.zero;
         }
@@ -187,6 +184,33 @@ namespace AlchemistsArsenal.UI
 
         // ---------------------------------------------------------------- mask
 
+        /// <summary>
+        /// How dark the mask is at <paramref name="d"/> radii from the hole's centre: clear
+        /// inside 0.85, fully dark from 1.15, a smooth fade between (so the light has a
+        /// natural edge, not a ring).
+        /// </summary>
+        public static float HoleAlpha(float d)
+        {
+            float t = Mathf.Clamp01((d - 0.85f) / 0.30f);
+            return t * t * (3f - 2f * t);
+        }
+
+        /// <summary>
+        /// How dark the mask is at (<paramref name="px"/>, <paramref name="py"/>) around a lit
+        /// box: clear inside it and on its edge, fading to dark over <paramref name="soft"/>
+        /// pixels outside. The box is rounded (a corner radius of half its short side, so a
+        /// gauge is a capsule): no square corners.
+        /// </summary>
+        public static float RectAlpha(float px, float py, Rect r, float soft)
+        {
+            float rad = Mathf.Min(r.width, r.height) * 0.5f;
+            Vector2 half = r.size * 0.5f - Vector2.one * rad;
+            float qx = Mathf.Abs(px - r.center.x) - half.x, qy = Mathf.Abs(py - r.center.y) - half.y;
+            float outside = new Vector2(Mathf.Max(qx, 0f), Mathf.Max(qy, 0f)).magnitude + Mathf.Min(Mathf.Max(qx, qy), 0f) - rad;
+            float t = Mathf.Clamp01(outside / Mathf.Max(0.01f, soft));
+            return t * t * (3f - 2f * t);
+        }
+
         private void DrawMask(Vector2 screen)
         {
             int h = Mathf.Clamp(Mathf.RoundToInt(MaskW * screen.y / screen.x), 16, 1024);
@@ -216,7 +240,6 @@ namespace AlchemistsArsenal.UI
             // Everything in mask pixels.
             float cx = _centre.x * sx, cy = _centre.y * sy;
             float rx = Mathf.Max(1f, _r.x * sx), ry = Mathf.Max(1f, _r.y * sy);
-            float edge = EdgePx / Mathf.Min(rx, ry);
             var rects = new List<Rect>(_revealNow.Count);
             foreach (Rect r in _revealNow)
                 rects.Add(new Rect(r.x * sx, r.y * sy, r.width * sx, r.height * sy));
@@ -231,16 +254,10 @@ namespace AlchemistsArsenal.UI
                     float px = x + 0.5f;
                     float dx = (px - cx) / rx;
                     float d = Mathf.Sqrt(dx * dx + dy * dy);
-                    // 0 inside the hole, 1 in the dark, a pixel-wide rim between.
-                    float a = Mathf.Clamp01((d - (1f - edge)) / edge);
+                    // 0 inside the hole, 1 in the dark, a soft fade between; and the same for each lit box.
+                    float a = HoleAlpha(d);
                     for (int i = 0; i < rects.Count && a > 0f; i++)
-                    {
-                        Rect r = rects[i];
-                        float ox = Mathf.Max(r.xMin - px, px - r.xMax, 0f);
-                        float oy = Mathf.Max(r.yMin - py, py - r.yMax, 0f);
-                        float outside = Mathf.Sqrt(ox * ox + oy * oy);
-                        a = Mathf.Min(a, Mathf.Clamp01(outside / EdgePx));
-                    }
+                        a = Mathf.Min(a, RectAlpha(px, py, rects[i], RectSoftPx));
                     _px[y * MaskW + x] = new Color32(0, 0, 0, (byte)(a * full));
                 }
             }
@@ -314,13 +331,15 @@ namespace AlchemistsArsenal.UI
         {
             Vector2 d = screenPoint - _centre;
             float nx = d.x / Mathf.Max(1f, _r.x), ny = d.y / Mathf.Max(1f, _r.y);
-            return nx * nx + ny * ny < 1f;
+            // The light fades out to 1.15 radii (see HoleAlpha): what is still lit more than half takes the click.
+            return nx * nx + ny * ny < 1.08f * 1.08f;
         }
 
-        private void DarkClicked()
-        {
-            if (++_darkClicks >= 3) { _darkClicks = 0; SkipRequested?.Invoke(); }
-        }
+        /// <summary>
+        /// A click landed on the dark, outside the light. The mask has already taken it (so
+        /// nothing behind it saw it); it moves nothing on, however many there are.
+        /// </summary>
+        public void ClickOutside() { }
 
         private void OnDestroy()
         {
@@ -337,7 +356,7 @@ namespace AlchemistsArsenal.UI
         private sealed class DarkClick : MonoBehaviour, IPointerClickHandler
         {
             public Spotlight Owner;
-            public void OnPointerClick(PointerEventData e) { if (Owner != null) Owner.DarkClicked(); }
+            public void OnPointerClick(PointerEventData e) { if (Owner != null) Owner.ClickOutside(); }
         }
     }
 }

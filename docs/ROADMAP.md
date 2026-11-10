@@ -36,6 +36,10 @@
 > Cauldron only) → Afternoon (Biome 1, 3 waves, no boss) → Evening (Report +
 > Diary) → Day 2 (Prep unlocks) → … → Biome 1 boss → opening + 2 diary entries.
 > One biome fully art-passed, one music track pair, Animalese, installer.
+>
+> **Current rule (2026-10-31):** day 1 has no boss anywhere. The Woods end on the
+> Elder Woodwose from day 2 on (`BiomeLibrary.FirstGuardianDay`); its scene and
+> diary page play the evening it first falls.
 
 | # | Task | Rubric | Acceptance |
 |---|---|---|---|

@@ -1,9 +1,12 @@
 using System.Collections.Generic;
 using UnityEngine;
+using AlchemistsArsenal.UI;
+using TMPro;
 using AlchemistsArsenal.Art;
 using AlchemistsArsenal.Combat;
 using AlchemistsArsenal.Core;
 using AlchemistsArsenal.PhysicsKit;
+using AlchemistsArsenal.Systems;
 using AlchemistsArsenal.Vfx;
 
 namespace AlchemistsArsenal.Crafting
@@ -24,6 +27,9 @@ namespace AlchemistsArsenal.Crafting
     public class CauldronView : MonoBehaviour
     {
         public const float PotScale = 1.45f;
+
+        /// <summary>Where the clockwork frame's crown hangs, from the pot's origin: over the mouth. The shop card is drawn from the same place.</summary>
+        public static Vector2 CrownOffset => ShopArt.MouthOffset * PotScale + new Vector2(0f, 1.9f);
 
         private const int OrderBack = 10, OrderLiquid = 11, OrderSwirl = 12, OrderHerbs = 13,
             OrderFire = 19, OrderFront = 20, OrderSpoon = 26, OrderGlow = 4;
@@ -87,16 +93,77 @@ namespace AlchemistsArsenal.Crafting
             glowGo.transform.localPosition = new Vector3(0f, -1.55f, 0f);
             _glow = PixelArt.AddDisc(glowGo, new Color(1f, 0.55f, 0.2f, 0.2f), OrderGlow);
 
-            // The spoon you hold.
-            _spoonT = new GameObject("SpoonArt").transform;
-            _spoonT.SetParent(transform.parent, false);
-            _spoon = PixelArt.AddSprite(_spoonT.gameObject, PixelSprites.Spoon(), OrderSpoon, 0.95f);
-            _spoonT.position = RestSpoon();
+            // The spoon you hold; a clockwork pot has none, the paddle does the stirring.
+            if (!clockwork)
+            {
+                _spoonT = new GameObject("SpoonArt").transform;
+                _spoonT.SetParent(transform.parent, false);
+                _spoon = PixelArt.AddSprite(_spoonT.gameObject, PixelSprites.Spoon(), OrderSpoon, 0.95f);
+                _spoonT.position = RestSpoon();
+            }
+
+            // The wrong-way notice: red letters and nothing else, over the pot.
+            var wrongGo = new GameObject("WrongWay");
+            wrongGo.transform.SetParent(transform.parent, false);
+            wrongGo.transform.position = MouthCentre + new Vector2(0f, 2.3f);
+            _wrongText = wrongGo.AddComponent<TextMeshPro>();
+            _wrongText.font = UITheme.Display;
+            _wrongText.fontStyle = FontStyles.Bold;
+            _wrongText.fontSize = 6f;
+            _wrongText.alignment = TextAlignmentOptions.Center;
+            _wrongText.textWrappingMode = TextWrappingModes.NoWrap;
+            _wrongText.rectTransform.sizeDelta = new Vector2(6f, 1.2f);
+            _wrongText.text = WrongWayWarning.Text;
+            _wrongText.sortingOrder = 45;
+            _wrongText.enabled = false;
 
             pot.Landed += OnLanded;
             pot.OnSplash += OnSplash;
             pot.Spilled += OnSpilled;
             FallingIngredient.OnSpawned += OnFalling;
+        }
+
+        /// <summary>
+        /// Whether the fire under the pot burns: while there is something to brew, and it goes out
+        /// once the recipe has been stirred and no other waits (it lights again when one does).
+        /// </summary>
+        public static bool FireBurns(bool brewFinished, bool anotherWaiting) => !brewFinished || anotherWaiting;
+
+        /// <summary>The fire is meant to be burning (the flame itself fades in and out over a second).</summary>
+        public bool FireLit { get; private set; } = true;
+
+        private float _fireLevel = 1f;
+
+        /// <summary>The pot is showing a working brew (heavy steam, bubbles): what a stirred pot looks like over a fire.</summary>
+        public bool LooksBrewing { get; private set; }
+
+        private void UpdateFire(float dt)
+        {
+            ActiveOrder w = _pot.Working;
+            bool finished = w != null && (_pot.IsBrewComplete || w.stage > BrewStage.Cauldron);
+            bool waiting = false;
+            var cm = CraftingManager.Instance;
+            if (cm != null)
+                foreach (ActiveOrder o in cm.Orders)
+                    if (o != w && o.stage == BrewStage.Cauldron) waiting = true;
+            FireLit = FireBurns(finished, waiting);
+            _fireLevel = Mathf.MoveTowards(_fireLevel, FireLit ? 1f : 0f, dt);
+        }
+
+        private TextMeshPro _wrongText;
+        private readonly WrongWayWarning _wrong = new WrongWayWarning();
+
+        /// <summary>The "wrong way" notice is up over the pot right now.</summary>
+        public bool WrongWayShown => _wrongText != null && _wrongText.enabled;
+
+        /// <summary>How lit the notice's letters are right now (the blink): 0 when it is not up.</summary>
+        public float WrongWayAlpha => WrongWayShown ? _wrongText.color.a : 0f;
+
+        private void DrawWrongWay(float dt)
+        {
+            _wrong.Tick(_pot.StirringBackwards, dt);
+            _wrongText.enabled = _wrong.Visible;
+            if (_wrong.Visible) _wrongText.color = new Color(1f, 0.13f, 0.1f, _wrong.Blink01);
         }
 
         private void OnDestroy()
@@ -123,7 +190,7 @@ namespace AlchemistsArsenal.Crafting
         /// <summary>A brass frame over the pot, a gear at its crown, and a paddle hanging from it into the brew.</summary>
         private void BuildClockwork()
         {
-            _crown = MouthCentre + new Vector2(0f, 1.9f);
+            _crown = (Vector2)transform.position + CrownOffset;
             var frame = new GameObject("ClockworkFrame");
             frame.transform.SetParent(transform.parent, false);
             frame.transform.position = _crown;
@@ -253,6 +320,7 @@ namespace AlchemistsArsenal.Crafting
             if (_pot == null) return;
             DrawStirGauge();
             float dt = Time.deltaTime;
+            DrawWrongWay(dt);
             float power = _pot.StirPower01;
             float scorch = _pot.Scorch01, slosh = _pot.Slosh01;
             bool brewing = _pot.InBand && _pot.StirringCorrectly;
@@ -288,13 +356,17 @@ namespace AlchemistsArsenal.Crafting
                 _fireFrame = frame;
                 _fire.sprite = ShopArt.Fire(frame);
             }
+            UpdateFire(dt);
             float flicker = 0.88f + 0.08f * Mathf.Sin(Time.time * 3.3f);
-            _fire.transform.localScale = new Vector3(0.95f, flicker, 1f);
+            _fire.enabled = _fireLevel > 0.02f;
+            _fire.color = new Color(1f, 1f, 1f, _fireLevel);
+            _fire.transform.localScale = new Vector3(0.95f, flicker * Mathf.Lerp(0.35f, 1f, _fireLevel), 1f);
             _glow.transform.localScale = new Vector3(3.2f, 0.72f, 1f);
-            _glow.color = new Color(1f, 0.55f, 0.2f, 0.22f + 0.03f * Mathf.Sin(Time.time * 2.1f));
+            _glow.color = new Color(1f, 0.55f, 0.2f, (0.22f + 0.03f * Mathf.Sin(Time.time * 2.1f)) * _fireLevel);
 
             SyncHerbs();
-            Emit(dt, e, brewing || _pot.ClockworkTurning, scorch, slosh);
+            LooksBrewing = brewing || _pot.ClockworkTurning;
+            Emit(dt, e, LooksBrewing, scorch, slosh);
             MoveSpoon(dt);
             MoveClockwork(dt);
         }
@@ -399,6 +471,7 @@ namespace AlchemistsArsenal.Crafting
 
         private void MoveSpoon(float dt)
         {
+            if (_spoonT == null) return;
             bool over = _pot.MouseOverCauldron;
             Vector3 target = over
                 ? (Vector3)_pot.ToWorld(Vector2.ClampMagnitude(_pot.ToSurface(Pointer.World(_cam)), (_pot.Liquid != null ? _pot.Liquid.Radius : 1f) * 0.95f)) + new Vector3(0f, 0.35f, 0f)

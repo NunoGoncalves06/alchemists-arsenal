@@ -127,7 +127,7 @@ namespace AlchemistsArsenal.Art
 
         /// <summary>
         /// A customer bust for the Counter. Ids come from
-        /// <c>Data.CustomerCatalog</c>; an unknown id falls back to the knight so a
+        /// <c>Data.CustomerCatalog</c>; an unknown id falls back to the Rookie so a
         /// new catalog entry can never render as nothing.
         /// </summary>
         public static Sprite Buyer(string id)
@@ -137,8 +137,7 @@ namespace AlchemistsArsenal.Art
                 case "herbalist": return Bake("buyer_herbalist", BUYER_HERBALIST);
                 case "merchant": return Bake("buyer_merchant", BUYER_MERCHANT);
                 case "envoy": return Bake("buyer_envoy", BUYER_ENVOY);
-                case "rookie": return Rookie();
-                default: return Bake("buyer_knight", BUYER_KNIGHT);
+                default: return Rookie();
             }
         }
 
@@ -154,7 +153,6 @@ namespace AlchemistsArsenal.Art
                 case "herbalist": return Bake("fighter_herbalist", FIGHTER_HERBALIST);
                 case "merchant": return Bake("fighter_merchant", FIGHTER_MERCHANT);
                 case "envoy": return Bake("fighter_envoy", FIGHTER_ENVOY);
-                case "knight": return Bake("fighter_knight", FIGHTER_KNIGHT);
                 default: return Rookie();
             }
         }

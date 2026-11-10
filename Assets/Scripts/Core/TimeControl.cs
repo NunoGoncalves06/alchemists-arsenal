@@ -21,6 +21,9 @@ namespace AlchemistsArsenal.Core
         public float CurrentScale => _stack.Count > 0 ? _stack[_stack.Count - 1].scale : 1f;
         public bool IsPaused => Mathf.Approximately(CurrentScale, 0f);
 
+        /// <summary>The game is paused (the pause menu, a held lesson): the morning and its benches stand still.</summary>
+        public static bool Paused => Instance != null && Instance.IsPaused;
+
         public event Action<float> OnScaleChanged;
 
         private void Awake()

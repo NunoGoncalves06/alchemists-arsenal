@@ -51,7 +51,7 @@ namespace AlchemistsArsenal.Story
                         "The old guardian knew my face. \"Ysolde's girl. You have her hands.\" Then: " +
                         "\"She kept the kettle, so they could not find the child.\"\n" +
                         "Which child? There is only one kettle in this house, and it has not gone cold in forty years.",
-                        DiaryUnlock.Boss(0)),
+                        DiaryUnlock.Boss("woodwose")),
 
                     DiaryEntryData.Create("diary_cinder", "A Page That Would Not Burn",
                         "A scorched page from a Coven outpost in the Peaks, in Grandmother's hand. I would know it anywhere:\n" +
@@ -70,6 +70,12 @@ namespace AlchemistsArsenal.Story
                         "\"If I don't come back,\" she told Mira, \"watch the kettle.\"",
                         DiaryUnlock.Biome(3)),
 
+                    DiaryEntryData.Create("diary_woodwose_broken", "It Came Back Broken",
+                        "Again. It came out of the Swamp split from crown to root, and the light in the cracks was not amber any more.\n" +
+                        "It was violet. Coven violet. Someone keeps waking the old guardian and sending it to stand in our way, " +
+                        "and under the rot in its heartwood there was a mark I have seen every morning of my life, scratched into the kettle.",
+                        DiaryUnlock.Boss("woodwose", 2)),
+
                     DiaryEntryData.Create("diary_veil", "The Envoy's Patience",
                         "Veil asked after the cure again today, and after Tam, by name. Not how Tam is. Where.\n" +
                         "I told her Tam is asleep in the back room. I wish I hadn't.",
@@ -79,7 +85,7 @@ namespace AlchemistsArsenal.Story
                         "Her mask broke along the old crack, and it was Grandmother under it. The Coven made her their Mother " +
                         "and sent Veil down for the child she hid.\n" +
                         "My charm was never a curse. It was her ward, doing what she built it to do.",
-                        DiaryUnlock.Boss(BiomeLibrary.Count - 1)),
+                        DiaryUnlock.Boss("matriarch")),
 
                     DiaryEntryData.Create("diary_end", "The Kettle, Boiling",
                         "The ward would lift only when the one who spoke it let the anger go. So I poured their cure into the fire " +
@@ -117,7 +123,8 @@ namespace AlchemistsArsenal.Story
                     DiaryUnlockKind.BiomeCleared => report.won && ParseInt(e.unlock.param) == biomeIndex,
                     DiaryUnlockKind.FirstPerfectPotion => report.craftedGrade == PotionGrade.Perfect,
                     DiaryUnlockKind.IngredientDiscovered => report.herbDrops.ContainsKey(e.unlock.param ?? ""),
-                    DiaryUnlockKind.BossDefeated => report.won && report.bossDefeated && ParseInt(e.unlock.param) == biomeIndex,
+                    DiaryUnlockKind.BossDefeated => report.won && report.bossDefeated && !string.IsNullOrEmpty(report.bossId)
+                                                    && (e.unlock.param == report.bossId || e.unlock.param == report.bossId + ":" + report.bossTier),
                     _ => false,
                 };
                 if (hit) TryUnlock(state, e.id);

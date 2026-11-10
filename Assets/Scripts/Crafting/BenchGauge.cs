@@ -42,7 +42,8 @@ namespace AlchemistsArsenal.Crafting
             return rects;
         }
 
-        private Rect WorldRect
+        /// <summary>The world box the gauge and its chalk take up.</summary>
+        public Rect WorldRect
         {
             get
             {
@@ -98,11 +99,16 @@ namespace AlchemistsArsenal.Crafting
             return sr;
         }
 
+        /// <summary>Where the good band is now, as fractions of the gauge.</summary>
+        public float BandMin { get; private set; }
+        public float BandMax { get; private set; }
+
         /// <summary>The good band, as a fraction of the gauge (0 = left / bottom).</summary>
         public void SetBand(float min01, float max01)
         {
             if (_band == null) return;
             min01 = Mathf.Clamp01(min01); max01 = Mathf.Clamp01(Mathf.Max(min01, max01));
+            BandMin = min01; BandMax = max01;
             float a = (min01 - 0.5f) * _len, b = (max01 - 0.5f) * _len;
             _band.transform.localPosition = At((a + b) * 0.5f);
             _band.transform.localScale = Size(b - a, 0.22f);

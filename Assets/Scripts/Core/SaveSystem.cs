@@ -17,11 +17,11 @@ namespace AlchemistsArsenal.Core
     {
         public static SaveSystem Instance { get; private set; }
 
-        [Tooltip("Slot count exposed on the Save Slots screen. Phase 0 ships with 1; more is a Deepening task.")]
-        [SerializeField] private int slotCount = 1;
+        /// <summary>How many save slots the menu offers. slot_0.json, the only file before slots, is the first.</summary>
+        public const int Slots = 3;
 
         public RunState State { get; private set; }
-        public int SlotCount => slotCount;
+        public int SlotCount => Slots;
 
         /// <summary>True when a slot file exists but could not be parsed (reviewer P8).</summary>
         public bool LastSlotCorrupt { get; private set; }
@@ -44,16 +44,25 @@ namespace AlchemistsArsenal.Core
         // --------------------------------------------------------------- slot IO
 
         /// <summary>
-        /// When >= 0, every slot maps to this file instead. The headless playtest
-        /// sets it: a batchmode run of a copy of this project shares
-        /// <see cref="Application.persistentDataPath"/> with the developer's own
-        /// Editor (same company + product name), so without it every test run
-        /// overwrote the real <c>slot_0.json</c>.
+        /// When set, the slot files live in this folder instead. The headless
+        /// playtest and the slot tests set it: a batchmode run of a copy of this
+        /// project shares <see cref="Application.persistentDataPath"/> with the
+        /// developer's own Editor (same company + product name), so without it every
+        /// test run overwrote the real saves.
         /// </summary>
-        public static int SlotOverride = -1;
+        public static string DirectoryOverride;
 
-        private static string PathFor(int slot) =>
-            Path.Combine(Application.persistentDataPath, $"slot_{(SlotOverride >= 0 ? SlotOverride : slot)}.json");
+        private static string Folder => string.IsNullOrEmpty(DirectoryOverride) ? Application.persistentDataPath : DirectoryOverride;
+
+        private static string PathFor(int slot) => Path.Combine(Folder, $"slot_{slot}.json");
+
+        /// <summary>Some slot holds a save that can be read: the menu's CONTINUE is lit.</summary>
+        public bool AnyContinuable()
+        {
+            for (int i = 0; i < Slots; i++)
+                if (SlotExists(i) && Peek(i) != null) return true;
+            return false;
+        }
 
         public bool SlotExists(int slot) => File.Exists(PathFor(slot));
 
@@ -133,7 +142,7 @@ namespace AlchemistsArsenal.Core
             string tmp = path + ".tmp";
             try
             {
-                Directory.CreateDirectory(Application.persistentDataPath);
+                Directory.CreateDirectory(Folder);
                 File.WriteAllText(tmp, JsonUtility.ToJson(State, prettyPrint: true));
 
                 if (File.Exists(path))
@@ -232,6 +241,8 @@ namespace AlchemistsArsenal.Core
             if (s.roster.Count == 0)
                 foreach (string name in s.ownedAdventurers)
                     s.roster.Add(Data.HeroCatalog.NewHire(name, s.roster.Count));
+            // Ser Halden is no longer in the game: a save that hired him lets him go.
+            s.roster.RemoveAll(h => h != null && (h.portraitId == "knight" || h.displayName == "Ser Halden"));
             if (s.roster.Count == 0)
                 s.roster.Add(Data.HeroCatalog.NewHire("Rookie", 0));
 

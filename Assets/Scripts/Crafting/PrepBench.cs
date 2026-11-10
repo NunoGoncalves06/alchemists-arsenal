@@ -49,7 +49,18 @@ namespace AlchemistsArsenal.Crafting
         public const float BenchTopY = -1.9f;
         public static readonly Vector2 MortarLocal = new Vector2(2.3f, BenchTopY);
         private const float MortarScale = 1.45f;
-        private const float MaxLift = 2.4f, LiftRate = 1.6f;
+        /// <summary>
+        /// How far the pestle rises from resting on the mix. A full lift lands at
+        /// sqrt(2 g MaxLift), about 8.9 m/s: past the top of the widest clean band (the
+        /// brass mortar's first strike, 6.5 + 2.1), so every stroke rises through the
+        /// green and out of it rather than stopping inside it.
+        /// </summary>
+        public const float MaxLift = 4.0f;
+        private const float LiftRate = 1.6f;
+        /// <summary>The brass mortar widens every clean band by a third.</summary>
+        private const float BrassBandScale = 1.33f;
+        /// <summary>The widest clean band any strike gets (the first one, in the brass mortar).</summary>
+        public static float WidestBand => Bands[0] * BrassBandScale;
         /// <summary>
         /// Where the hold point sits above the bowl's middle at zero lift, chosen so the
         /// pestle's head hangs just clear of the rim (the joint holds it 0.9 above its
@@ -90,7 +101,7 @@ namespace AlchemistsArsenal.Crafting
         /// <summary>What the last strike landed on, and where (for the playtest's log).</summary>
         public string LastStrikeWith { get; private set; } = "";
         public float CurrentBand => Bands[Mathf.Clamp(QualityBudget.GrindStrikes - StrikesLeft, 0, Bands.Length - 1)]
-                                    * (Brass ? 1.33f : 1f);
+                                    * (Brass ? BrassBandScale : 1f);
 
         private static bool HasUpgrade(string id) =>
             SaveSystem.Instance != null && SaveSystem.Instance.State != null && SaveSystem.Instance.State.HasUpgrade(id);
@@ -98,12 +109,26 @@ namespace AlchemistsArsenal.Crafting
         /// <summary>The brass mortar: a heavier pestle in a brass bowl, and a wider clean band.</summary>
         public static bool Brass => HasUpgrade(UpgradeCatalog.BrassMortar);
 
-        /// <summary>The drying rack: no wilted leaves, and each one a little plumper.</summary>
+        /// <summary>The drying rack: no wilted leaves, and every one sound.</summary>
         public static bool Rack => HasUpgrade(UpgradeCatalog.DryingRack);
+
+        /// <summary>
+        /// The auto crusher (the Brass Mortar upgrade): a brass ram on a frame over the
+        /// mortar that lifts and drops itself, three strikes, with no hand on it.
+        /// </summary>
+        public static bool Crusher => Brass;
+
+        /// <summary>The height the crusher lets its ram fall from: v = sqrt(2gh) is the ideal strike.</summary>
+        public static float CrusherDrop => IdealStrike * IdealStrike / (2f * Mathf.Abs(Physics2D.gravity.y));
+
+        /// <summary>Where the crusher parks its ram between strikes: high enough that a tossed leaf passes under it.</summary>
+        private const float ParkAbove = 1.6f;
+        private bool _parked;
+        private float _crusherWait;
         public string Reaction { get; private set; } = "";
 
         private BenchGauge _strikeDial;
-        private const float DialMax = 8f;   // m/s at the top of the dial
+        private const float DialMax = 9.5f;   // m/s at the top of the dial, just over a full lift
 
         private void DrawStrikeDial()
         {
@@ -114,10 +139,12 @@ namespace AlchemistsArsenal.Crafting
             if (!show) return;
             float band = CurrentBand;
             _strikeDial.SetBand((IdealStrike - band) / DialMax, (IdealStrike + band) / DialMax);
-            float v = LiftReady ? PredictedStrikeSpeed : Mathf.Max(0f, LastStrikeSpeed);
+            // Empty, at the bottom, until the pestle is resting on the mix and rising:
+            // every stroke reads up from nothing. The last blow is told in words.
+            float v = LiftReady ? PredictedStrikeSpeed : 0f;
             bool clean = Mathf.Abs(v - IdealStrike) <= band;
             _strikeDial.SetValue(v / DialMax, LiftReady ? (clean ? new Color(0.45f, 0.85f, 0.45f) : new Color(0.96f, 0.85f, 0.45f)) : new Color(0.95f, 0.91f, 0.81f));
-            _strikeDial.SetText(LiftReady || LastStrikeSpeed >= 0f ? $"{v:0.0} m/s" : $"{StrikesLeft} strikes");
+            _strikeDial.SetText(LiftReady ? Mps(v) : LastStrikeSpeed >= 0f ? $"last {Mps(LastStrikeSpeed)}" : $"{StrikesLeft} strikes");
         }
 
         /// <summary>A short line about what the bench wants next, for the station's caption.</summary>
@@ -129,8 +156,9 @@ namespace AlchemistsArsenal.Crafting
                 if (Order == null || mix == null) return "";
                 if (!mix.AllLeavesIn) return $"Drag or click a {mix.NextStep} leaf into the mortar. {mix.Remaining} to go.";
                 if (mix.Ground) return "Ground. It goes to the cauldron.";
+                if (Crusher) return "The crusher is working the leaves.";
                 if (LiftReady) return "Let go when the needle is in the green.";
-                if (Lifting) return "Hold. The pestle is rising.";
+                if (Lifting) return _overBowl ? "Hold. The pestle is settling into the bowl." : "Hold. The pestle is coming over the bowl.";
                 return "Press and hold on the bowl, then let go to smash the leaves.";
             }
         }
@@ -153,11 +181,53 @@ namespace AlchemistsArsenal.Crafting
             get
             {
                 if (_lift == null || _pestle == null || !LiftReady) return 0f;
-                // A drop from where the head actually is to what it will meet first: v = sqrt(2 g h).
-                float h = Mathf.Max(0f, _pestle.position.y - PestleHalfLength - LandingY);
-                return Mathf.Sqrt(2f * Mathf.Abs(Physics2D.gravity.y) * h);
+                return FallSpeed(FirstContactDrop(), _pestle.linearVelocity.y, _pestle.linearDamping, Time.fixedDeltaTime);
             }
         }
+
+        /// <summary>
+        /// How fast a body that is let go <paramref name="drop"/> metres above what it will
+        /// meet, moving up at <paramref name="vyUp"/> (negative: already falling), is going
+        /// when it touches. The physics step done by hand (gravity, then drag, then the move)
+        /// so the dial and the measured blow are the same number; a plain sqrt(2 g h) missed
+        /// the drag and the last of the rise, and read soft.
+        /// </summary>
+        public static float FallSpeed(float drop, float vyUp, float linearDamping, float dt)
+        {
+            float g = Mathf.Abs(Physics2D.gravity.y);
+            float v = -vyUp;          // downward is positive from here
+            float fallen = 0f;
+            // The engine starts a contact a hair before the two touch (its speculative
+            // margin), measured against dropped bodies: 0.01 to 0.02 m all fit.
+            const float ContactMargin = 0.015f;
+            for (int i = 0; i < 4000 && fallen < drop - ContactMargin; i++)
+            {
+                v += g * dt;
+                v /= 1f + linearDamping * dt;
+                fallen += v * dt;
+            }
+            return Mathf.Max(0f, v);
+        }
+
+        private readonly RaycastHit2D[] _castHits = new RaycastHit2D[8];
+
+        /// <summary>
+        /// How far the pestle can fall straight down before something stops it: its own
+        /// shape cast onto the leaves and the bowl, which is what the blow really lands on
+        /// (the head is rounded and a leaf is a disc). The crusher uses the same cast.
+        /// </summary>
+        private float FirstContactDrop()
+        {
+            var filter = new ContactFilter2D { useTriggers = false };
+            filter.SetLayerMask(GameLayers.ShopPropMask | GameLayers.ShopStaticMask);
+            int n = _pestle.Cast(Vector2.down, filter, _castHits, MaxLift + 2f);
+            float d = float.MaxValue;
+            for (int i = 0; i < n; i++) d = Mathf.Min(d, _castHits[i].distance);
+            return n == 0 ? Mathf.Max(0f, _pestle.position.y - PestleHalfLength - LandingY) : d;
+        }
+
+        /// <summary>One way to write a strike speed: the dial, the reaction line and the ledger all use it.</summary>
+        public static string Mps(float v) => $"{v:0.0} m/s";
 
         /// <summary>
         /// Where the pestle's head will land: the top of the highest leaf under it, or
@@ -303,17 +373,7 @@ namespace AlchemistsArsenal.Crafting
             edge.edgeRadius = 0.03f;
             edge.sharedMaterial = PhysicsMaterials.Stone;
             GameLayers.Assign(m, GameLayers.ShopStatic);
-
-            // "Press here": once the leaves are all in, nothing on the bench said
-            // what to do with them. A ring on the bowl's mouth and an arrow over it.
-            _pressRing = AddArt(transform, ShopArt.PressRing(), 15, "PressRing");
-            _pressRing.transform.localScale = Vector3.one * MortarScale * 0.92f;
-            _pressArrow = AddArt(transform, ShopArt.PressArrow(), 30, "PressArrow");
-            _pressArrow.transform.localScale = Vector3.one * 1.2f;
-            _pressRing.enabled = _pressArrow.enabled = false;
         }
-
-        private SpriteRenderer _pressRing, _pressArrow;
 
         /// <summary>The drying rack over the bench, hung with bundles of herbs.</summary>
         private void BuildRack()
@@ -332,25 +392,17 @@ namespace AlchemistsArsenal.Crafting
             }
         }
 
-        /// <summary>True while the bench is pointing at the bowl: the leaves are in and the pestle is waiting to be used.</summary>
+        /// <summary>
+        /// The leaves are in and the pestle is waiting to be used. Nothing is drawn on
+        /// the bowl for it any more: the tutorial's spotlight shows where to press.
+        /// </summary>
         public bool PressHintShowing { get; private set; }
 
         private void UpdatePressHint()
         {
             BrewMixture mix = Mix;
-            PressHintShowing = Attended && mix != null && mix.AllLeavesIn && !mix.Ground
+            PressHintShowing = !Crusher && Attended && mix != null && mix.AllLeavesIn && !mix.Ground
                                && StrikesLeft > 0 && _lift == null && Order != null;
-            if (_pressRing == null) return;
-            _pressRing.enabled = _pressArrow.enabled = PressHintShowing;
-            if (!PressHintShowing) return;
-
-            float t = Time.unscaledTime;
-            float lip = transform.position.y + MortarLocal.y + ShopArt.MortarLipLocalY * MortarScale;
-            Vector2 mouth = new Vector2(transform.position.x + MortarLocal.x, lip);
-            _pressRing.transform.position = mouth;
-            float pulse = 0.5f + 0.5f * Mathf.Sin(t * 6f);
-            _pressRing.color = new Color(1f, 1f, 1f, 0.45f + 0.5f * pulse);
-            _pressArrow.transform.position = mouth + new Vector2(0f, 0.62f + 0.16f * Mathf.Abs(Mathf.Sin(t * 4f)));
         }
 
         private void BuildPestle()
@@ -358,7 +410,15 @@ namespace AlchemistsArsenal.Crafting
             var p = new GameObject("Pestle");
             p.transform.SetParent(transform, false);
             p.transform.localPosition = MortarLocal + new Vector2(2.1f, 1.3f);
-            AddArt(p.transform, ShopArt.Pestle(Brass), 12, "Art").transform.localScale = Vector3.one * 1.45f;
+            if (Crusher)
+            {
+                p.transform.localPosition = MortarLocal + new Vector2(0f, 0.55f + HangAbove + ParkAbove - PestleAnchor);
+                var frame = new GameObject("CrusherFrame");
+                frame.transform.SetParent(transform, false);
+                frame.transform.localPosition = MortarLocal;   // standing on the bench, astride the mortar
+                AddArt(frame.transform, ShopArt.CrusherFrame(), 7, "Art").transform.localScale = Vector3.one * 1.45f;
+            }
+            AddArt(p.transform, Crusher ? ShopArt.CrusherRam() : ShopArt.Pestle(Brass), 12, "Art").transform.localScale = Vector3.one * 1.45f;
             _pestle = p.AddComponent<Rigidbody2D>();
             _pestle.mass = 2f;
             _pestle.linearDamping = 0.05f;
@@ -410,8 +470,8 @@ namespace AlchemistsArsenal.Crafting
             var stock = new List<HerbData>();
             foreach (ElementType e in new[]
                      { ElementType.Nature, ElementType.Fire, ElementType.Water, ElementType.Poison, ElementType.Arcane })
-                stock.Add(Roll(e, rng));
-            stock.Add(Roll((ElementType)rng.Next(0, 5), rng));
+                stock.Add(Roll(e, rng, Rack));
+            stock.Add(Roll((ElementType)rng.Next(0, 5), rng, Rack));
             for (int i = stock.Count - 1; i > 0; i--)
             {
                 int j = rng.Next(0, i + 1);
@@ -424,7 +484,8 @@ namespace AlchemistsArsenal.Crafting
 
             if (_pestle != null)
             {
-                _pestle.position = (Vector2)transform.position + MortarLocal + new Vector2(2.1f, 1.3f);
+                _pestle.position = (Vector2)transform.position + MortarLocal
+                                   + (Crusher ? new Vector2(0f, 0.55f + HangAbove + ParkAbove - PestleAnchor) : new Vector2(2.1f, 1.3f));
                 _pestle.rotation = 0f;
                 _pestle.linearVelocity = Vector2.zero;
                 _pestle.angularVelocity = 0f;
@@ -464,7 +525,7 @@ namespace AlchemistsArsenal.Crafting
             {
                 int short_ = kv.Value - (have.TryGetValue(kv.Key, out int h) ? h : 0);
                 for (int i = 0; i < short_; i++)
-                    _leaves.Add(SpawnLeaf(Roll(kv.Key, rng), FreeSlotLocal()));
+                    _leaves.Add(SpawnLeaf(Roll(kv.Key, rng, Rack), FreeSlotLocal()));
             }
             Changed?.Invoke();
         }
@@ -488,13 +549,16 @@ namespace AlchemistsArsenal.Crafting
             return SlotLocal(Slots - 1);
         }
 
-        private static HerbData Roll(ElementType element, System.Random rng)
+        /// <summary>
+        /// One leaf off the shelf. Hung on the drying rack, herbs keep: none wilts and
+        /// every one is sound (potency 2-3). Left in a heap they don't: two in five come
+        /// wilted and none is better than middling (potency 1-2).
+        /// </summary>
+        public static HerbData Roll(ElementType element, System.Random rng, bool rack)
         {
             string name = HerbData.NameFor(element, rng.Next(0, 2));
-            int potency = rng.Next(1, 4);
-            bool wilted = rng.Next(0, 100) < 25;
-            // Herbs dried properly on the rack: none wilted, and each a little plumper.
-            if (Rack) { wilted = false; potency = Mathf.Min(3, potency + 1); }
+            int potency = rack ? rng.Next(2, 4) : rng.Next(1, 3);
+            bool wilted = !rack && rng.Next(0, 100) < 40;
             return HerbData.Create(name, element, potency, wilted);
         }
 
@@ -516,10 +580,15 @@ namespace AlchemistsArsenal.Crafting
             var art = new GameObject("Art");
             art.transform.SetParent(go.transform, false);
             SpriteRenderer sr = PixelArt.AddSprite(art, PixelSprites.Herb(data.Element), 11, size);
+            // A thin leaf is a little pale and yellowed, a potent one deep and standing up.
+            sr.color = data.Potency <= 1 ? new Color(0.9f, 0.92f, 0.74f)
+                     : data.Potency >= 3 ? Color.white : new Color(0.96f, 0.97f, 0.9f);
+            if (data.Potency >= 3) art.transform.localScale = new Vector3(1f, 1.08f, 1f);
             if (data.Wilted)
             {
-                sr.color = new Color(0.62f, 0.58f, 0.52f);
-                art.transform.localRotation = Quaternion.Euler(0f, 0f, -25f);
+                sr.color = new Color(0.58f, 0.52f, 0.42f);
+                art.transform.localRotation = Quaternion.Euler(0f, 0f, -35f);
+                art.transform.localScale = new Vector3(0.9f, 0.78f, 1f);
             }
 
             var grab = go.AddComponent<Grabbable2D>();
@@ -532,12 +601,14 @@ namespace AlchemistsArsenal.Crafting
 
         private void Update()
         {
+            if (AlchemistsArsenal.Core.TimeControl.Paused) return;   // the pause menu: nothing here moves or reads the pointer
             float dt = Time.deltaTime;
             _strikeCooldown -= dt;
             BindNext();
             UpdatePressHint();
             DrawStrikeDial();
-            if (!Attended) { EndLift(); Hovered = null; return; }
+            if (Crusher) DriveCrusher(dt);
+            if (!Attended) { if (!Crusher) EndLift(); Hovered = null; return; }
 
             Vector2 p = Pointer.World(_cam);
             Grabbable2D under = _grabber != null ? _grabber.Pick(p) : null;
@@ -546,37 +617,103 @@ namespace AlchemistsArsenal.Crafting
 
             // Hold on the mortar (not on something grabbable) to lift the pestle.
             bool onMortar = Vector2.Distance(p, MortarWorld) < 1.35f;
+            if (Crusher) return;   // the machine's ram, not a hand's pestle
             if (Pointer.PressedThisFrame && onMortar && under == null && _grabber.Held == null) BeginLift();
             if (_lift != null)
             {
                 if (!Pointer.Held) EndLift();
-                else
+                else StepLift(dt);
+            }
+        }
+
+        /// <summary>
+        /// The crusher's cycle, the hand's press done by the machine: bring the ram over
+        /// the bowl, set it on the mix, raise it until it would land at the ideal speed,
+        /// drop it, wait for the blow; three times. Between orders it hangs parked.
+        /// </summary>
+        private void DriveCrusher(float dt)
+        {
+            BrewMixture mix = Mix;
+            bool work = Order != null && mix != null && mix.AllLeavesIn && !mix.Ground && StrikesLeft > 0;
+            if (_crusherWait > 0f)
+            {
+                _crusherWait -= dt;
+                // The blow has landed (it spent the arming): let the leaves settle, then go again.
+                if (!_strikeArmed && _crusherWait > 0.8f) _crusherWait = 0.8f;
+                return;
+            }
+            if (!work) { Park(); return; }
+            if (_lift == null || _parked) { if (_lift != null) Destroy(_lift); _lift = null; BeginLift(); return; }
+            if (LiftReady && PredictedStrikeSpeed >= IdealStrike) { EndLift(); _crusherWait = 1.5f; return; }
+            StepLift(dt);
+        }
+
+        /// <summary>Hang the ram above the bowl, clear of the leaves going in.</summary>
+        private void Park()
+        {
+            if (_pestle == null) return;
+            if (_lift == null) { BeginLift(); _strikeArmed = false; }
+            if (_lift == null) return;
+            _parked = true;
+            _lift.target = new Vector2(MortarWorld.x, MortarWorld.y + HangAbove + ParkAbove);
+        }
+
+        /// <summary>One frame of a held lift: over the bowl, down onto the mix, then up.</summary>
+        private void StepLift(float dt)
+        {
                 {
                     // First bring the pestle over the bowl and let it steady; only then
                     // does the held press start raising it. Lifting while it was still
                     // swinging in from the side put that sideways speed into the strike.
                     float hold = MortarWorld.y + HangAbove;
-                    if (!LiftReady)
+                    bool steady = Mathf.Abs(_pestle.position.x - MortarWorld.x) < 0.12f
+                                  && _pestle.linearVelocity.sqrMagnitude < 0.3f * 0.3f;
+                    if (!_overBowl)
                     {
                         // Up first, then across: pulled diagonally, the pestle dragged
                         // along the mortar's rim and friction pinned it there.
                         float head = _pestle.position.y - PestleHalfLength;
                         bool clear = head > RimTopY + 0.1f;
                         _lift.target = new Vector2(clear ? MortarWorld.x : _pestle.position.x, hold);
-                        bool over = Mathf.Abs(_pestle.position.x - MortarWorld.x) < 0.12f;
-                        _steadyFor = over && _pestle.linearVelocity.sqrMagnitude < 0.3f * 0.3f ? _steadyFor + dt : 0f;
-                        if (_steadyFor > 0.15f) LiftReady = true;
+                        _steadyFor = steady ? _steadyFor + dt : 0f;
+                        if (_steadyFor > 0.15f)
+                        {
+                            _overBowl = true;
+                            _steadyFor = 0f;
+                            _restY = RestOnMixY;
+                        }
+                    }
+                    else if (!LiftReady)
+                    {
+                        // Then down onto the mix, the way a hand sets a pestle in the bowl
+                        // before raising it: the stroke starts from rest, at no speed at all.
+                        // The rest point follows leaves that settle lower, never ones the
+                        // head nudges up, so it cannot chase them or stop short of them.
+                        _restY = Mathf.Min(_restY, RestOnMixY);
+                        _lift.target = new Vector2(MortarWorld.x, _restY);
+                        bool resting = Mathf.Abs(_pestle.position.y + PestleAnchor - _restY) < 0.06f;
+                        _steadyFor = steady && resting ? _steadyFor + dt : 0f;
+                        if (_steadyFor > 0.1f) LiftReady = true;
                     }
                     else
                     {
                         _liftHeight = Mathf.Min(MaxLift, _liftHeight + LiftRate * dt);
-                        _lift.target = new Vector2(MortarWorld.x, hold + _liftHeight);
+                        _lift.target = new Vector2(MortarWorld.x, _restY + _liftHeight);
                     }
                 }
-            }
         }
 
-        private float _steadyFor;
+        private float _steadyFor, _restY;
+        /// <summary>The held pestle has come over the bowl and is being set down onto the mix.</summary>
+        private bool _overBowl;
+        /// <summary>The lift joint's anchor, above the pestle's centre.</summary>
+        private const float PestleAnchor = 0.9f;
+        /// <summary>
+        /// The lift joint's target that rests the pestle's head just on top of the mix: down
+        /// by however far the head can still fall (the same cast the dial reads), so a stroke
+        /// starts from nothing on the needle.
+        /// </summary>
+        private float RestOnMixY => _pestle.position.y + PestleAnchor - Mathf.Max(0f, FirstContactDrop() - 0.02f);
 
         /// <summary>True once a held press has the pestle steady over the bowl and rising.</summary>
         public bool LiftReady { get; private set; }
@@ -588,24 +725,31 @@ namespace AlchemistsArsenal.Crafting
             _pestle.angularVelocity = 0f;
             _lift = _pestle.gameObject.AddComponent<TargetJoint2D>();
             _lift.autoConfigureTarget = false;
-            _lift.anchor = new Vector2(0f, 0.9f);
+            _lift.anchor = new Vector2(0f, PestleAnchor);
             _lift.frequency = 5f;
             _lift.dampingRatio = 1f;
             _lift.maxForce = 250f;
             _liftHeight = 0f;
             _steadyFor = 0f;
+            _overBowl = false;
             LiftReady = false;
             _strikeArmed = true;
+            _parked = false;
             _lift.target = new Vector2(_pestle.position.x, MortarWorld.y + HangAbove);
         }
 
         /// <summary>Let go: the joint goes and gravity takes the pestle down into the bowl.</summary>
+        /// <summary>What the dial read the moment the pestle was let go (0 if it was not rising yet).</summary>
+        public float ReleasePrediction { get; private set; }
+
         private void EndLift()
         {
             if (_lift == null) return;
+            ReleasePrediction = LiftReady ? PredictedStrikeSpeed : 0f;
             Destroy(_lift);
             _lift = null;
             LiftReady = false;
+            _overBowl = false;
             _liftHeight = 0f;
             _pestle.angularVelocity = 0f;
         }
@@ -806,31 +950,32 @@ namespace AlchemistsArsenal.Crafting
             LastStrikeWith = $"{(hit.Other != null ? hit.Other.name : "?")} at ({hit.Point.x:0.00}, {hit.Point.y:0.00}), " +
                              $"pestle v {_pestle.linearVelocity.y:0.00}, {CountInBowl()} leaves in the bowl";
             float band = CurrentBand;
-            LastStrikeSpeed = hit.Speed;
+            float speed = hit.Vertical;   // how fast the pestle was falling when it touched: the one number
+            LastStrikeSpeed = speed;
             StrikesLeft--;
-            float off = Mathf.Abs(hit.Speed - IdealStrike);
+            float off = Mathf.Abs(speed - IdealStrike);
             bool clean = off <= band;
 
             if (clean)
             {
                 int gain = Mathf.RoundToInt(Mathf.Lerp(QualityBudget.StrikeMax, QualityBudget.StrikeMin, off / band));
-                order.ApplyBonus(gain, "Prep", $"Clean strike at {hit.Speed:0.0} m/s (+{gain})");
-                SetReaction($"Clean strike — {hit.Speed:0.0} m/s.", UI.UITheme.Ok);
+                order.ApplyBonus(gain, "Prep", $"Clean strike at {Mps(speed)} (+{gain})");
+                SetReaction($"Clean strike — {Mps(speed)}.", UI.UITheme.Ok);
                 AudioManager.Play(Sfx.Seal);
                 CrushBurst(hit.Point, 12);
                 CameraRig.Shake(0.08f);
             }
-            else if (hit.Speed < IdealStrike)
+            else if (speed < IdealStrike)
             {
-                order.ApplyDeduction(QualityBudget.StrikeMiss, "Prep", $"Too soft ({hit.Speed:0.0} m/s) — barely bruised it");
-                SetReaction($"Too soft — {hit.Speed:0.0} m/s. Lift it higher before you let go.", UI.UITheme.Danger);
+                order.ApplyDeduction(QualityBudget.StrikeMiss, "Prep", $"Too soft ({Mps(speed)}) — barely bruised it");
+                SetReaction($"Too soft — {Mps(speed)}. Lift it higher before you let go.", UI.UITheme.Danger);
                 AudioManager.Play(Sfx.Deny);
                 CrushBurst(hit.Point, 4);
             }
             else
             {
-                order.ApplyDeduction(QualityBudget.StrikeMiss, "Prep", $"Too hard ({hit.Speed:0.0} m/s) — the mix jumped out");
-                SetReaction($"Too hard — {hit.Speed:0.0} m/s. Some of it jumped the bowl.", UI.UITheme.Danger);
+                order.ApplyDeduction(QualityBudget.StrikeMiss, "Prep", $"Too hard ({Mps(speed)}) — the mix jumped out");
+                SetReaction($"Too hard — {Mps(speed)}. Some of it jumped the bowl.", UI.UITheme.Danger);
                 AudioManager.Play(Sfx.Deny);
                 PopOut();
                 CameraRig.Shake(0.18f);

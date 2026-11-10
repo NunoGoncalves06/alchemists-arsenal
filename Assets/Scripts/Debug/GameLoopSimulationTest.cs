@@ -27,6 +27,7 @@ namespace AlchemistsArsenal.DebugTools
             TestQualityCeiling();
             TestLoadoutFloor();
             TestEconomy();
+            TestSharedPurse();
             TestStarRules();
             TestSaveRoundTrip();
             TestMigrationClamps();
@@ -36,6 +37,7 @@ namespace AlchemistsArsenal.DebugTools
             TestPerkSymmetry();
             TestCostCurve();
             TestCurveIsAffordable();
+            TestGuardianDays();
             TestStoryRoundTrip();
             TestStoryRules();
             Done = true;
@@ -209,8 +211,17 @@ namespace AlchemistsArsenal.DebugTools
         private void TestStoryRules()
         {
             var s = RunState.NewGame(0);
-            var win = new ExpeditionReport { won = true, bossDefeated = true };
+            var win = new ExpeditionReport { won = true, bossDefeated = true, bossId = "woodwose", bossTier = 0 };
             var noBoss = new ExpeditionReport { won = true, bossDefeated = false };
+            var returned = new ExpeditionReport { won = true, bossDefeated = true, bossId = "woodwose", bossTier = 1 };
+            var broken = new ExpeditionReport { won = true, bossDefeated = true, bossId = "woodwose", bossTier = 2 };
+            var matriarch = new ExpeditionReport { won = true, bossDefeated = true, bossId = "matriarch" };
+
+            // Keyed on who fell, not on the road: a Woodwose first felled in the Caverns earns its scene too.
+            var other = RunState.NewGame(0);
+            Story.StoryDirector.OnDayResolved(other, 2, returned);
+            var first = Story.StoryDirector.Due(other);
+            Check(first.Count == 1 && first[0].Id == "woodwose", "story: the Woodwose scene follows the Woodwose, on whichever road it falls");
 
             Story.StoryDirector.OnDayResolved(s, 0, noBoss);
             Check(Story.StoryDirector.Due(s).Count == 0, "story: a boss-less win earns no scene");
@@ -221,8 +232,29 @@ namespace AlchemistsArsenal.DebugTools
             Story.StoryDirector.Finished(s, due[0]);
             Story.StoryDirector.OnDayResolved(s, 0, win);
             Check(Story.StoryDirector.Due(s).Count == 0, "story: the Woodwose scene plays once, not on every replay");
+            Story.StoryDirector.OnDayResolved(s, 2, returned);
+            Check(Story.StoryDirector.Due(s).Count == 0, "story: the Woodwose back in the Caverns earns no new scene");
 
-            Story.StoryDirector.OnDayResolved(s, BiomeLibrary.Count - 1, win);
+            Story.StoryDirector.OnDayResolved(s, 3, broken);
+            Story.DiaryManager.EvaluateAfterExpedition(s, 3, broken);
+            due = Story.StoryDirector.Due(s);
+            Check(due.Count == 1 && due[0].Id == "woodwose_return" && s.HasDiary("diary_woodwose_broken"),
+                "story: the broken Woodwose's fall in the Swamp earns its scene and its diary page");
+            Story.StoryDirector.Finished(s, due[0]);
+            Story.StoryDirector.OnDayResolved(s, 3, broken);
+            Check(Story.StoryDirector.Due(s).Count == 0, "story: the broken Woodwose's scene plays once");
+
+            // The doorway shows the run's own roster: the Rookie alone, then whoever was hired.
+            var doorway = new System.Collections.Generic.List<string>();
+            foreach (var a in Story.StoryScript.RosterHeroes(s, false)) doorway.Add(a.Id);
+            Check(doorway.Count == 1 && doorway[0] == "hero_rookie", $"story: a run that hired nobody ends with the Rookie alone at the door ({string.Join(",", doorway)})");
+            s.roster.Add(HeroCatalog.NewHire("Otho Vance", 1, ElementType.Water, HeroPerks.DefaultArchetype, "merchant"));
+            doorway.Clear();
+            foreach (var a in Story.StoryScript.RosterHeroes(s, false)) doorway.Add(a.Id);
+            Check(doorway.Count == 2 && doorway.Contains("hero_merchant") && !doorway.Contains("hero_herbalist"),
+                $"story: the doorway shows exactly who was hired ({string.Join(",", doorway)})");
+
+            Story.StoryDirector.OnDayResolved(s, BiomeLibrary.Count - 1, matriarch);
             due = Story.StoryDirector.Due(s);
             Check(due.Count == 3 && due[0].Id == "reveal" && due[1].Id == "ending" && due[2].Id == "credits",
                 "story: the Peak earns reveal, ending, credits, in that order");
@@ -272,7 +304,7 @@ namespace AlchemistsArsenal.DebugTools
             s.bestGrades[0] = 2;
             s.roster = new System.Collections.Generic.List<HeroRecord>
             {
-                HeroCatalog.NewHire("Ser Halden", 0, ElementType.Fire, "bulwark", "knight"),
+                HeroCatalog.NewHire("Otho Vance", 0, ElementType.Fire, "bulwark", "merchant"),
                 HeroCatalog.NewHire("Mira Thorn", 1, ElementType.Water, "marksman", "herbalist"),
                 HeroCatalog.NewHire("Otho Vance", 2, ElementType.Arcane, "skirmisher", "merchant"),
             };
@@ -419,60 +451,212 @@ namespace AlchemistsArsenal.DebugTools
         }
 
         /// <summary>
-        /// The later roads are tuned to need hired fighters and the road upgrades (the
-        /// harness's difficulty curve measures that). This checks the other half: that
-        /// a player who wins every road with Great flasks — the Guild commission for
-        /// every fighter, and only the least gold each monster can drop — can pay for
-        /// what each road needs with at most two replay days before it. The kit is
-        /// what the curve demands: a second fighter and the first road upgrades for
-        /// the Caverns, a third fighter for the Swamp, the second tier for the Peak.
+        /// The day's contracts are one purse: the fighters' payouts averaged, times a
+        /// scale that grows with the party but slower than a fighter a share. One
+        /// fighter is paid exactly what their contract pays.
         /// </summary>
+        private void TestSharedPurse()
+        {
+            Check(Economy.SharedPurse(new int[0]) == 0, "purse: no contracts, no pay");
+            Check(Economy.SharedPurse(new[] { 120 }) == 120, "purse: one fighter is paid their contract in full");
+            int two = Economy.SharedPurse(new[] { 100, 100 }), three = Economy.SharedPurse(new[] { 100, 100, 100 });
+            Check(two == Mathf.RoundToInt(100 * Economy.PurseScale(2)) && three == Mathf.RoundToInt(100 * Economy.PurseScale(3)),
+                $"purse: equal pays make pay x scale ({two}, {three})");
+            Check(100 < two && two < three && two < 200 && three < 300,
+                $"purse: a bigger party earns more, but not a full share more per fighter ({two}, {three})");
+            Check(Economy.SharedPurse(new[] { 100, 50 }) < two, "purse: a refused (half-paid) contract lowers the purse");
+        }
+
+        /// <summary>
+        /// The later roads are tuned to need hired fighters and the road upgrades (the
+        /// harness's difficulty curve measures that). This checks the money side, with
+        /// the day's contracts paid as one purse (<see cref="Economy.SharedPurse"/>) and
+        /// only the least gold each monster can drop:
+        /// <list type="bullet">
+        /// <item>a good player (Great flasks, the best-paid job, average loot) meets every
+        /// road's needs with at most two replay days, and owns everything the shop sells
+        /// near the end of road 4: at most two Swamp replays after clearing it, before
+        /// the last road;</item>
+        /// <item>a weak player (Okay flasks, the safe jobs) still meets every road's
+        /// needs, with at most four replay days before any road: slow, never stuck;</item>
+        /// <item>a saver first affords a bench machine on the evening of day 3, and a
+        /// machine for a later mechanic costs more.</item>
+        /// </list>
+        /// The gold by evening is logged for both, for the balance chart.
+        /// </summary>
+        /// <summary>How much of the morning a player has left, by how many bench machines they own.</summary>
+        private delegate float MorningLeft(int benchesOwned);
+
+        /// <summary>Day 1 is the first job, not a guardian: the Woods end on the Woodwose from day 2 on.</summary>
+        private void TestGuardianDays()
+        {
+            Check(!BiomeLibrary.GuardianToday(1), "guardians: day 1 has no guardian");
+            Check(BiomeLibrary.GuardianToday(2) && BiomeLibrary.GuardianToday(9), "guardians: from day 2 the roads end on their guardian");
+            Check(BiomeLibrary.FirstGuardianDay == 2, $"guardians: the first guardian day is 2 ({BiomeLibrary.FirstGuardianDay})");
+        }
+
         private void TestCurveIsAffordable()
         {
-            // What each road needs: fighters, and the road upgrades bought so far (in gold).
+            var loot = new System.Text.StringBuilder();
+            for (int b = 0; b < BiomeLibrary.Count; b++) loot.Append($" b{b}:{Loot(b, false)}/{Loot(b, true)}");
+            Debug.Log($"economy: loot least/average by road -{loot}");
+
+            // The quick-hands bonus is proven at both ends, so no real play speed can break a rule:
+            // never quick (0) and always the full +25 % (the whole morning left).
+            foreach (var (label, left) in new (string, MorningLeft)[]
+                     { ("no bonus", _ => 0f), ("+5 %", _ => 0.10f), ("+10 %", _ => 0.20f), ("+15 %", _ => 0.35f), ("full bonus", _ => 1f) })
+            {
+                EconomyRun good = RunEconomy(PotionGrade.Great, buyEverything: true, averageLoot: true, left);
+                EconomyRun weak = RunEconomy(PotionGrade.Okay, buyEverything: false, averageLoot: false, left);
+                Debug.Log($"economy ({label}): good player gold by evening -{good.Gold} | {good.Trace}");
+                Debug.Log($"economy ({label}): weak player gold by evening -{weak.Gold} | {weak.Trace}");
+
+                Check(good.WorstReplays <= 2, $"economy ({label}): a good player meets every road's needs with at most 2 replays (worst {good.WorstReplays}) -{good.Trace}");
+                Check(good.OwnAllDay > 0 && good.OwnAllDay - good.Road4Day <= 2 && good.OwnAllDay >= good.Road4Day - 1,
+                    $"economy ({label}): a good player owns everything near the end of road 4, within two Swamp replays (all on day {good.OwnAllDay}, road 4 cleared day {good.Road4Day})");
+                Check(weak.WorstReplays <= 4, $"economy ({label}): a weak player is slow but never stuck, at most 4 replays before a road (worst {weak.WorstReplays}) -{weak.Trace}");
+            }
+            // A likely player, for the chart: the good one quicker with every machine, the weak one barely ahead of the clock.
+            EconomyRun likelyGood = RunEconomy(PotionGrade.Great, true, true, owned => 0.15f + 0.06f * owned);
+            EconomyRun likelyWeak = RunEconomy(PotionGrade.Okay, false, false, _ => 0.05f);
+            Debug.Log($"economy (likely): good player gold by evening -{likelyGood.Gold} | {likelyGood.Trace}");
+            Debug.Log($"economy (likely): weak player gold by evening -{likelyWeak.Gold} | {likelyWeak.Trace}");
+
+            // A player who puts every coin toward a machine (one fighter, a new road each
+            // day) first affords the cheapest on the evening of day 3, so it works on day 4.
+            int cheapestMachine = int.MaxValue;
+            foreach (var up in UpgradeCatalog.All)
+                if (up.IsBench && up.Id != UpgradeCatalog.DryingRack) cheapestMachine = Mathf.Min(cheapestMachine, up.Cost);
+            foreach (float left in new[] { 0f, 0.10f, 0.20f, 0.35f, 1f })
+            {
+                int saved = 0, affordOn = -1;
+                var pays = new System.Text.StringBuilder();
+                for (int d = 1; d <= 6 && affordOn < 0; d++)
+                {
+                    int pay = DayPay(d, Mathf.Min(d - 1, BiomeLibrary.Count - 1), 1, PotionGrade.Great, replay: false, averageLoot: false, left);
+                    saved += pay;
+                    pays.Append($" d{d}+{pay}={saved}");
+                    if (saved >= cheapestMachine) affordOn = d;
+                }
+                Check(affordOn == 3, $"economy (+{Economy.SpeedBonus(left):P0}): saving for it, the first bench machine ({cheapestMachine} g) is affordable on the evening of day 3, for day 4 (evening {affordOn}:{pays})");
+            }
+
+            // Later mechanics cost more: the rack, then the day-one benches, then the malting ones.
+            string[] byArrival = { UpgradeCatalog.DryingRack, UpgradeCatalog.GlassFunnel, UpgradeCatalog.BrassMortar,
+                                   UpgradeCatalog.ClockworkStirrer, UpgradeCatalog.DraughtKiln, UpgradeCatalog.SteepingVat };
+            bool rising = true;
+            for (int i = 1; i < byArrival.Length; i++)
+                rising &= UpgradeCatalog.Find(byArrival[i]).Value.Cost > UpgradeCatalog.Find(byArrival[i - 1]).Value.Cost;
+            Check(rising, "economy: a bench machine for a later mechanic costs more");
+        }
+
+        private sealed class EconomyRun
+        {
+            public int WorstReplays, OwnAllDay = -1, Road4Day = -1;
+            public string Trace = "", Gold = "";
+        }
+
+        /// <summary>The waves' gold: each monster's least drop, or its average.</summary>
+        private static int Loot(int biome, bool average)
+        {
+            float g = 0f;
+            foreach (var w in BiomeLibrary.Get(biome).Waves)
+                g += w.count * (average ? (w.monster.GoldMin + w.monster.GoldMax) * 0.5f : w.monster.GoldMin);
+            return Mathf.RoundToInt(g);
+        }
+
+        /// <summary>One day's gold: the party's purse for the best-paid job each fighter's flask meets, and the loot.</summary>
+        private static int DayPay(int day, int biome, int party, PotionGrade grade, bool replay, bool averageLoot, float morningLeft = 0f)
+        {
+            var fees = new System.Collections.Generic.List<int>();
+            for (int i = 0; i < party; i++)
+            {
+                ContractRecord best = null;
+                foreach (ContractRecord c in ContractBoard.Offers(day, biome, null))
+                    if (c.Meets(grade) && (best == null || c.fee + c.bonus > best.fee + best.bonus)) best = c;
+                if (best != null) { best.accepted = true; fees.Add(Economy.ContractPayout(grade, best, replay).paid); }
+            }
+            int purse = Economy.SharedPurse(fees);
+            return purse + Economy.SpeedBonusGold(purse, morningLeft) + Loot(biome, averageLoot);
+        }
+
+        /// <summary>
+        /// Play the roads in order: before each, hire and buy the road kit it needs,
+        /// replaying the last road (half pay) until that is affordable. With
+        /// buyEverything, whatever the next road's needs leave over goes on the rest of
+        /// the shop, cheapest first: bench machines, more fighters, the second road tier;
+        /// and before the last road it replays the Swamp until the shop is bought out.
+        /// </summary>
+        private static EconomyRun RunEconomy(PotionGrade grade, bool buyEverything, bool averageLoot, MorningLeft left)
+        {
+            var run = new EconomyRun();
             var need = new (int party, int kit)[BiomeLibrary.Count];
             for (int b = 0; b < BiomeLibrary.Count; b++)
                 need[b] = (BiomeLibrary.FightersNeeded[b], UpgradeCatalog.RoadTierCost(BiomeLibrary.RoadTierNeeded[b]));
+            int fullKit = UpgradeCatalog.RoadTierCost(2);
+            var benches = new System.Collections.Generic.List<UpgradeDefinition>();
+            foreach (var up in UpgradeCatalog.All) if (up.IsBench) benches.Add(up);
+            var owned = new System.Collections.Generic.HashSet<string>();
 
-            int LeastLoot(int biome)
-            {
-                int g = 0;
-                foreach (var w in BiomeLibrary.Get(biome).Waves) g += w.count * w.monster.GoldMin;
-                return g;
-            }
-            int DayPay(int day, int biome, int party, bool replay)
-            {
-                int paid = 0;
-                for (int i = 0; i < party; i++)
-                {
-                    ContractRecord best = null;
-                    foreach (ContractRecord c in ContractBoard.Offers(day, biome, null))
-                        if (c.Meets(PotionGrade.Great) && (best == null || c.fee + c.bonus > best.fee + best.bonus)) best = c;
-                    if (best != null) { best.accepted = true; paid += Economy.ContractPayout(PotionGrade.Great, best, replay).paid; }
-                }
-                return paid + LeastLoot(biome);
-            }
-
-            int gold = 0, dayN = 1, fighters = 1, kit = 0, worst = 0;
+            int gold = 0, dayN = 1, fighters = 1, kit = 0;
             var trace = new System.Text.StringBuilder();
+            var goldLog = new System.Text.StringBuilder();
+
+            bool OwnsAll() => owned.Count == benches.Count && kit >= fullKit && fighters >= RunState.MaxParty;
+
+            void Shop(int nextRoad)
+            {
+                var n = need[Mathf.Min(nextRoad, BiomeLibrary.Count - 1)];
+                while (fighters < n.party && gold >= HeroCatalog.HireCost(fighters)) { gold -= HeroCatalog.HireCost(fighters); fighters++; }
+                if (fighters >= n.party && kit < n.kit && gold >= n.kit - kit) { gold -= n.kit - kit; kit = n.kit; }
+                if (!buyEverything || fighters < n.party || kit < n.kit) return;   // the road comes first
+                while (true)
+                {
+                    // The cheapest thing still on the shelf.
+                    int cost = int.MaxValue; string what = null;
+                    foreach (var up in benches) if (!owned.Contains(up.Id) && up.Cost < cost) { cost = up.Cost; what = up.Id; }
+                    if (fighters < RunState.MaxParty && HeroCatalog.HireCost(fighters) < cost) { cost = HeroCatalog.HireCost(fighters); what = "hire"; }
+                    if (kit < fullKit && fullKit - kit < cost) { cost = fullKit - kit; what = "kit"; }
+                    if (what == null || gold < cost) return;
+                    gold -= cost;
+                    if (what == "hire") fighters++;
+                    else if (what == "kit") kit = fullKit;
+                    else owned.Add(what);
+                }
+            }
+
+            void Evening(int day, int nextRoad)
+            {
+                Shop(nextRoad);
+                goldLog.Append($" d{day}:{gold}");
+                if (run.OwnAllDay < 0 && OwnsAll()) run.OwnAllDay = day;
+            }
+
             for (int biome = 0; biome < BiomeLibrary.Count; biome++)
             {
                 int replays = 0;
-                while (true)
+                // The whole shop before the last road: replay the Swamp until it is bought.
+                for (int r = 0; buyEverything && biome == BiomeLibrary.Count - 1 && run.OwnAllDay < 0 && r < 6; r++)
                 {
-                    while (fighters < need[biome].party && gold >= HeroCatalog.HireCost(fighters))
-                    { gold -= HeroCatalog.HireCost(fighters); fighters++; }
-                    if (fighters >= need[biome].party && kit < need[biome].kit && gold >= need[biome].kit - kit)
-                    { gold -= need[biome].kit - kit; kit = need[biome].kit; }
-                    if ((fighters >= need[biome].party && kit >= need[biome].kit) || replays >= 6) break;
-                    gold += DayPay(dayN++, Mathf.Max(0, biome - 1), fighters, replay: true);
+                    gold += DayPay(dayN, biome - 1, fighters, grade, replay: true, averageLoot, left(owned.Count));
+                    Evening(dayN++, biome);
+                }
+                Shop(biome);
+                while ((fighters < need[biome].party || kit < need[biome].kit) && replays < 8)
+                {
+                    gold += DayPay(dayN, Mathf.Max(0, biome - 1), fighters, grade, replay: true, averageLoot, left(owned.Count));
+                    Evening(dayN++, biome);
                     replays++;
                 }
-                worst = Mathf.Max(worst, replays);
-                trace.Append($" b{biome}:day{dayN} x{fighters} kit{kit}g replays{replays}");
-                gold += DayPay(dayN++, biome, fighters, replay: false);
+                run.WorstReplays = Mathf.Max(run.WorstReplays, replays);
+                trace.Append($" b{biome}:day{dayN} x{fighters} kit{kit}g r{replays}");
+                gold += DayPay(dayN, biome, fighters, grade, replay: false, averageLoot, left(owned.Count));
+                if (biome == 3) run.Road4Day = dayN;
+                Evening(dayN++, biome + 1);
             }
-            Check(worst <= 2, $"economy: the curve's kit is affordable with at most 2 replays before a road —{trace} (worst {worst})");
+            run.Trace = trace.ToString();
+            run.Gold = goldLog.ToString();
+            return run;
         }
 
         private void TestCostCurve()

@@ -23,6 +23,9 @@ namespace AlchemistsArsenal.Data
         /// <summary>The leaves it takes, in order. Duplicates are deliberate.</summary>
         public ElementType[] Steps;
 
+        /// <summary>0 is the book's recipe; 1 (Broad) and 2 (Far) are the day's other takes on it, so no two fighters brew the same.</summary>
+        public int Variant;
+
         public int StepCount => Steps != null ? Steps.Length : 0;
 
         /// <summary>Reads as "2 x Fire  +  1 x Nature".</summary>
@@ -114,6 +117,74 @@ namespace AlchemistsArsenal.Data
             return new PotionRecipe { Result = r.Result, Name = r.Name, Method = r.Method, Steps = (ElementType[])r.Steps.Clone() };
         }
 
+        /// <summary>
+        /// <paramref name="result"/>'s recipe at <paramref name="tier"/>, as fighter number
+        /// <paramref name="variant"/> (0-2) on that element brews it today. Same element; other
+        /// leaves or another order, and its own name:
+        /// <list type="bullet">
+        /// <item>0: the book's recipe.</item>
+        /// <item>1, "Broad": a binder swapped for another leaf the element uses (on a two-leaf
+        /// recipe, the second base leaf becomes a binder). Its flask bursts wider, reaches less far.</item>
+        /// <item>2, "Far": the binder goes in first, then the base. Its flask reaches further, bursts smaller.</item>
+        /// </list>
+        /// </summary>
+        public static PotionRecipe For(ElementType result, int tier, int variant)
+        {
+            PotionRecipe r = For(result, tier);
+            variant = Mathf.Clamp(variant, 0, 2);
+            if (variant == 0) return r;
+
+            var bases = new List<ElementType>();
+            var binders = new List<ElementType>();
+            foreach (ElementType e in r.Steps) (e == result ? bases : binders).Add(e);
+            List<ElementType> pantry = Binders(result);
+            var steps = new List<ElementType>();
+            if (variant == 1)
+            {
+                if (binders.Count == 0) { bases[bases.Count - 1] = pantry[0]; steps.AddRange(bases); }
+                else
+                {
+                    // The first binder becomes the element's next leaf not already in the pot (or the other one, doubled).
+                    ElementType swap = pantry.Find(e => !binders.Contains(e));
+                    if (!pantry.Exists(e => !binders.Contains(e))) swap = pantry.Find(e => e != binders[0]);
+                    binders[0] = swap;
+                    steps.AddRange(bases);
+                    steps.AddRange(binders);
+                }
+                r.Name = "Broad " + r.Name;
+                r.Method = "The broad take: " + r.Method;
+            }
+            else
+            {
+                if (binders.Count == 0) { binders.Add(pantry[0]); bases.RemoveAt(bases.Count - 1); }
+                steps.AddRange(binders);
+                steps.AddRange(bases);
+                r.Name = "Far " + r.Name;
+                r.Method = "The far take, binder first: " + r.Method;
+            }
+            r.Steps = steps.ToArray();
+            r.Variant = variant;
+            return r;
+        }
+
+        /// <summary>The leaves other than itself that <paramref name="result"/>'s recipes use, in the order they first appear.</summary>
+        private static List<ElementType> Binders(ElementType result)
+        {
+            var found = new List<ElementType>();
+            foreach (PotionRecipe r in Tiers[Row(result)])
+                foreach (ElementType e in r.Steps)
+                    if (e != result && !found.Contains(e)) found.Add(e);
+            return found;
+        }
+
+        /// <summary>Which take on <paramref name="element"/> the next order brews: one for each order of that element already today.</summary>
+        public static int VariantFor(ElementType element, IEnumerable<ElementType> alreadyToday)
+        {
+            int n = 0;
+            if (alreadyToday != null) foreach (ElementType e in alreadyToday) if (e == element) n++;
+            return Mathf.Min(n, 2);
+        }
+
         /// <summary>Today's recipe for <paramref name="result"/>: the tier today's road asks for.</summary>
         public static PotionRecipe Today(ElementType result) => For(result, Complexity.RecipeTier(Complexity.Level()));
 
@@ -184,7 +255,7 @@ namespace AlchemistsArsenal.Data
 
         public BrewMixture(ElementType result) : this(result, 1) { }
 
-        public BrewMixture(ElementType result, int tier) { Recipe = RecipeBook.For(result, tier); }
+        public BrewMixture(ElementType result, int tier, int variant = 0) { Recipe = RecipeBook.For(result, tier, variant); }
 
         public int Remaining => Mathf.Max(0, Recipe.StepCount - Added.Count);
         public bool AllLeavesIn => Added.Count >= Recipe.StepCount;

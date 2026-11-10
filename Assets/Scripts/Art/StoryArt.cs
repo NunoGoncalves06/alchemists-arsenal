@@ -336,12 +336,16 @@ namespace AlchemistsArsenal.Art
                 case "woodwose_body": return BossArt.WoodwoseBody();
                 case "woodwose_arm": return BossArt.WoodwoseArm();
                 case "woodwose_antlers": return BossArt.WoodwoseAntlers();
+                case "woodwose_antlers_snapped": return BossArt.WoodwoseAntlerSnapped();
+                case "woodwose_split": return BossArt.WoodwoseCracksBroken();
+                case "woodwose_body_broken": return BossArt.WoodwoseBodyBroken();
+                case "woodwose_swamp_body": return BossArt.WoodwoseSwampBody();
+                case "woodwose_swamp_head": return BossArt.WoodwoseSwampHead();
                 case "matriarch_crown": return BossArt.MatriarchCrown();
                 case "mask_l": return BossArt.MaskShard(0);
                 case "mask_r": return BossArt.MaskShard(1);
                 case "mask_chin": return BossArt.MaskShard(2);
                 case "hero_rookie": return PixelSprites.Fighter("rookie");
-                case "hero_knight": return PixelSprites.Fighter("knight");
                 case "hero_herbalist": return PixelSprites.Fighter("herbalist");
                 case "hero_merchant": return PixelSprites.Fighter("merchant");
                 default: return null;

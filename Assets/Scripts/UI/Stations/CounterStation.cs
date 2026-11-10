@@ -368,7 +368,8 @@ namespace AlchemistsArsenal.UI.Stations
                 foreach (HeroRecord h in s.DeployedParty())
                 {
                     ContractRecord c = s.ContractFor(h.id);
-                    if (c != null) sb.Append(h.displayName).Append(": ").Append(c.PotionName).Append('\n');
+                    string brew = Systems.CraftingManager.Instance?.OrderFor(h.id)?.Mixture?.Recipe?.Name ?? c?.PotionName;
+                    if (c != null) sb.Append(h.displayName).Append(": ").Append(brew).Append('\n');
                 }
             if (_fighter != null)
             {

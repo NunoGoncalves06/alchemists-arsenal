@@ -220,16 +220,12 @@ namespace AlchemistsArsenal.Core
             go.AddComponent<CircleCollider2D>().radius = 0.4f;
 
             RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
-            // 120 -> 150 base: a single adventurer facing 3+ monsters at once was
-            // dying before the AI/movement fixes had a real chance to work
-            // (playtest: near-instant losses). Thick Boots still stacks on top.
-            int maxHp = 150 + (s != null && s.HasUpgrade(UpgradeCatalog.ThickBoots) ? 30 : 0)
-                            + (s != null && s.HasUpgrade(UpgradeCatalog.HardLeathers) ? 50 : 0);
-
             int level = hero != null ? hero.level : 1;
+            // What the roster showed for this level is what the fighter takes into the fight.
+            HeroStats stats = HeroStats.For(level, s);
+            int maxHp = stats.Hp;
             ElementType affinity = hero != null ? hero.affinity : ElementType.Nature;
             HeroArchetype archetype = HeroPerks.Archetype(hero != null ? hero.archetypeId : null);
-            maxHp = Mathf.RoundToInt(maxHp * HeroCatalog.HpScale(level));
 
             var body = go.AddComponent<CombatantBody>();
             // The element was hardcoded Nature for everyone, which also made every
@@ -260,7 +256,7 @@ namespace AlchemistsArsenal.Core
 
             var ai = go.AddComponent<UtilityAI_CombatController>();
             ai.Configure(body, loadout, matrix, considerations);
-            ai.ConfigureHero(affinity, HeroCatalog.DamageScale(level));
+            ai.ConfigureHero(affinity, stats.DamageScale);
             if (loadout != null) ai.ConfigurePotionQuality(loadout.PotionQuality01);
             go.AddComponent<BallisticBombLauncher>().Configure(ai, matrix);
 
@@ -284,6 +280,14 @@ namespace AlchemistsArsenal.Core
             var art = new GameObject("Art");
             art.transform.SetParent(go.transform, false);
             PixelArt.AddSprite(art, Art.PixelSprites.Fighter(fighterId), 6, 1.9f);
+            // The flask they were handed at the Delivery bench, at their belt.
+            if (loadout != null && loadout.Slots.Count > 0 && loadout.Slots[0].bomb != null)
+            {
+                var flask = new GameObject("BeltFlask");
+                flask.transform.SetParent(art.transform, false);
+                flask.transform.localPosition = new Vector3(0.42f, -0.15f, 0f);
+                PixelArt.AddSprite(flask, Art.PixelSprites.Flask(loadout.Slots[0].bomb.Element), 7, 0.42f);
+            }
             Vfx.BodyVisuals.Attach(go, art.transform);
             go.SetActive(true);
 

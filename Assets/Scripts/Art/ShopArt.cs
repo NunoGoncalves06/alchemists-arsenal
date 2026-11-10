@@ -313,35 +313,6 @@ namespace AlchemistsArsenal.Art
             return c.Bake(key, PPU, new Vector2(0.5f, 0f));
         }
 
-        /// <summary>A chunky gold arrow pointing down: "press here".</summary>
-        public static Sprite PressArrow()
-        {
-            const string key = "press_arrow";
-            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
-            const int w = 13, h = 14;
-            var gold = new[] { PixelCanvas.Hex(0xb07a26), PixelCanvas.Hex(0xe8b64c), PixelCanvas.Hex(0xffe39a) };
-            var c = new PixelCanvas(w, h);
-            // shaft, then a head that widens toward its point at the bottom
-            c.Fill((x, y) => y >= 1 && y <= 6 && x >= 4 && x <= 8, (x, y) => x == 4 ? gold[2] : gold[1]);
-            c.Fill((x, y) => y >= 7 && y <= 12 && Mathf.Abs(x - 6) <= 12 - y, (x, y) =>
-                Mathf.Abs(x - 6) == 12 - y ? gold[0] : x < 6 ? gold[2] : gold[1]);
-            c.Outline(K);
-            return c.Bake(key, PPU, new Vector2(0.5f, 0f));
-        }
-
-        /// <summary>A gold ring the shape of the mortar's mouth, drawn on it to say "here".</summary>
-        public static Sprite PressRing()
-        {
-            const string key = "press_ring";
-            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
-            const int w = 32, h = 10;
-            var c = new PixelCanvas(w, h);
-            c.Fill((x, y) => PixelCanvas.InEllipse(x, y, w * 0.5f, h * 0.5f, w * 0.5f - 0.5f, h * 0.5f - 0.5f)
-                             && !PixelCanvas.InEllipse(x, y, w * 0.5f, h * 0.5f, w * 0.5f - 2.5f, h * 0.5f - 2.2f),
-                (x, y) => new Color32(0xff, 0xd9, 0x7a, 220));
-            return c.Bake(key, PPU, new Vector2(0.5f, 0.5f));
-        }
-
         /// <summary>A stone-headed, wooden-handled pestle, head down.</summary>
         public static Sprite Pestle(bool brass = false)
         {
@@ -605,6 +576,81 @@ namespace AlchemistsArsenal.Art
             }
             c.Outline(K);
             return c.Bake(key, PPU, new Vector2(0.5f, 1f - 4f / h));
+        }
+
+        /// <summary>
+        /// The auto crusher's ram: an iron rod down to a heavy flat-faced brass weight.
+        /// Same size as the pestle, so it rides the same body. Pivot at its middle.
+        /// </summary>
+        public static Sprite CrusherRam()
+        {
+            const string key = "crusher_ram";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 9, h = 30;
+            var c = new PixelCanvas(w, h);
+            c.Fill((x, y) => y < 18 && x >= 3 && x <= 5, (x, y) => PixelCanvas.Shade(Iron, x == 3 ? 0.9f : 0.5f, x, y));
+            c.Fill((x, y) => y >= 2 && y <= 4 && x >= 2 && x <= 6, (x, y) => PixelCanvas.Shade(Brass, 0.7f, x, y));   // the collar on the chain
+            c.Fill((x, y) => y >= 17 && x >= 0 && x <= w - 1, (x, y) =>
+                PixelCanvas.Shade(Brass, y == 17 ? 1f : y >= h - 2 ? 0.35f : 0.8f - x * 0.05f, x, y));
+            c.Fill((x, y) => y >= 19 && y <= 20 && x >= 1 && x <= w - 2, (x, y) => PixelCanvas.Shade(Copper, 0.6f, x, y));   // a band
+            c.Outline(K);
+            return c.Bake(key, PPU, new Vector2(0.5f, 0.5f));
+        }
+
+        /// <summary>
+        /// The auto crusher's frame: two brass posts standing on the bench either side of
+        /// the mortar, a crossbar and a copper pulley housing the ram hangs from.
+        /// Pivot at the middle of its foot.
+        /// </summary>
+        public static Sprite CrusherFrame()
+        {
+            const string key = "crusher_frame";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 48, h = 72;
+            var c = new PixelCanvas(w, h);
+            c.Fill((x, y) => ((x >= 1 && x <= 3) || (x >= w - 4 && x <= w - 2)) && y >= 5, (x, y) =>
+                PixelCanvas.Shade(Brass, x < w / 2 ? 0.8f : 0.45f, x, y));
+            c.Fill((x, y) => y >= h - 3 && ((x <= 5) || (x >= w - 6)), (x, y) => PixelCanvas.Shade(Iron, 0.5f, x, y));   // the feet
+            c.Fill((x, y) => y >= 4 && y <= 6 && x >= 1 && x <= w - 2, (x, y) => PixelCanvas.Shade(Brass, y == 4 ? 1f : 0.55f, x, y));
+            c.Fill((x, y) => PixelCanvas.InEllipse(x, y, w * 0.5f, 5f, 5f, 4.5f), (x, y) =>
+                PixelCanvas.Shade(Copper, PixelCanvas.SphereLight(x, y, w * 0.5f, 4f, 5f, 4.5f, 0.3f), x, y));
+            c.Outline(K);
+            return c.Bake(key, PPU, new Vector2(0.5f, 0f));
+        }
+
+        /// <summary>
+        /// The auto doser: a copper tank with a gauge window and a brass tap, its spout
+        /// pointing down. Pivot at the spout's tip, so it is set right over the flask's mouth.
+        /// </summary>
+        public static Sprite Doser()
+        {
+            const string key = "auto_doser";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 20, h = 28;
+            var c = new PixelCanvas(w, h);
+            c.Fill((x, y) => y >= 1 && y <= 17 && x >= 2 && x <= w - 3, (x, y) =>
+                PixelCanvas.Shade(Copper, y <= 2 ? 1f : 0.85f - (x - 2) * 0.03f, x, y));
+            c.Fill((x, y) => x >= 7 && x <= 12 && y >= 5 && y <= 13, (x, y) => PixelCanvas.Hex(0x2a1f2eu, 230));   // the level window: empty, the brew shows in it (DoserLevel)
+            c.Fill((x, y) => y >= 18 && y <= 21 && x >= 6 && x <= 13, (x, y) => PixelCanvas.Shade(Brass, y == 18 ? 1f : 0.6f, x, y));
+            c.Fill((x, y) => y >= 19 && y <= 20 && x >= 14 && x <= 17, (x, y) => PixelCanvas.Shade(Brass, 0.8f, x, y));   // the tap's handle
+            c.Fill((x, y) => y >= 22 && x >= 9 && x <= 10, (x, y) => PixelCanvas.Shade(Brass, 0.5f, x, y));             // the spout
+            c.Outline(K);
+            return c.Bake(key, PPU, new Vector2(0.5f, 0f));
+        }
+
+        /// <summary>
+        /// The brew in the doser's window, white so it can take the potion's colour. Six
+        /// by nine pixels, pivot at the bottom middle: scaled down in height it drains
+        /// toward the bottom of the window.
+        /// </summary>
+        public static Sprite DoserLevel()
+        {
+            const string key = "auto_doser_level";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 6, h = 9;
+            var c = new PixelCanvas(w, h);
+            c.Fill((x, y) => true, (x, y) => PixelCanvas.Hex(x == 0 ? 0xdcdcdcu : 0xffffffu, 235));
+            return c.Bake(key, PPU, new Vector2(0.5f, 0f));
         }
 
         /// <summary>A glass funnel with a brass collar, sized to sit in the flask's neck; pivot at its spout.</summary>

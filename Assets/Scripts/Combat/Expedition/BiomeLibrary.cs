@@ -33,13 +33,22 @@ namespace AlchemistsArsenal.Combat
         /// What each road asks of the party: fighters out, and the road upgrades owned
         /// (0 none, 1 the first tier, 2 both tiers — see <see cref="UpgradeCatalog.RoadTier"/>).
         /// The first two roads are for one fighter with nothing bought; from the third
-        /// on, a road walked alone and bare is lost. Measured, not guessed: the
+        /// on, a road walked alone and bare is lost. The Swamp asks for the whole road
+        /// kit since the broken Woodwose waits at its end. Measured, not guessed: the
         /// harness's difficulty curve (HeadlessPlaytestRunner.RunDifficultyCurve)
         /// asserts both halves, and the Evening's economy test checks a good player can
         /// pay for it.
         /// </summary>
         public static readonly int[] FightersNeeded = { 1, 1, 2, 3, 3 };
-        public static readonly int[] RoadTierNeeded = { 0, 0, 1, 1, 2 };
+
+        /// <summary>
+        /// The first day a road ends on its guardian. Day 1 is the first job: the Woods
+        /// are waves only, and the Woodwose (with its scene and diary page) waits for day 2 on.
+        /// </summary>
+        public const int FirstGuardianDay = 2;
+
+        public static bool GuardianToday(int day) => day >= FirstGuardianDay;
+        public static readonly int[] RoadTierNeeded = { 0, 0, 1, 2, 2 };
 
         /// <summary>The road's ask, as the biome map says it.</summary>
         public static string Needs(int i)
@@ -111,8 +120,8 @@ namespace AlchemistsArsenal.Combat
                         BiomeData.MakeWave(MonsterData.Create("Rimebeast", ElementType.Water, 180, 1.7f, 7, 13, "", contactDamage: 11), 5, 0.7f, 1.4f),
                         BiomeData.MakeWave(MonsterData.Create("Rime Wraith", ElementType.Arcane, 120, 2.6f, 6, 11, "", contactDamage: 9), 7, 0.45f, 1.4f),
                         BiomeData.MakeWave(MonsterData.Create("Frost Troll", ElementType.Water, 390, 1.3f, 10, 18, "", contactDamage: 15), 3, 1.1f, 1.6f),
-                        BiomeData.MakeWave(MonsterData.Create("Frostkin", ElementType.Water, 105, 2.2f, 5, 10, "", contactDamage: 8), 5, 0.5f, 1.4f),
-                    }, null);
+                        // The last wave is the Woods' guardian, back at the end of the ice.
+                    }, DefaultExpeditionData.Woodwose(1));
                     break;
 
                 case 3:
@@ -123,9 +132,8 @@ namespace AlchemistsArsenal.Combat
                         BiomeData.MakeWave(MonsterData.Create("Bog Treant", ElementType.Nature, 255, 1.5f, 8, 14, "", contactDamage: 13), 5, 0.8f, 1.5f),
                         BiomeData.MakeWave(MonsterData.Create("Mire Leech", ElementType.Poison, 120, 2.8f, 5, 9, "", contactDamage: 9), 10, 0.3f, 1.4f),
                         BiomeData.MakeWave(MonsterData.Create("Bog Brute", ElementType.Poison, 630, 1.2f, 14, 24, "", contactDamage: 18), 3, 1.2f, 1.6f),
-                        BiomeData.MakeWave(MonsterData.Create("Blight Maw", ElementType.Poison, 195, 2.3f, 8, 14, "", contactDamage: 12), 8, 0.4f, 1.4f),
-                        BiomeData.MakeWave(MonsterData.Create("Mire Leech", ElementType.Poison, 120, 2.8f, 5, 9, "", contactDamage: 9), 6, 0.35f, 1.4f),
-                    }, null);
+                        // Then the Woodwose again, broken, in place of the last two waves.
+                    }, DefaultExpeditionData.Woodwose(2));
                     break;
 
                 default: // 4 — The Coven's Peak

@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -26,6 +27,7 @@ namespace AlchemistsArsenal.DebugTools
             yield return Scenario_Win();
             yield return Scenario_Lose();
             yield return Scenario_OutOfFlasks();
+            yield return Scenario_Withdraw();
             Finished = true;
             Debug.Log("<color=cyan><b>=== SIMULATION COMPLETE ===</b></color>");
         }
@@ -118,12 +120,19 @@ namespace AlchemistsArsenal.DebugTools
                 new[] { BiomeData.MakeWave(tank, 2, 0.3f, 0.3f) }, null);
 
             ExpeditionManager mgr = BuildExpedition(biome, matrix);
+            CombatantBody hero = AdventurerRegistry.ActiveAdventurers.Count > 0
+                ? AdventurerRegistry.ActiveAdventurers[0] as CombatantBody : null;
 
             bool finished = false, won = true;
             mgr.OnFinished += w => { finished = true; won = w; };
 
             float t = 0f;
             while (!finished && t < 40f) { t += Time.deltaTime; yield return null; }
+
+            Report("Out-of-flasks: the dry fighter withdrew (not killed)",
+                hero != null && hero.IsWithdrawn && hero.CurrentHP > 0);
+            Report($"Out-of-flasks says the party retreated ('{mgr.OutcomeReason}')",
+                mgr.OutcomeReason.Contains("retreated"));
 
             Report($"Out-of-flasks scenario finished ({t:F1}s)", finished);
             Report("Out-of-flasks outcome = Lost (NOT a phantom victory)",
@@ -137,6 +146,57 @@ namespace AlchemistsArsenal.DebugTools
             // safety cap of every wave in the biome.
             Report($"Out-of-flasks ends promptly, not after the wave timeout ({t:F1}s)", t < 15f);
 
+            CleanupExpedition(mgr, biome);
+        }
+
+        /// <summary>
+        /// One of two fighters runs out of flasks: they leave the road (no longer a
+        /// target, not dead), the other wins it alone, and the star for bringing every
+        /// hero back is lost because one did not stay to the end.
+        /// </summary>
+        private IEnumerator Scenario_Withdraw()
+        {
+            MonsterRegistry.Clear();
+            AdventurerRegistry.Clear();
+
+            ElementalMatrix matrix = BuildMatrix();
+            SpawnAdventurer(new Vector2(-8f, 0.6f), 4000, matrix, ammo: 1);
+            CombatantBody dry = AdventurerRegistry.ActiveAdventurers[0] as CombatantBody;
+            SpawnAdventurer(new Vector2(-8f, -0.6f), 4000, matrix, ammo: 99);
+
+            MonsterData weakling = MonsterData.Create("Straggler", ElementType.Nature, 40, 0.8f);
+            var biome = ScriptableObject.CreateInstance<BiomeData>();
+            biome.Configure("Test Lane", ElementType.Nature, Color.gray, 20f,
+                new[] { BiomeData.MakeWave(weakling, 6, 1.2f, 1.2f) }, null);
+
+            ExpeditionManager mgr = BuildExpedition(biome, matrix, out ExpeditionTelemetry tel);
+
+            bool finished = false, won = false, leftRoster = false;
+            int hpAtLeave = -1;
+            mgr.OnFinished += w => { finished = true; won = w; };
+
+            float t = 0f;
+            while (!finished && t < 40f)
+            {
+                if (dry != null && dry.IsWithdrawn && !AdventurerRegistry.ActiveAdventurers.Contains(dry)) leftRoster = true;
+                if (dry != null && dry.IsWithdrawn && hpAtLeave < 0) hpAtLeave = dry.CurrentHP;
+                t += Time.deltaTime;
+                yield return null;
+            }
+
+            ExpeditionReport r = tel.Report;
+            Report($"Withdraw scenario finished and was Won by the fighter who stayed ({t:F1}s)", finished && won);
+            Report("Withdraw: the dry fighter withdrew", dry != null && dry.IsWithdrawn);
+            Report("Withdraw: they left the targets list (monsters and the boss read it)", leftRoster);
+            Report($"Withdraw: they did not die (hp {(dry != null ? dry.CurrentHP : -1)})", dry != null && dry.CurrentHP > 0);
+            Report($"Withdraw: they took no damage after leaving ({hpAtLeave} -> {(dry != null ? dry.CurrentHP : -1)})",
+                dry != null && hpAtLeave > 0 && dry.CurrentHP == hpAtLeave);
+            Report($"Withdraw: counted as not back (partyDown {r.partyDown}, withdrew {r.partyWithdrew})",
+                r.partyDown == 1 && r.partyWithdrew == 1);
+            Report("Withdraw: nobody counted as fallen in battle", r.downedHeroIds.Count == 0);
+            Report("Withdraw: the star for bringing every hero back is lost", !r.StarEveryHeroBack);
+
+            Destroy(tel.gameObject);
             CleanupExpedition(mgr, biome);
         }
 
@@ -180,6 +240,20 @@ namespace AlchemistsArsenal.DebugTools
             go.AddComponent<BallisticBombLauncher>().Configure(ai, matrix);
 
             go.SetActive(true);
+        }
+
+        private static ExpeditionManager BuildExpedition(BiomeData biome, ElementalMatrix matrix, out ExpeditionTelemetry telemetry)
+        {
+            var spawnerGo = new GameObject("TestSpawner");
+            var spawner = spawnerGo.AddComponent<MonsterSpawner>();
+            spawner.Configure(matrix, biome.ArenaWidth * 0.5f);
+
+            var mgrGo = new GameObject("TestExpedition");
+            var mgr = mgrGo.AddComponent<ExpeditionManager>();
+            telemetry = new GameObject("TestTelemetry").AddComponent<ExpeditionTelemetry>();
+            telemetry.Begin(mgr, biome.BiomeName, AdventurerRegistry.ActiveAdventurers.Count, biome.Waves.Count);
+            mgr.Configure(biome, spawner);
+            return mgr;
         }
 
         private static ExpeditionManager BuildExpedition(BiomeData biome, ElementalMatrix matrix)

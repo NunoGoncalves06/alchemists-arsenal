@@ -9,7 +9,7 @@ namespace AlchemistsArsenal.Story
         BiomeCleared = 1,        // param = biome index
         FirstPerfectPotion = 2,
         IngredientDiscovered = 3, // param = herb id
-        BossDefeated = 4,        // param = biome index
+        BossDefeated = 4,        // param = boss story id, or "id:tier" (see BossDefinition.StoryId)
         StoryFlag = 5            // param = a StoryDirector flag
     }
 
@@ -23,7 +23,8 @@ namespace AlchemistsArsenal.Story
         public static DiaryUnlock Biome(int i) => new DiaryUnlock { kind = DiaryUnlockKind.BiomeCleared, param = i.ToString() };
         public static DiaryUnlock Perfect => new DiaryUnlock { kind = DiaryUnlockKind.FirstPerfectPotion };
         public static DiaryUnlock Ingredient(string id) => new DiaryUnlock { kind = DiaryUnlockKind.IngredientDiscovered, param = id };
-        public static DiaryUnlock Boss(int biome) => new DiaryUnlock { kind = DiaryUnlockKind.BossDefeated, param = biome.ToString() };
+        public static DiaryUnlock Boss(string bossId) => new DiaryUnlock { kind = DiaryUnlockKind.BossDefeated, param = bossId };
+        public static DiaryUnlock Boss(string bossId, int tier) => new DiaryUnlock { kind = DiaryUnlockKind.BossDefeated, param = bossId + ":" + tier };
         public static DiaryUnlock Flag(string flag) => new DiaryUnlock { kind = DiaryUnlockKind.StoryFlag, param = flag };
     }
 
