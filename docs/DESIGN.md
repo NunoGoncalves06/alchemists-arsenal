@@ -1032,27 +1032,28 @@ The canon is the doc comment on `Story/StoryScript.cs`. The rules:
   Vials → Bandolier (+5 then +8 ammo), Thick Boots → Hardened Leathers (+30 then
   +50 HP), and Quick Hands (−25% cooldown). `UpgradeCatalog.RoadTier` reads a run's
   kit as 0, 1 (all first-tier) or 2 (everything).
-- **The difficulty curve.** `BiomeLibrary.FightersNeeded` / `RoadTierNeeded` state
-  what each road asks for, and the biome map shows it against the party you have.
+- **The difficulty curve (2026-11-10).** `BiomeLibrary.FightersNeeded`, `RoadTierNeeded`
+  and `GradeNeeded` state what each road asks for, and the biome map shows it against the
+  party you have.
 
-  | Road | Asks for | Alone, nothing bought |
+  | Road | Asks for | Below it |
   |---|---|---|
-  | Whispering Woods | 1 fighter | wins |
-  | Cinder Peaks | 1 fighter | wins |
-  | Frostbite Caverns | 2 fighters, first road tier | loses |
-  | Venom Swamp | 3 fighters, first road tier | loses (and so does one fighter with everything) |
-  | The Coven's Peak | 3 fighters, every road upgrade | loses (and so does a bare party of three or four) |
+  | Whispering Woods | 1 fighter, nothing bought, any flask (Poor wins) | — |
+  | Cinder Peaks | 1 fighter, nothing bought, a Great flask | Okay or Poor alone lose to the Woodwose |
+  | Frostbite Caverns | 2 fighters, first road tier, Okay flasks | one fighter with that kit and a Great flask loses |
+  | Venom Swamp | 2 fighters, first road tier, Great flasks | one fighter loses; Poor flasks lose |
+  | The Coven's Peak | 3 fighters, every road upgrade, Okay flasks | two fighters (even with Great) lose; Poor flasks lose |
 
-  From the Caverns on, the waves are denser, tougher and bite harder
-  (`MonsterData.ContactDamage`), and each road has one off-element wave, so a
-  party with more than one kind of flask does better. The harness's `balance`
-  suite (also run by the full suite) fights every road with 1–4 fighters, with no
-  road upgrades, the first tier and both, on two seeds, carrying Great flasks. It
-  fails the run if the first two roads are lost alone, if a later road is won
-  alone and bare, or if what a road asks for is not enough.
-  `GameLoopSimulationTest.TestCurveIsAffordable` checks the other half: a player
-  who wins every road with Great flasks can pay for that kit with at most two
-  replay days before any road.
+  A road is the same fight on every visit: no day enters into it (the spawner is seeded by
+  the road alone, and the old day-1 damage bonus is gone). The Counter weighs a road by the
+  health of each element, the guardian included, so where the Woodwose is most of the road
+  (the Peaks, the Swamp) it recommends Fire. Fast packs (Rime Wraiths, Mire Leeches, Coven
+  Hexlings, the Bog Brute) are what run down a party that is too small: fighters move at
+  4.2, slow monsters never catch them, these do. The harness's `balance` suite fights each
+  road at what it asks for and just below it, on two seeds, and fails if a road is won below
+  its ask or lost at it; it also fights every road with the full party (three fighters,
+  every upgrade, Great flasks) and fails unless each road leaves that party less over than
+  the one before. `GameLoopSimulationTest.TestCurveIsAffordable` checks the economy half.
 
 ### 12.7 The morning by hand, a guided ramp, and longer roads (2026-09-29)
 - **No footers.** The button bars under the benches are gone. Each bench is worked

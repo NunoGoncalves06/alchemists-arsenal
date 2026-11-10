@@ -111,7 +111,6 @@ namespace AlchemistsArsenal.Core
             // (a replay is exactly as hard as the first try, whatever the day), and isolated
             // from the global random stream so unrelated features cannot shift it.
             RunState run = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
-            int day = run != null ? run.day : 1;
             int biomeIndex = run != null ? run.TargetBiomeIndex : 0;
             spawner.Configure(matrix, biome.ArenaWidth * 0.5f, SpawnSeed(biomeIndex));
             spawner.PartySize = adventurerCount;

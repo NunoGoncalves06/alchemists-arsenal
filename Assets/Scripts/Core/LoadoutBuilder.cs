@@ -25,7 +25,7 @@ namespace AlchemistsArsenal.Core
         {
             PotionGrade.Perfect => 32,
             PotionGrade.Great => 28,
-            PotionGrade.Okay => 24,
+            PotionGrade.Okay => 27,   // 24 -> 27 (2026-11-10): two Okay fighters hold the Caverns, three the Peak
             _ => 20,
         };
 

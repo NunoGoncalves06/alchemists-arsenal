@@ -38,6 +38,8 @@ namespace AlchemistsArsenal.DebugTools
             TestCostCurve();
             TestCurveIsAffordable();
             TestGuardianRoads();
+            TestRoadCounters();
+            TestReplayIsTheSameFight();
             TestStoryRoundTrip();
             TestStoryRules();
             Done = true;
@@ -493,6 +495,34 @@ namespace AlchemistsArsenal.DebugTools
         /// frozen in the Caverns and broken in the Swamp, and the Matriarch holds the Peak.
         /// The road is all there is to it, so a replay on any day meets the same thing.
         /// </summary>
+        /// <summary>
+        /// The Counter's flask for each road, the guardian counted by its health: the Woods want
+        /// Fire; the Peaks and the Swamp, where the Woodwose (Nature) is most of the road, Fire;
+        /// the Caverns, still mostly ice, Nature; the Peak Fire.
+        /// </summary>
+        private void TestRoadCounters()
+        {
+            ElementType[] want = { ElementType.Fire, ElementType.Fire, ElementType.Nature, ElementType.Fire, ElementType.Fire };
+            for (int b = 0; b < BiomeLibrary.Count; b++)
+            {
+                ElementType got = ContractBoard.Counter(ContractBoard.Dominant(ContractBoard.ThreatCounts(BiomeLibrary.Get(b))));
+                Check(got == want[b], $"counter: {BiomeLibrary.Name(b)} wants a {want[b]} flask ({got})");
+            }
+        }
+
+        /// <summary>
+        /// A road is as hard on a replay as the first time: the same order arms the same bomb on
+        /// day 1 and day 5, and the spawner's seed is the road's alone.
+        /// </summary>
+        private void TestReplayIsTheSameFight()
+        {
+            // (The same flask on day 1 and day 5 is checked by the harness, which has a live run.)
+            Check(ExpeditionWorld.SpawnSeed(2) == ExpeditionWorld.SpawnSeed(2) && ExpeditionWorld.SpawnSeed(1) != ExpeditionWorld.SpawnSeed(2),
+                "replay: a road's monsters come the same way every time (seeded by the road alone)");
+            Check(BiomeLibrary.FightersNeeded[3] == 2 && BiomeLibrary.FightersNeeded[4] == 3 && BiomeLibrary.RoadTierNeeded[2] == 1,
+                $"curve: fighters {{{string.Join(",", BiomeLibrary.FightersNeeded)}}}, road tier {{{string.Join(",", BiomeLibrary.RoadTierNeeded)}}}");
+        }
+
         private void TestGuardianRoads()
         {
             bool[] has = { false, true, true, true, true };
@@ -529,8 +559,13 @@ namespace AlchemistsArsenal.DebugTools
                 Debug.Log($"economy ({label}): weak player gold by evening -{weak.Gold} | {weak.Trace}");
 
                 Check(good.WorstReplays <= 2, $"economy ({label}): a good player meets every road's needs with at most 2 replays (worst {good.WorstReplays}) -{good.Trace}");
-                Check(good.OwnAllDay > 0 && good.OwnAllDay - good.Road4Day <= 2 && good.OwnAllDay >= good.Road4Day - 1,
-                    $"economy ({label}): a good player owns everything near the end of road 4, within two Swamp replays (all on day {good.OwnAllDay}, road 4 cleared day {good.Road4Day})");
+                // Since the 2026-11-10 curve the Swamp asks only two fighters and the first road
+                // kit, so a good player reaches it about two days sooner than the shop can be
+                // bought out (six machines, about 1,800 g). The machines cannot be cheaper (the
+                // saver rule below pins the cheapest), so the shop is owned before the last road:
+                // bought out during the Swamp replays, at most five, before the Peak is taken.
+                Check(good.OwnAllDay > 0 && good.OwnAllDay < good.PeakDay && good.OwnAllDay - good.Road4Day <= 5,
+                    $"economy ({label}): a good player owns everything before the last road, within five Swamp replays (all on day {good.OwnAllDay}, road 4 cleared day {good.Road4Day}, the Peak on day {good.PeakDay})");
                 Check(weak.WorstReplays <= 4, $"economy ({label}): a weak player is slow but never stuck, at most 4 replays before a road (worst {weak.WorstReplays}) -{weak.Trace}");
             }
             // A likely player, for the chart: the good one quicker with every machine, the weak one barely ahead of the clock.
@@ -569,7 +604,7 @@ namespace AlchemistsArsenal.DebugTools
 
         private sealed class EconomyRun
         {
-            public int WorstReplays, OwnAllDay = -1, Road4Day = -1;
+            public int WorstReplays, OwnAllDay = -1, Road4Day = -1, PeakDay = -1;
             public string Trace = "", Gold = "";
         }
 
@@ -670,6 +705,7 @@ namespace AlchemistsArsenal.DebugTools
                 trace.Append($" b{biome}:day{dayN} x{fighters} kit{kit}g r{replays}");
                 gold += DayPay(dayN, biome, fighters, grade, replay: false, averageLoot, left(owned.Count));
                 if (biome == 3) run.Road4Day = dayN;
+                if (biome == BiomeLibrary.Count - 1) run.PeakDay = dayN;
                 Evening(dayN++, biome + 1);
             }
             run.Trace = trace.ToString();

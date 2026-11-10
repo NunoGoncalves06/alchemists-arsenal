@@ -691,6 +691,8 @@ namespace AlchemistsArsenal.Core
             /// <summary>Suffix for screenshots of the second and later orders of a morning ("_o2").</summary>
             private string _orderTag = "";
             private bool _lastScenarioWon;
+            /// <summary>The last scenario's leftovers: HP and flasks, as shares of what the party had.</summary>
+            private float _lastHpLeft01, _lastFlasksLeft01;
             private bool _withdrawShot;
             /// <summary>The guardian the last scenario met (its story id), or "" when none came out.</summary>
             private string _lastScenarioBossId = "";
@@ -2671,104 +2673,107 @@ namespace AlchemistsArsenal.Core
                 string[] none = { };
                 string[] road1 = { UpgradeCatalog.HeavierFlasks, UpgradeCatalog.SpareVials, UpgradeCatalog.ThickBoots, UpgradeCatalog.QuickHands };
                 var road2 = new List<string>(road1) { UpgradeCatalog.TemperedGlass, UpgradeCatalog.Bandolier, UpgradeCatalog.HardLeathers }.ToArray();
-                var cells = new (string tag, int party, string[] ups)[]
+                // Each road against what it asks for (BiomeLibrary.FightersNeeded, RoadTierNeeded,
+                // GradeNeeded) and against just less: one fighter fewer, a flask grade lower.
+                // must = true: won on every seed; false: lost on every seed; null: measured only.
+                const int Poor = 40, Okay = 70, Great = 85;
+                var cells = new List<(int biome, int party, int tier, int q, bool? must, string why)>
                 {
-                    ("x1_bare", 1, none), ("x1_road1", 1, road1), ("x1_road2", 1, road2),
-                    ("x2_bare", 2, none), ("x2_road1", 2, road1),
-                    ("x3_bare", 3, none), ("x3_road1", 3, road1), ("x3_road2", 3, road2),
+                    (0, 1, 0, Poor,  true,  "the Woods are held by one fighter, nothing bought, with a Poor first flask"),
+                    (0, 1, 0, Okay,  null,  ""),
+                    (0, 1, 0, Great, null,  ""),
+                    (0, 3, 2, Great, null,  ""),
+                    (1, 1, 0, Great, true,  "one fighter, nothing bought, holds the Peaks with a Great flask"),
+                    (1, 1, 0, Okay,  false, "an Okay flask must not be enough for the Woodwose alone"),
+                    (1, 1, 0, Poor,  false, "a Poor flask must not be enough for the Woodwose alone"),
+                    (1, 3, 2, Great, null,  ""),
+                    (2, 1, 1, Great, false, "one fighter with the road upgrades asked and a Great flask must lose the Caverns"),
+                    (2, 2, 1, Okay,  true,  "two fighters with the first road upgrades hold the Caverns with Okay flasks"),
+                    (2, 2, 1, Great, null,  ""),
+                    (2, 3, 2, Great, null,  ""),
+                    (3, 2, 1, Great, true,  "two fighters with the first road upgrades hold the Swamp with Great flasks"),
+                    (3, 1, 1, Great, false, "one fighter with the road upgrades asked and a Great flask must lose the Swamp"),
+                    (3, 2, 1, Poor,  false, "Poor flasks must lose the Swamp"),
+                    (3, 2, 1, Okay,  null,  ""),
+                    (3, 3, 2, Great, null,  ""),
+                    (4, 3, 2, Okay,  true,  "three fighters with every upgrade hold the Peak with Okay flasks"),
+                    (4, 2, 2, Great, false, "two fighters, even with every upgrade and Great flasks, must lose the Peak"),
+                    (4, 3, 2, Poor,  false, "Poor flasks must lose the Peak"),
+                    (4, 3, 2, Great, null,  ""),
                 };
-                var won = new Dictionary<string, int>();
-                var table = new StringBuilder();
+                string[][] kits = { none, road1, road2 };
+                string Tag((int biome, int party, int tier, int q, bool? must, string why) c) =>
+                    $"b{c.biome}_x{c.party}_{(c.tier == 0 ? "bare" : "road" + c.tier)}_q{c.q}";
                 int[] seeds = { 11, 12 };
-                for (int biome = 0; biome < BiomeLibrary.Count && _errorCount == 0; biome++)
+                var table = new StringBuilder();
+                var margins = new StringBuilder();
+                var margin = new Dictionary<int, (float fl, float hp)>();
+                var atAsk = new Dictionary<int, (float fl, float hp)>();
+                int lastBiome = -1;
+                var broken = new List<string>();   // reported after the whole table, so one run shows every cell
+                foreach (var c in cells)
                 {
-                    table.Append($"\n  b{biome} {BiomeLibrary.Name(biome),-18}");
-                    foreach (var cell in cells)
-                    {
-                        int wins = 0;
-                        foreach (int seed in seeds)
-                        {
-                            st.ownedUpgrades = new List<string>(cell.ups);
-                            foreach (var step in RunScenario(biome, seed, $"curve_b{biome}_{cell.tag}_s{seed}", capture: false,
-                                         quality: 85, partySize: cell.party))
-                                yield return step;
-                            if (_lastScenarioWon) wins++;
-                        }
-                        won[$"b{biome}_{cell.tag}"] = wins;
-                        table.Append($" {cell.tag}={wins}/{seeds.Length}");
-                    }
-                }
-                // The Woods have no guardian: a first-time player, solo, nothing bought,
-                // must win them even with a weak flask.
-                var firstDay = new StringBuilder();
-                foreach (int q in new[] { 70, 55, 40 })
-                {
-                    int w = 0;
+                    if (c.biome != lastBiome) { table.Append($"\n  b{c.biome} {BiomeLibrary.Name(c.biome),-18}"); lastBiome = c.biome; }
+                    int wins = 0;
+                    float fl = 0f, hp = 0f;
                     foreach (int seed in seeds)
                     {
-                        st.ownedUpgrades = new List<string>(none);
-                        foreach (var step in RunScenario(0, seed, $"day1_q{q}_s{seed}", capture: false, quality: q, partySize: 1))
+                        st.ownedUpgrades = new List<string>(kits[c.tier]);
+                        foreach (var step in RunScenario(c.biome, seed, $"curve_{Tag(c)}_s{seed}", capture: false, quality: c.q, partySize: c.party))
                             yield return step;
-                        if (_lastScenarioWon) w++;
+                        if (_lastScenarioWon) wins++;
+                        fl += _lastFlasksLeft01 / seeds.Length;
+                        hp += _lastHpLeft01 / seeds.Length;
                     }
-                    firstDay.Append($" quality {q}: {w}/{seeds.Length}");
-                    // Reported, not failed: the fix would be a stat change, which is the user's call.
-                    if (w < seeds.Length) Log($"DAY-1 CHECK: the Woods (no guardian, solo, nothing bought) lost with a quality-{q} flask: {w}/{seeds.Length} wins.");
+                    table.Append($" x{c.party}/{(c.tier == 0 ? "bare" : "road" + c.tier)}/q{c.q}={wins}/{seeds.Length}");
+                    // Roads are compared on one yardstick: the full party (three fighters, every upgrade,
+                    // Great flasks). A harder road leaves that party less over.
+                    bool asked = c.party == BiomeLibrary.FightersNeeded[c.biome] && c.tier == BiomeLibrary.RoadTierNeeded[c.biome];
+                    if (c.party == 3 && c.tier == 2 && c.q == Great) margin[c.biome] = (fl, hp);
+                    if (asked && CombatQuality.GradeFor(c.q) == BiomeLibrary.GradeNeeded[c.biome]) atAsk[c.biome] = (fl, hp);
+                    if (c.must == true && wins < seeds.Length)
+                        broken.Add($"Difficulty curve: {Tag(c)} won {wins}/{seeds.Length}: {c.why}.");
+                    if (c.must == false && wins > 0)
+                        broken.Add($"Difficulty curve: {Tag(c)} won {wins}/{seeds.Length}: {c.why}.");
                 }
-                Log($"Day 1 (the Woods, no guardian, solo, nothing bought), wins by flask quality:{firstDay}");
+                Log($"Difficulty curve (wins of {seeds.Length} seeds):{table}");
+                foreach (string b in broken) Fail(b);
 
-                // The same cells with mixed brews, as a real party carries them (book, Broad, Far):
-                // the tight Caverns cell and every Swamp cell. A mixed party must win wherever the plain one does.
-                var mixed = new StringBuilder();
-                foreach (var (biome, cell) in MixedCells(cells))
+                // Each road harder than the one before: at what it asks for, less is left over.
+                margins.Append("\n  road                 asks              full party, Great: flasks  HP  | at what it asks: flasks  HP");
+                for (int b = 0; b < BiomeLibrary.Count; b++)
                 {
+                    if (!margin.TryGetValue(b, out var m)) { Fail($"Difficulty curve: no full-party measurement for road {b}."); continue; }
+                    atAsk.TryGetValue(b, out var g);
+                    margins.Append($"\n  b{b} {BiomeLibrary.Name(b),-18} x{BiomeLibrary.FightersNeeded[b]} road{BiomeLibrary.RoadTierNeeded[b]} {BiomeLibrary.GradeNeeded[b],-6}                {m.fl,5:P0}  {m.hp,5:P0}  |                  {g.fl,5:P0}  {g.hp,5:P0}");
+                }
+                Log($"Margins by road (average of {seeds.Length} seeds):{margins}");
+                for (int b = 1; b < BiomeLibrary.Count; b++)
+                    if (margin.TryGetValue(b, out var cur) && margin.TryGetValue(b - 1, out var prev)
+                        && cur.fl + cur.hp > prev.fl + prev.hp - 0.03f)
+                        Fail($"Difficulty curve: road {b} leaves more over ({cur.fl:P0} flasks, {cur.hp:P0} HP) than road {b - 1} ({prev.fl:P0}, {prev.hp:P0}); each road must be harder than the last (by at least 3 points).");
+
+                // The asked cells of the shared roads again with mixed brews (book/Broad/Far): a mixed
+                // party must win wherever the plain one does.
+                var mixed = new StringBuilder();
+                foreach (int b in new[] { 2, 3 })
+                {
+                    int p = BiomeLibrary.FightersNeeded[b], t = BiomeLibrary.RoadTierNeeded[b];
+                    int q = BiomeLibrary.GradeNeeded[b] == PotionGrade.Great ? Great : Okay;
                     int wins = 0;
                     foreach (int seed in seeds)
                     {
-                        st.ownedUpgrades = new List<string>(cell.ups);
-                        foreach (var step in RunScenario(biome, seed, $"mix_b{biome}_{cell.tag}_s{seed}", capture: false,
-                                     quality: 85, partySize: cell.party, mixedVariants: true))
+                        st.ownedUpgrades = new List<string>(kits[t]);
+                        foreach (var step in RunScenario(b, seed, $"mix_b{b}_x{p}_road{t}_q{q}_s{seed}", capture: false, quality: q, partySize: p, mixedVariants: true))
                             yield return step;
                         if (_lastScenarioWon) wins++;
                     }
-                    int plain = won.TryGetValue($"b{biome}_{cell.tag}", out int pw) ? pw : -1;
-                    mixed.Append($" b{biome}_{cell.tag}={wins}/{seeds.Length} (plain {plain}/{seeds.Length})");
-                    if (plain == seeds.Length && wins < seeds.Length)
-                        Fail($"Mixed brews: b{biome}_{cell.tag} won {wins}/{seeds.Length} with Broad/Far flasks, the plain party {plain}/{seeds.Length}.");
+                    mixed.Append($" b{b}={wins}/{seeds.Length}");
+                    if (wins < seeds.Length) Fail($"Mixed brews: road {b} at what it asks for won {wins}/{seeds.Length} with Broad/Far flasks.");
                 }
-                Log($"Mixed brews (book/Broad/Far), wins of {seeds.Length} seeds:{mixed}");
+                Log($"Mixed brews (book/Broad/Far) at what each shared road asks for:{mixed}");
                 st.roster = savedRoster;
                 st.ownedUpgrades = savedUps;
-                Log($"Difficulty curve (Great flasks, wins of {seeds.Length} seeds):{table}");
-
-                void Expect(string key, bool mustWin, string why)
-                {
-                    if (!won.TryGetValue(key, out int w)) return;
-                    if (mustWin && w < seeds.Length) Fail($"Difficulty curve: {key} won {w}/{seeds.Length} — {why}");
-                    if (!mustWin && w > 0) Fail($"Difficulty curve: {key} won {w}/{seeds.Length} — {why}");
-                }
-                string Cell(int party, int tier) => $"x{party}_{(tier == 0 ? "bare" : "road" + tier)}";
-                for (int b = 0; b < BiomeLibrary.Count; b++)
-                {
-                    int p = BiomeLibrary.FightersNeeded[b], t = BiomeLibrary.RoadTierNeeded[b];
-                    Expect($"b{b}_{Cell(p, t)}", true, $"what the road asks for must be enough ({BiomeLibrary.Needs(b)})");
-                    Expect($"b{b}_x3_road2", true, "a hired, upgraded party must be able to win every road.");
-                    if (p > 1 || t > 0)
-                        Expect($"b{b}_x1_bare", false, "a player who neither hires nor upgrades must lose here.");
-                    if (t >= 2)
-                        Expect($"b{b}_{Cell(p, 0)}", false, "bodies alone must not carry it: it needs the upgrades too.");
-                    if (p >= 3)
-                        Expect($"b{b}_x1_road2", false, "upgrades alone must not carry it: it needs hired fighters too.");
-                }
-            }
-
-            /// <summary>The cells measured again with mixed brews: Caverns x2_road1 and every Swamp cell.</summary>
-            private static IEnumerable<(int biome, (string tag, int party, string[] ups) cell)> MixedCells((string tag, int party, string[] ups)[] cells)
-            {
-                foreach (var c in cells)
-                    if (c.tag == "x2_road1") yield return (2, c);
-                foreach (var c in cells)
-                    if (c.party > 1) yield return (3, c);   // a solo fighter has only the book's recipe
             }
 
             /// <summary>Full suite only: every biome on five seeds, for win rates and HP margins.</summary>
@@ -2822,15 +2827,15 @@ namespace AlchemistsArsenal.Core
 
                 var root = new GameObject($"~Scenario_{label}");
                 var world = root.AddComponent<ExpeditionWorld>();
+                // The road's own fight varies only by the harness's seed (the game seeds by road alone).
+                ExpeditionWorld.SpawnSeedOverride = 7919 * seedDay + 31 * biome;
                 world.Build(data, loadouts, party);
+                ExpeditionWorld.SpawnSeedOverride = null;
                 _lastScenarioBossId = "";
                 if (hudWatch != null) hudWatch.Watch(world, biome);
 
                 float start = Time.time, nextCapture = 0f;
-                // The road's own fight varies only by the harness's seed (the game seeds by road alone).
-                ExpeditionWorld.SpawnSeedOverride = 7919 * seedDay + 31 * biome;
                 const float Timeout = 240f;
-                ExpeditionWorld.SpawnSeedOverride = null;
                 var watch = new BossWatch();
                 while (world.Expedition.Phase != ExpeditionPhase.Won && world.Expedition.Phase != ExpeditionPhase.Lost
                        && Time.time - start < Timeout)
@@ -2872,6 +2877,20 @@ namespace AlchemistsArsenal.Core
                         $"{watch.HeroHits} hero hits, phases {watch.PhasePath}.");
                 _fingerprint.Add($"{label}={summary}");
                 _lastScenarioWon = world.Expedition.Phase == ExpeditionPhase.Won;
+                {
+                    int hpLeft = 0, hpMax = 0, flLeft = 0, flCarried = 0;
+                    foreach (var b in world.Party)
+                    {
+                        if (b == null) continue;
+                        hpMax += b.MaxHP;
+                        if (b.IsAlive) hpLeft += b.CurrentHP;
+                        var c = b.GetComponent<UtilityAI_CombatController>();
+                        if (c != null) flLeft += c.FlasksLeft;
+                    }
+                    foreach (var lo in loadouts) if (lo != null) foreach (var slot in lo.Slots) flCarried += slot.count;
+                    _lastHpLeft01 = hpMax > 0 ? (float)hpLeft / hpMax : 0f;
+                    _lastFlasksLeft01 = flCarried > 0 ? (float)flLeft / flCarried : 0f;
+                }
                 if (hudWatch != null)
                 {
                     // DEFEAT waits for the party to leave the field (at most ResultWaitCap); then it must be empty.
@@ -3101,6 +3120,22 @@ namespace AlchemistsArsenal.Core
             /// <summary>The day before the first SLEEP after a map BACK: SLEEP must move it by exactly one.</summary>
             private int _dayBeforeSleep = -1;
 
+            /// <summary>A road is as hard on a replay: the same order arms the same bomb on day 1 and day 5.</summary>
+            private void CheckReplayLoadout()
+            {
+                RunState s = SaveSystem.Instance.State;
+                int day0 = s.day;
+                var order = new ActiveOrder("T", "Ember Tonic", ElementType.Fire);
+                s.day = 1;
+                var d1 = LoadoutBuilder.Build(order);
+                s.day = 5;
+                var d5 = LoadoutBuilder.Build(order);
+                s.day = day0;
+                if (d1.Slots[0].bomb.BaseDamage != d5.Slots[0].bomb.BaseDamage || d1.Slots[0].count != d5.Slots[0].count)
+                    Fail($"Replay: the same flask is {d1.Slots[0].bomb.BaseDamage} dmg x{d1.Slots[0].count} on day 1 but {d5.Slots[0].bomb.BaseDamage} x{d5.Slots[0].count} on day 5.");
+                else Log($"Replay: the same flask arms the same bomb on day 1 and day 5 ({d1.Slots[0].bomb.BaseDamage} dmg x{d1.Slots[0].count}).");
+            }
+
             /// <summary>
             /// The slot screen's DELETE, in a scratch save folder: three saves, the middle
             /// one deleted through the confirmation, the other two untouched. The run in
@@ -3120,22 +3155,6 @@ namespace AlchemistsArsenal.Core
                         RunState r = RunState.NewGame(i);
                         r.day = 3 + 2 * i;
                         r.lastSavedUnixSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            /// <summary>A road is as hard on a replay: the same order arms the same bomb on day 1 and day 5.</summary>
-            private void CheckReplayLoadout()
-            {
-                RunState s = SaveSystem.Instance.State;
-                int day0 = s.day;
-                var order = new ActiveOrder("T", "Ember Tonic", ElementType.Fire);
-                s.day = 1;
-                var d1 = LoadoutBuilder.Build(order);
-                s.day = 5;
-                var d5 = LoadoutBuilder.Build(order);
-                s.day = day0;
-                if (d1.Slots[0].bomb.BaseDamage != d5.Slots[0].bomb.BaseDamage || d1.Slots[0].count != d5.Slots[0].count)
-                    Fail($"Replay: the same flask is {d1.Slots[0].bomb.BaseDamage} dmg x{d1.Slots[0].count} on day 1 but {d5.Slots[0].bomb.BaseDamage} x{d5.Slots[0].count} on day 5.");
-                else Log($"Replay: the same flask arms the same bomb on day 1 and day 5 ({d1.Slots[0].bomb.BaseDamage} dmg x{d1.Slots[0].count}).");
-            }
-
                         System.IO.File.WriteAllText(System.IO.Path.Combine(dir, $"slot_{i}.json"), JsonUtility.ToJson(r, true));
                     }
                     SaveSystem.DirectoryOverride = dir;
