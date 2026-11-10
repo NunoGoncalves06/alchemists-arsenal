@@ -233,6 +233,7 @@ namespace AlchemistsArsenal.Core
                     if (day == 1) foreach (var step in CheckPauseAndTitleRoundTrip()) { if (_errorCount > 0) yield break; yield return step; }
                     if (day == 1) foreach (var step in CheckOutsideClicksDoNotAdvance()) { if (_errorCount > 0) yield break; yield return step; }
                     foreach (var step in Settle($"day{day}_morning_counter")) yield return step;
+                    if (day == 1) foreach (var step in MeasurePerf("morning_counter", 240)) yield return step;
 
                     // Morning: call MorningScreen's own AcceptOrder() — the exact
                     // method the ACCEPT ORDER button's onClick calls — rather than
@@ -517,6 +518,7 @@ namespace AlchemistsArsenal.Core
                     }
                     if (day == DaysToRun) foreach (var step in CheckEveningMenu()) yield return step;
                     if (day == 1) foreach (var step in WalkEveningBriefing()) yield return step;
+                    if (day == 2) foreach (var step in MeasurePerf("evening_report", 240)) yield return step;
 
                     if (day == 1)
                     {
@@ -2484,6 +2486,8 @@ namespace AlchemistsArsenal.Core
                 if (!string.IsNullOrEmpty(_lastScenarioBossId))
                     Fail($"replay_woods_day5: a guardian ('{_lastScenarioBossId}') came out in the Woods on day 5; the Woods have none.");
                 else Log("replay_woods_day5: no guardian.");
+                // An afternoon with a guardian, measured while it fights a full party.
+                foreach (var step in RunScenario(4, 5, "perf_boss", capture: false, perfLabel: "afternoon_boss")) yield return step;
                 // The Peak is tuned to need the road kit (BiomeLibrary.RoadTierNeeded): she is
                 // met by the party a player has to bring there.
                 var saved = WithRoadKit(BiomeLibrary.RoadTierNeeded[BiomeLibrary.Count - 1]);
@@ -2792,7 +2796,7 @@ namespace AlchemistsArsenal.Core
             /// seeds the monster spawner, so the fight is reproducible.
             /// </summary>
             private IEnumerable RunScenario(int biome, int seedDay, string label, bool capture, int quality = 85, int partySize = 0,
-                float snapAt = -1f, ExpeditionHudScreen hudWatch = null, bool mixedVariants = false)
+                float snapAt = -1f, ExpeditionHudScreen hudWatch = null, bool mixedVariants = false, string perfLabel = null)
             {
                 RunState st = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
                 if (st == null) { Fail($"Scenario {label}: no run state."); yield break; }
@@ -2842,6 +2846,14 @@ namespace AlchemistsArsenal.Core
                 {
                     if (world.Expedition.Phase == ExpeditionPhase.BossFight && world.Expedition.BossInstance != null)
                     {
+                        if (perfLabel != null && Time.time - start > 1f)
+                        {
+                            // The canvases are off in scenarios: put them back for a fair afternoon.
+                            foreach (var c in canvases) if (c != null) c.enabled = true;
+                            foreach (var step in MeasurePerf(perfLabel, 240)) yield return step;
+                            foreach (var c in canvases) if (c != null) c.enabled = false;
+                            perfLabel = null;
+                        }
                         watch.Attach(world.Expedition.BossInstance);
                         if (string.IsNullOrEmpty(_lastScenarioBossId)) _lastScenarioBossId = data.Boss != null && data.Boss.StoryId.Length > 0 ? data.Boss.StoryId : world.Expedition.BossInstance.name;
                         watch.Tick();
@@ -3184,6 +3196,39 @@ namespace AlchemistsArsenal.Core
                 yield return null;
             }
 
+            /// <summary>
+            /// <paramref name="frames"/> frames as they come, timed: the wall-clock cost of a frame
+            /// (batchmode runs flat out, so this is the CPU's work, not a display's refresh), the
+            /// garbage allocated per frame, and the managed and total memory at the end.
+            /// </summary>
+            private IEnumerable MeasurePerf(string label, int frames)
+            {
+                using var gc = Unity.Profiling.ProfilerRecorder.StartNew(Unity.Profiling.ProfilerCategory.Memory, "GC Allocated In Frame");
+                var ms = new List<double>(frames);
+                long gcBytes = 0; int gcFrames = 0;
+                var sw = Stopwatch.StartNew();
+                yield return null;
+                sw.Restart();
+                for (int i = 0; i < frames; i++)
+                {
+                    yield return null;
+                    ms.Add(sw.Elapsed.TotalMilliseconds);
+                    sw.Restart();
+                    if (gc.Valid) { gcBytes += gc.LastValue; gcFrames++; }
+                }
+                ms.Sort();
+                double avg = 0; foreach (double m in ms) avg += m; avg /= ms.Count;
+                double p95 = ms[Mathf.Clamp((int)(ms.Count * 0.95f), 0, ms.Count - 1)];
+                long managed = System.GC.GetTotalMemory(false);
+                long total = UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong();
+                string gcText = gcFrames > 0 ? $"{gcBytes / (double)gcFrames / 1024.0:0.0} KB/frame" : "n/a";
+                Log($"PERF {label}: {avg:0.00} ms/frame avg ({1000.0 / avg:0} fps), p95 {p95:0.00} ms, GC {gcText}, " +
+                    $"managed heap {managed / 1048576.0:0.0} MB, total allocated {total / 1048576.0:0.0} MB");
+                _perf.Add($"{label}={avg:0.00}ms/{gcText}");
+            }
+
+            private readonly List<string> _perf = new List<string>();
+
             private IEnumerable RunEnding()
             {
                 RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
@@ -3277,6 +3322,7 @@ namespace AlchemistsArsenal.Core
 
                 string verdict = _errorCount == 0 ? "PASS" : $"FAIL ({_errorCount} error(s))";
                 _log.AppendLine($"FINGERPRINT: {string.Join(" ", _fingerprint)}");
+                if (_perf.Count > 0) _log.AppendLine($"PERF: {string.Join(" ", _perf)}");
                 _log.AppendLine($"=== RESULT: {verdict} ===");
 
                 string path = Path.Combine(Directory.GetCurrentDirectory(), ReportPath);
