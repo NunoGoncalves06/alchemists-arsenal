@@ -1195,6 +1195,20 @@ namespace AlchemistsArsenal.Core
                 foreach (var f in Frames(2)) yield return f;
                 if (prep.TooltipText != null) Fail($"Leaf tooltip: still up ('{prep.TooltipText}') after the pointer left the mark.");
                 else Log($"Leaf tooltip: '{want}' over the first leaf mark, gone off it.");
+
+                // And a leaf on the bench, under the pointer: the caption spells it out (name, kind, potency).
+                var bench = Crafting.PrepBench.Instance;
+                var leaf = bench != null ? bench.BestLeafFor(mix.Recipe.Steps[0]) : null;
+                if (leaf == null) { Fail("Leaf caption: no leaf on the bench to point at."); yield break; }
+                _pointer.World = leaf.Body.position;
+                foreach (var f in Frames(3)) yield return f;
+                string cap = prep.CaptionText ?? "";
+                if (!cap.Contains(leaf.Data.DisplayName) || !cap.Contains(leaf.Data.Element.ToString()) || !cap.Contains("potency"))
+                    Fail($"Leaf caption: with the pointer on {leaf.Data.DisplayName} the caption reads '{cap}', not its name, kind and potency.");
+                else Log($"Leaf caption: '{cap}' with the pointer on the leaf.");
+                Capture("day1_prep_leaf_caption");
+                _pointer.World = saved;
+                foreach (var f in Frames(2)) yield return f;
             }
 
             private IEnumerable DrivePrep(ActiveOrder order, int day)

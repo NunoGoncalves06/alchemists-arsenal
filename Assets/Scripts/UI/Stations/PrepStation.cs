@@ -42,6 +42,9 @@ namespace AlchemistsArsenal.UI.Stations
         private TextMeshProUGUI _tipText;
         private int _tipAt = -1;
 
+        /// <summary>The caption strip under the bench (what a hovered leaf is, or what to do next), or null when hidden.</summary>
+        public string CaptionText => _caption != null && _caption.Root != null && _caption.Root.gameObject.activeSelf ? _caption.Text.text : null;
+
         /// <summary>What the leaf tooltip says right now, or null while it is hidden.</summary>
         public string TooltipText => _tip != null && _tip.gameObject.activeSelf ? _tipText.text : null;
 
