@@ -598,6 +598,31 @@ namespace AlchemistsArsenal.Art
         }
 
         /// <summary>
+        /// The arm that holds the auto crusher's ram to its frame: a clamp ring round the
+        /// ram's shaft, a brass bar, and a sleeve that rides up and down the right-hand post.
+        /// It moves with the ram. Pivot at the ram's centre line (the bar runs right of it).
+        /// </summary>
+        public const int CrusherArmReachPx = 21;   // the ram's centre to the right post's centre, in frame pixels
+
+        public static Sprite CrusherArm()
+        {
+            const string key = "crusher_arm";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 28, h = 7, ram = 3;
+            int post = ram + CrusherArmReachPx;
+            var c = new PixelCanvas(w, h);
+            c.Fill((x, y) => x >= ram + 1 && x <= post - 2 && y >= 2 && y <= 4,
+                (x, y) => PixelCanvas.Shade(Brass, y == 2 ? 1f : y == 4 ? 0.45f : 0.75f, x, y));                     // the bar
+            c.Fill((x, y) => x >= ram - 3 && x <= ram + 3 && y >= 1 && y <= 5,
+                (x, y) => PixelCanvas.Shade(Copper, y == 1 ? 1f : y == 5 ? 0.4f : 0.8f - (x - ram + 3) * 0.06f, x, y));   // the clamp band, round the front of the shaft
+            c.Fill((x, y) => x >= post - 2 && x <= post + 2 && y >= 0 && y <= h - 1 && x != post,
+                (x, y) => PixelCanvas.Shade(Brass, x < post ? 0.9f : 0.5f, x, y));                                    // the sleeve on the post
+            c.Fill((x, y) => x == post + 2 && y == 3, (x, y) => PixelCanvas.Shade(Iron, 0.8f, x, y));                 // its set screw
+            c.Outline(K);
+            return c.Bake(key, PPU, new Vector2((ram + 0.5f) / w, 0.5f));
+        }
+
+        /// <summary>
         /// The auto crusher's frame: two brass posts standing on the bench either side of
         /// the mortar, a crossbar and a copper pulley housing the ram hangs from.
         /// Pivot at the middle of its foot.

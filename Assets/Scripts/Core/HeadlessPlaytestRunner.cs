@@ -1227,7 +1227,18 @@ namespace AlchemistsArsenal.Core
                     float waited = 0f;
                     while (!mix.Ground && waited < 20f && _errorCount == 0)
                     {
-                        if (!midShot && bench.StrikesLeft < QualityBudget.GrindStrikes) { midShot = true; Capture($"day{day}{_orderTag}_morning_prep_crusher"); }
+                        if (!midShot && bench.StrikesLeft < QualityBudget.GrindStrikes)
+                        {
+                            midShot = true;
+                            Capture($"day{day}{_orderTag}_morning_prep_crusher");
+                            // The arm holds the ram to the frame: it rides with the ram, its sleeve on the right post.
+                            Transform arm = bench.CrusherArm;
+                            float sleeveX = arm != null ? arm.position.x + Art.ShopArt.CrusherArmReachPx * 1.45f / Art.ShopArt.PPU : float.NaN;
+                            if (arm == null) Fail("Auto Crusher: the ram has no arm holding it to the frame.");
+                            else if (Mathf.Abs(sleeveX - bench.CrusherPostX) > 0.25f)
+                                Fail($"Auto Crusher: the arm's sleeve is at x {sleeveX:0.00}, off the frame's post at {bench.CrusherPostX:0.00}.");
+                            else if (_orderTag == "") Log($"Auto Crusher: the arm rides with the ram, its sleeve on the post ({sleeveX:0.00} vs {bench.CrusherPostX:0.00}).");
+                        }
                         waited += Time.deltaTime;
                         yield return null;
                     }

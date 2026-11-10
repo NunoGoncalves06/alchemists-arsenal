@@ -405,6 +405,15 @@ namespace AlchemistsArsenal.Crafting
                                && StrikesLeft > 0 && _lift == null && Order != null;
         }
 
+        /// <summary>How far above the ram's centre its arm is clamped (10 ram pixels, at the ram's scale).</summary>
+        private const float ArmAbove = 10f * 1.45f / ShopArt.PPU;
+
+        /// <summary>The crusher's arm, or null without the machine (the harness checks it rides the post).</summary>
+        public Transform CrusherArm => _pestle != null ? _pestle.transform.Find("CrusherArm") : null;
+
+        /// <summary>Where the crusher's right-hand post stands, in the world (x only matters).</summary>
+        public float CrusherPostX => MortarWorld.x + ShopArt.CrusherArmReachPx * 1.45f / ShopArt.PPU;
+
         private void BuildPestle()
         {
             var p = new GameObject("Pestle");
@@ -419,6 +428,14 @@ namespace AlchemistsArsenal.Crafting
                 AddArt(frame.transform, ShopArt.CrusherFrame(), 7, "Art").transform.localScale = Vector3.one * 1.45f;
             }
             AddArt(p.transform, Crusher ? ShopArt.CrusherRam() : ShopArt.Pestle(Brass), 12, "Art").transform.localScale = Vector3.one * 1.45f;
+            if (Crusher)
+            {
+                // The arm that holds the ram to the frame, riding the right-hand post: a child of
+                // the ram, so it goes wherever the ram goes.
+                var arm = AddArt(p.transform, ShopArt.CrusherArm(), 13, "CrusherArm");   // its band clamps round the front of the shaft
+                arm.transform.localScale = Vector3.one * 1.45f;
+                arm.transform.localPosition = new Vector3(0f, ArmAbove, 0f);
+            }
             _pestle = p.AddComponent<Rigidbody2D>();
             _pestle.mass = 2f;
             _pestle.linearDamping = 0.05f;
