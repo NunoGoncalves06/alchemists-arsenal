@@ -37,6 +37,16 @@ namespace AlchemistsArsenal.UI
             public int Hits;   // staggers successive numbers so they never land on one another
         }
         private readonly Dictionary<ICombatant, FighterCard> _cards = new Dictionary<ICombatant, FighterCard>();
+        // Each fighter's own last bomb, over their head in the arena (one per fighter).
+        private readonly Dictionary<ICombatant, WorldToast> _toasts = new Dictionary<ICombatant, WorldToast>();
+
+        /// <summary>The bomb line over fighter <paramref name="i"/>'s head, or null while none is up.</summary>
+        public string ToastText(int i) =>
+            i >= 0 && i < _cardOrder.Count && _toasts.TryGetValue(_cardOrder[i], out WorldToast t) && t != null ? t.Text : null;
+
+        /// <summary>Where fighter <paramref name="i"/>'s bomb line is, in the world (null if none).</summary>
+        public Vector3? ToastPosition(int i) =>
+            i >= 0 && i < _cardOrder.Count && _toasts.TryGetValue(_cardOrder[i], out WorldToast t) && t != null ? t.Position : (Vector3?)null;
         private readonly List<ICombatant> _cardOrder = new List<ICombatant>();
         private TextMeshProUGUI _tips;
 
@@ -198,6 +208,8 @@ namespace AlchemistsArsenal.UI
             _ai.Clear();
             _throwerNames.Clear();
             _cards.Clear();
+            foreach (var t in _toasts.Values) if (t != null) Destroy(t.gameObject);
+            _toasts.Clear();
             _cardOrder.Clear();
             BuildPartyDock();
 
@@ -264,6 +276,7 @@ namespace AlchemistsArsenal.UI
                 var above = UIFactory.Root(card.transform, "Above");
                 UIFactory.Place(above, 0.05f, 1.0f, 0.95f, 1.55f);
                 _cards[body] = new FighterCard { Damage = dmg, Above = above };
+                if (body is Component c) _toasts[body] = WorldToast.For(c.transform);
                 _cardOrder.Add(body);
 
                 var hp = UIFactory.Bar(inner, UITheme.Ground, UITheme.Ok, out var hpFill);
@@ -417,7 +430,10 @@ namespace AlchemistsArsenal.UI
         private void OnDetonated(DetonationInfo d)
         {
             string adv = d.HadElementalAdvantage ? "  <color=#f6d873>×2!</color>" : "";
-            _ticker.text = $"{d.Element} bomb — {d.TotalDamage} dmg to {d.HitCount}{adv}";
+            string line = $"{d.Element} bomb — {d.TotalDamage} dmg to {d.HitCount}{adv}";
+            // Over the thrower's head; the ticker keeps it only when nobody can be named.
+            if (d.Thrower != null && _toasts.TryGetValue(d.Thrower, out WorldToast toast) && toast != null) toast.Set(line);
+            else _ticker.text = line;
             if (d.Thrower == null || !_cards.TryGetValue(d.Thrower, out FighterCard card) || d.TotalDamage <= 0) return;
             card.Total += d.TotalDamage;
             card.Damage.text = $"DMG {card.Total}";

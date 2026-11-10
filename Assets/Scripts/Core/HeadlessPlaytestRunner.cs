@@ -1687,8 +1687,37 @@ namespace AlchemistsArsenal.Core
 
                 float bossSeenAt = -1f;
                 bool bossShot = false;
+                // The lead's bomb line rides over their head (WorldToast), and goes when they do.
+                var hudScreen = HudScreen() as ExpeditionHudScreen;
+                CombatantBody lead = world.Party.Count > 0 ? world.Party[0] : null;
+                bool toastSeen = false, leadGoneLastFrame = false, toastGoneChecked = false;
                 while (world.Expedition.Phase != ExpeditionPhase.Won && world.Expedition.Phase != ExpeditionPhase.Lost)
                 {
+                    if (hudScreen != null && (object)lead != null)
+                    {
+                        string toast = hudScreen.ToastText(0);
+                        bool leadGone = lead == null || !lead.IsAlive || lead.IsWithdrawn || !lead.gameObject.activeInHierarchy;
+                        if (!toastSeen && !leadGone && toast != null)
+                        {
+                            toastSeen = true;
+                            Vector3? at = hudScreen.ToastPosition(0);
+                            float off = at.HasValue ? Vector2.Distance(at.Value, lead.transform.position) : 99f;
+                            if (!toast.Contains(" bomb — "))
+                                Fail($"Bomb toast: over the lead it says \"{toast}\", not \"<element> bomb — ...\".");
+                            else if (off > 2.5f)
+                                Fail($"Bomb toast: {off:F2} units from its fighter; it should ride over their head.");
+                            else Log($"Bomb toast: \"{toast}\" over the lead, {off:F2} units above.");
+                            if (namePrefix == "day1_afternoon") Capture("day1_afternoon_toast");
+                        }
+                        // A frame after the lead is gone (LateUpdate hides it), the line is gone too.
+                        if (leadGone && leadGoneLastFrame && !toastGoneChecked)
+                        {
+                            toastGoneChecked = true;
+                            if (toast != null) Fail($"Bomb toast: still up (\"{toast}\") after its fighter left the field.");
+                            else Log("Bomb toast: gone with its fighter.");
+                        }
+                        leadGoneLastFrame = leadGone;
+                    }
                     // The guardian at the end of the waves, once it has come out of the ground.
                     if (world.Expedition.Phase == ExpeditionPhase.BossFight && world.Expedition.BossInstance != null)
                     {
@@ -1754,6 +1783,8 @@ namespace AlchemistsArsenal.Core
                 Log($"Expedition resolved: {world.Expedition.Phase} " +
                     $"({Time.unscaledTime - start:F1}s{detail})");
                 _fingerprint.Add($"{namePrefix}={FightSummary(world, Time.time - gameStart)}");
+                if (hudScreen != null && (object)lead != null && !toastSeen)
+                    Fail($"Bomb toast: no bomb line ever rose over the lead in {namePrefix}.");
                 Log($"Ticker: {throwLines} throw line(s) seen, all credited to the party " +
                     $"({string.Join(", ", partyNames)}).");
             }
