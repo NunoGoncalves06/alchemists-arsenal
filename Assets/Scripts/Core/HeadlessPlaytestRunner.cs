@@ -1301,8 +1301,16 @@ namespace AlchemistsArsenal.Core
                         if (order.deductions[i].station == "Prep" && order.deductions[i].reason.Contains("m/s")) ledger = order.deductions[i].reason;
                     var m = System.Text.RegularExpressions.Regex.Match(ledger, @"(\d+\.\d) m/s");
                     float logged = m.Success ? float.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : -1f;
-                    if (Mathf.Abs(predicted - measured) > 0.1f)
+                    // The dial reads the fall to whatever is under the pestle at the release. When
+                    // a leaf moves out from under it on the way down, the pestle falls further and
+                    // hits harder: physics the dial cannot foresee, logged rather than failed.
+                    // The excuse holds only if the real fall explains the blow: v = FallSpeed(real fall).
+                    bool targetMoved = !float.IsNaN(bench.LastStrikeFall) && Mathf.Abs(bench.LastStrikeFall - bench.ReleaseDrop) > 0.05f
+                        && Mathf.Abs(Crafting.PrepBench.FallSpeed(bench.LastStrikeFall, 0f, 0f, Time.fixedDeltaTime) - measured) <= 0.35f;
+                    if (Mathf.Abs(predicted - measured) > 0.1f && !targetMoved)
                         Fail($"Prep strike {s + 1}: the dial read {predicted:0.00} m/s at the release but the pestle hit at {measured:0.00}.");
+                    else if (Mathf.Abs(predicted - measured) > 0.1f)
+                        Log($"Prep strike {s + 1}: a leaf moved under the pestle (expected fall {bench.ReleaseDrop:0.00} m, real {bench.LastStrikeFall:0.00} m), so it hit at {measured:0.00} m/s, not the dial's {predicted:0.00}.");
                     if (Mathf.Abs(logged - measured) > 0.051f)
                         Fail($"Prep strike {s + 1}: the pestle hit at {measured:0.00} m/s but the ledger says {logged:0.0} ({ledger}).");
                     if (!ledger.StartsWith("Clean strike"))

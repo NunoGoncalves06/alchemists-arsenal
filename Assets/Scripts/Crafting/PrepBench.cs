@@ -742,10 +742,20 @@ namespace AlchemistsArsenal.Crafting
         /// <summary>What the dial read the moment the pestle was let go (0 if it was not rising yet).</summary>
         public float ReleasePrediction { get; private set; }
 
+        /// <summary>How far the dial expected the pestle to fall from where it was let go (m).</summary>
+        public float ReleaseDrop { get; private set; }
+
+        /// <summary>How far the pestle really fell before the last strike (m); differs from <see cref="ReleaseDrop"/> when a leaf moved under it. NaN for a strike that did not follow a lift.</summary>
+        public float LastStrikeFall { get; private set; }
+
+        private float _releaseY = float.NaN;
+
         private void EndLift()
         {
             if (_lift == null) return;
             ReleasePrediction = LiftReady ? PredictedStrikeSpeed : 0f;
+            ReleaseDrop = LiftReady ? FirstContactDrop() : 0f;
+            _releaseY = _pestle.position.y;
             Destroy(_lift);
             _lift = null;
             LiftReady = false;
@@ -952,6 +962,8 @@ namespace AlchemistsArsenal.Crafting
             float band = CurrentBand;
             float speed = hit.Vertical;   // how fast the pestle was falling when it touched: the one number
             LastStrikeSpeed = speed;
+            LastStrikeFall = _releaseY - _pestle.position.y;   // NaN unless this strike follows a lift
+            _releaseY = float.NaN;
             StrikesLeft--;
             float off = Mathf.Abs(speed - IdealStrike);
             bool clean = off <= band;
