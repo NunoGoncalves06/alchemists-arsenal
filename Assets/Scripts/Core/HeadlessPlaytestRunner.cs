@@ -690,6 +690,7 @@ namespace AlchemistsArsenal.Core
             /// <summary>Suffix for screenshots of the second and later orders of a morning ("_o2").</summary>
             private string _orderTag = "";
             private bool _lastScenarioWon;
+            private bool _withdrawShot;
             /// <summary>The guardian the last scenario met (its story id), or "" when none came out.</summary>
             private string _lastScenarioBossId = "";
             private int _clockworkBrews;
@@ -1717,6 +1718,14 @@ namespace AlchemistsArsenal.Core
                             else Log("Bomb toast: gone with its fighter.");
                         }
                         leadGoneLastFrame = leadGone;
+                        if (lead != null && lead.IsWithdrawn && !_withdrawShot)
+                        {
+                            // Walking off dry: the belt is empty.
+                            _withdrawShot = true;
+                            var belt = lead.GetComponentInChildren<BeltFlaskView>(true);
+                            if (belt != null && belt.Visible) Fail($"{lead.name} walks off dry with a flask still at the belt.");
+                            Capture("withdraw_no_flask");
+                        }
                     }
                     // The guardian at the end of the waves, once it has come out of the ground.
                     if (world.Expedition.Phase == ExpeditionPhase.BossFight && world.Expedition.BossInstance != null)
@@ -1785,6 +1794,16 @@ namespace AlchemistsArsenal.Core
                 _fingerprint.Add($"{namePrefix}={FightSummary(world, Time.time - gameStart)}");
                 if (hudScreen != null && (object)lead != null && !toastSeen)
                     Fail($"Bomb toast: no bomb line ever rose over the lead in {namePrefix}.");
+                // Whoever ran dry carries no flask any more.
+                foreach (var b in world.Party)
+                {
+                    if (b == null) continue;
+                    var ai = b.GetComponent<UtilityAI_CombatController>();
+                    var belt = b.GetComponentInChildren<BeltFlaskView>(true);
+                    if (ai == null || belt == null) continue;
+                    if (ai.FlasksLeft == 0 && belt.Visible) Fail($"{b.name} threw their last flask but still has one at the belt.");
+                    else if (ai.FlasksLeft > 0 && !belt.Visible) Fail($"{b.name} has {ai.FlasksLeft} flasks left but none at the belt.");
+                }
                 Log($"Ticker: {throwLines} throw line(s) seen, all credited to the party " +
                     $"({string.Join(", ", partyNames)}).");
             }

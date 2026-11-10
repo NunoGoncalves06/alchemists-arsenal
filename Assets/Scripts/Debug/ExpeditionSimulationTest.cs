@@ -163,6 +163,13 @@ namespace AlchemistsArsenal.DebugTools
             SpawnAdventurer(new Vector2(-8f, 0.6f), 4000, matrix, ammo: 1);
             CombatantBody dry = AdventurerRegistry.ActiveAdventurers[0] as CombatantBody;
             SpawnAdventurer(new Vector2(-8f, -0.6f), 4000, matrix, ammo: 99);
+            // The flask at the dry fighter's belt, as the arena hangs it there.
+            var beltGo = new GameObject("BeltFlask");
+            beltGo.transform.SetParent(dry.transform, false);
+            beltGo.AddComponent<SpriteRenderer>();
+            BeltFlaskView belt = beltGo.AddComponent<BeltFlaskView>();
+            belt.Bind(dry.GetComponent<UtilityAI_CombatController>());
+            bool beltAtLeave = true;
 
             MonsterData weakling = MonsterData.Create("Straggler", ElementType.Nature, 40, 0.8f);
             var biome = ScriptableObject.CreateInstance<BiomeData>();
@@ -179,7 +186,7 @@ namespace AlchemistsArsenal.DebugTools
             while (!finished && t < 40f)
             {
                 if (dry != null && dry.IsWithdrawn && !AdventurerRegistry.ActiveAdventurers.Contains(dry)) leftRoster = true;
-                if (dry != null && dry.IsWithdrawn && hpAtLeave < 0) hpAtLeave = dry.CurrentHP;
+                if (dry != null && dry.IsWithdrawn && hpAtLeave < 0) { hpAtLeave = dry.CurrentHP; beltAtLeave = belt.Visible; }
                 t += Time.deltaTime;
                 yield return null;
             }
@@ -187,6 +194,7 @@ namespace AlchemistsArsenal.DebugTools
             ExpeditionReport r = tel.Report;
             Report($"Withdraw scenario finished and was Won by the fighter who stayed ({t:F1}s)", finished && won);
             Report("Withdraw: the dry fighter withdrew", dry != null && dry.IsWithdrawn);
+            Report("Withdraw: they walk off with no flask in hand (hidden after the last throw)", !beltAtLeave);
             Report("Withdraw: they left the targets list (monsters and the boss read it)", leftRoster);
             Report($"Withdraw: they did not die (hp {(dry != null ? dry.CurrentHP : -1)})", dry != null && dry.CurrentHP > 0);
             Report($"Withdraw: they took no damage after leaving ({hpAtLeave} -> {(dry != null ? dry.CurrentHP : -1)})",

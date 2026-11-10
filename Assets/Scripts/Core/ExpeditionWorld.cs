@@ -287,6 +287,7 @@ namespace AlchemistsArsenal.Core
                 flask.transform.SetParent(art.transform, false);
                 flask.transform.localPosition = new Vector3(0.42f, -0.15f, 0f);
                 PixelArt.AddSprite(flask, Art.PixelSprites.Flask(loadout.Slots[0].bomb.Element), 7, 0.42f);
+                flask.AddComponent<BeltFlaskView>().Bind(ai);   // empty-handed after the last throw
             }
             Vfx.BodyVisuals.Attach(go, art.transform);
             go.SetActive(true);
