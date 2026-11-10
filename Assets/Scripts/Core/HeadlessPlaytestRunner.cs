@@ -873,7 +873,7 @@ namespace AlchemistsArsenal.Core
                 var steep = Crafting.SteepBench.Instance;
                 if (bench == null || steep == null) { Fail("No Kiln or Steep bench."); yield break; }
                 float t = 0f, nextStoke = 0f;
-                bool loadDragged = false, kilnShot = false;
+                bool loadDragged = false, kilnShot = false, beltShot = false;
                 float limit = 30f * orders.Count;
                 while (t < limit && _errorCount == 0)
                 {
@@ -912,6 +912,20 @@ namespace AlchemistsArsenal.Core
                         kilnShot = true;
                         Capture($"day{day}_morning_kiln_drying");
                     }
+                    // The draught kiln feeds its fire by conveyor: logs ride in, none fly.
+                    if (bench.Draught)
+                    {
+                        if (!bench.HasConveyor) { Fail("Draught Kiln: no conveyor carrying logs to the fire."); yield break; }
+                        if (bench.FlyingLogCount > 0) { Fail("Draught Kiln: a log was thrown into the fire; the conveyor should carry it."); yield break; }
+                        if (bench.BeltLogCount > 0 && !beltShot)
+                        {
+                            beltShot = true;
+                            for (int fr = 0; fr < 6; fr++) yield return null;   // let it get under way
+                            Capture($"day{day}_morning_kiln_conveyor");
+                            Log("Draught Kiln: a log rode the conveyor into the fire.");
+                        }
+                    }
+                    else if (bench.HasConveyor) { Fail("A conveyor stands at a kiln without the Draught Kiln upgrade."); yield break; }
                     t += Time.deltaTime;
                     yield return null;
                 }

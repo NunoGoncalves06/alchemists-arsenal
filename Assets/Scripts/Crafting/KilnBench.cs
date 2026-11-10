@@ -53,6 +53,19 @@ namespace AlchemistsArsenal.Crafting
         private readonly List<Grain> _kiln = new List<Grain>();
         private readonly List<float> _logs = new List<float>();
         private readonly List<Rigidbody2D> _flyingLogs = new List<Rigidbody2D>();
+        // The draught kiln's conveyor: logs carried from the pile into the arch, not thrown.
+        private readonly List<Transform> _beltLogs = new List<Transform>();
+        private SpriteRenderer _belt;
+        private int _beltLengthPx, _beltFrame;
+        private float _beltClock;
+        private const float BeltSpeed = 5f;   // as quick into the fire as the old throw (about 0.7 s from the pile)
+
+        /// <summary>The draught kiln's log conveyor is built (the harness checks it).</summary>
+        public bool HasConveyor => _belt != null;
+        /// <summary>Logs riding the conveyor right now.</summary>
+        public int BeltLogCount => _beltLogs.Count;
+        /// <summary>Logs thrown through the air right now (a hand's, or the old stoker's).</summary>
+        public int FlyingLogCount => _flyingLogs.Count;
         private readonly List<SpriteRenderer> _rackSacks = new List<SpriteRenderer>();
 
         private Camera _cam;
@@ -124,7 +137,7 @@ namespace AlchemistsArsenal.Crafting
         }
 
         public bool CanLoadKiln => KilnOrder == null && _dried.Count == 0 && NextWaiting != null;
-        public bool CanStoke => KilnOrder != null && _logs.Count + _flyingLogs.Count < 4;
+        public bool CanStoke => KilnOrder != null && _logs.Count + _flyingLogs.Count + _beltLogs.Count < 4;
 
         /// <summary>The draught kiln tends its own fire.</summary>
         public bool Draught => MaltShared.HasUpgrade(UpgradeCatalog.DraughtKiln);
@@ -157,6 +170,7 @@ namespace AlchemistsArsenal.Crafting
             pile.transform.SetParent(transform, false);
             pile.transform.localPosition = PileLocal;
             MaltShared.AddArt(pile.transform, MaltArt.LogPile(), 10, 1f);
+            if (Draught) BuildConveyor();
 
             // The rack: one crate of sprouted malt (a wicker basket with the vat) per order waiting for the kiln.
             for (int i = 0; i < RunState.MaxParty; i++)   // one per fighter at most
@@ -178,6 +192,32 @@ namespace AlchemistsArsenal.Crafting
             // The instrument: a thermometer by the kiln.
             _thermo = BenchGauge.Create(transform, KP(MaltArt.KilnW + 5f, MaltArt.KilnH * 0.45f), 2.2f, true, 30, fillMode: true, name: "Thermometer");
             _thermo.SetBand(HeatLow, HeatHigh);
+        }
+
+        // The belt's two ends, in the world: from just left of the log pile into the arch's mouth.
+        private Vector2 BeltEnd => new Vector2(KP((MaltArt.ArchX0 + MaltArt.ArchX1 + 1) * 0.5f, 0f).x, transform.position.y + BenchTopY + 0.22f);
+        private Vector2 BeltStart => new Vector2(transform.position.x + PileLocal.x - 0.35f, BeltEnd.y);
+
+        /// <summary>The belt runs while the kiln is working or a log is on it.</summary>
+        private void AnimateBelt(float dt)
+        {
+            if (_belt == null || (KilnOrder == null && _beltLogs.Count == 0)) return;
+            _beltClock += dt;
+            if (_beltClock < 1f / 14f) return;
+            _beltClock = 0f;
+            _beltFrame = (_beltFrame + 1) % 4;
+            _belt.sprite = MaltArt.Conveyor(_beltLengthPx, _beltFrame);
+            _belt.sharedMaterial = SpriteMaterials.For(_belt.sprite);   // one material per baked texture
+        }
+
+        /// <summary>The draught kiln's conveyor, from the log pile into the fire.</summary>
+        private void BuildConveyor()
+        {
+            var go = new GameObject("Conveyor");
+            go.transform.SetParent(transform, false);
+            go.transform.position = new Vector3(BeltEnd.x, BeltEnd.y, 0f);
+            _beltLengthPx = Mathf.RoundToInt((BeltStart.x - BeltEnd.x) * MaltArt.PPU);
+            _belt = MaltShared.AddArt(go.transform, MaltArt.Conveyor(_beltLengthPx, 0), OrderFire + 1, 1f);
         }
 
         /// <summary>Kiln art pixel to world.</summary>
@@ -245,7 +285,8 @@ namespace AlchemistsArsenal.Crafting
             foreach (var g in _dried) if (g.Body != null) Destroy(g.Body.gameObject);
             _dried.Clear();
             foreach (var l in _flyingLogs) if (l != null) Destroy(l.gameObject);
-            _kiln.Clear(); _logs.Clear(); _flyingLogs.Clear();
+            foreach (var l in _beltLogs) if (l != null) Destroy(l.gameObject);
+            _kiln.Clear(); _logs.Clear(); _flyingLogs.Clear(); _beltLogs.Clear();
             _toDrop = 0;
             KilnOrder = null;
             Heat01 = 0.12f;
@@ -273,6 +314,7 @@ namespace AlchemistsArsenal.Crafting
 
             DrawRack();
             UpdateKiln(dt);
+            AnimateBelt(dt);
             DrawKiln(dt);
             DrawGauge();
         }
@@ -390,8 +432,21 @@ namespace AlchemistsArsenal.Crafting
             AudioManager.Play(Sfx.Tab);
         }
 
-        /// <summary>Throw a log from the pile into the firebox (the draught kiln's stoker, and the playtest).</summary>
-        public void Stoke() => Stoke(PileWorld + new Vector2(-0.2f, 0.3f));
+        /// <summary>
+        /// A log from the pile into the firebox: the draught kiln sets it on its conveyor,
+        /// which carries it into the arch; without one it is thrown (the playtest's stoke).
+        /// </summary>
+        public void Stoke()
+        {
+            if (_belt == null) { Stoke(PileWorld + new Vector2(-0.2f, 0.3f)); return; }
+            if (!CanStoke) return;
+            var go = new GameObject("BeltLog");
+            go.transform.SetParent(transform, false);
+            go.transform.position = BeltStart + new Vector2(0f, 0.16f);
+            MaltShared.AddArt(go.transform, MaltArt.Log(), OrderFire + 2, 1f);
+            _beltLogs.Add(go.transform);
+            AudioManager.Play(Sfx.Tab);
+        }
 
         private Vector2 ArchCentre => KP((MaltArt.ArchX0 + MaltArt.ArchX1 + 1) * 0.5f, MaltArt.ArchTop + 6f);
 
@@ -420,6 +475,21 @@ namespace AlchemistsArsenal.Crafting
                         g.Body.linearVelocity = new Vector2(0f, -0.5f);
                         _kiln.Add(g);
                     }
+                }
+            }
+
+            // Logs riding the conveyor, into the arch's mouth, where they catch.
+            for (int i = _beltLogs.Count - 1; i >= 0; i--)
+            {
+                Transform log = _beltLogs[i];
+                if (log == null) { _beltLogs.RemoveAt(i); continue; }
+                log.position += Vector3.left * (BeltSpeed * dt);
+                if (log.position.x <= BeltEnd.x + 0.1f)
+                {
+                    _logs.Add(LogBurnSeconds);
+                    if (VfxWorld.Active != null) VfxWorld.Active.Burst(log.position, new Color(1f, 0.6f, 0.2f), 12, 2.2f, 0.08f, 0.5f);
+                    Destroy(log.gameObject);
+                    _beltLogs.RemoveAt(i);
                 }
             }
 
@@ -475,7 +545,7 @@ namespace AlchemistsArsenal.Crafting
                 target = Mathf.Min(target, HeatHigh - 0.05f);
                 // A log in its last two seconds is already fading (see burning, above): count
                 // it as gone, or the heat dips out of the band before the next one catches.
-                int strong = _flyingLogs.Count;
+                int strong = _flyingLogs.Count + _beltLogs.Count;
                 foreach (float left in _logs) if (left > 2f) strong++;
                 if (strong < 2 && CanStoke && Time.time >= _autoStokeAt)
                 {

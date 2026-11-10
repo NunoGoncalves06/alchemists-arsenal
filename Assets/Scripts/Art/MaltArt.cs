@@ -183,6 +183,40 @@ namespace AlchemistsArsenal.Art
         }
 
         /// <summary>
+        /// The Draught Kiln's log conveyor: a dark belt over a rail, with a roller at each end,
+        /// <paramref name="lengthPx"/> long. The belt's ridges step along with
+        /// <paramref name="frame"/> (0-3), right to left, toward the fire. Pivot at the left end, mid-height.
+        /// </summary>
+        public static Sprite Conveyor(int lengthPx, int frame)
+        {
+            lengthPx = Mathf.Clamp(lengthPx, 12, 160);
+            frame = ((frame % 4) + 4) % 4;
+            string key = $"kiln_conveyor_{lengthPx}_{frame}";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            int w = lengthPx, h = 8;
+            var c = new PixelCanvas(w, h);
+            // The rail under the belt, and two legs.
+            c.Fill((x, y) => y >= 5 && y <= 6 && x >= 3 && x <= w - 4, (x, y) => S(Iron, 0.45f, x, y));
+            c.Fill((x, y) => y == 7 && (x == w / 3 || x == (2 * w) / 3), (x, y) => S(Iron, 0.35f, x, y));
+            // The belt: dark rubbered canvas, its ridges marching left.
+            c.Fill((x, y) => y >= 1 && y <= 4 && x >= 3 && x <= w - 4, (x, y) =>
+            {
+                bool ridge = y == 1 && ((x + frame) % 4) == 0;
+                return S(Iron, ridge ? 0.75f : y == 1 ? 0.3f : 0.18f, x, y);
+            });
+            // A roller at each end, its spoke turning with the frame.
+            foreach (int cx in new[] { 3, w - 4 })
+            {
+                c.Fill((x, y) => PixelCanvas.InEllipse(x, y, cx + 0.5f, 3.5f, 3f, 3f), (x, y) =>
+                    S(Copper, PixelCanvas.SphereLight(x, y, cx + 0.5f, 3.5f, 3f, 3f, 0.3f), x, y));
+                int sx = cx + (frame == 1 ? 1 : frame == 3 ? -1 : 0), sy = 3 + (frame == 0 ? -1 : frame == 2 ? 1 : 0);
+                c.Fill((x, y) => x == sx && y == sy, (x, y) => S(Iron, 0.2f, x, y));
+            }
+            c.Outline(K);
+            return c.Bake(key, PPU, new Vector2(0f, 0.5f));
+        }
+
+        /// <summary>
         /// A small, low wicker basket of sprouted malt, the Turning Vat's: the vat turns the
         /// malt out into it for the kiln. On the tall basket's canvas and pivot, drawn at the
         /// foot of it, so it stands where the tall one stood; a short loop of cane for a handle.
