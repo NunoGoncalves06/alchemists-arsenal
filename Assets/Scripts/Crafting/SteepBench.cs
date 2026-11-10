@@ -233,7 +233,7 @@ namespace AlchemistsArsenal.Crafting
             kilnSack.transform.SetParent(transform, false);
             kilnSack.transform.localPosition = KilnSackLocal + new Vector2(0f, SackHeight * 0.75f + 0.02f);   // hangs from its hook: stand it on the bench
             // Sprouted malt waits in its own crate (the vat's wicker basket once it is bought): never the dry-seed sack.
-            MaltShared.AddArt(kilnSack.transform, Vat ? MaltArt.Basket() : MaltArt.MaltCrate(), 10, 0.75f);
+            MaltShared.AddArt(kilnSack.transform, Vat ? MaltArt.SmallBasket() : MaltArt.MaltCrate(), 10, 0.75f);
             _kilnSack = kilnSack.transform;
 
             var lid = new GameObject("JarLid");

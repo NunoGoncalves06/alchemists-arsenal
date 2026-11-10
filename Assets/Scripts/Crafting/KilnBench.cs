@@ -165,7 +165,7 @@ namespace AlchemistsArsenal.Crafting
                 s.transform.SetParent(transform, false);
                 // The art hangs from its pivot: raise it by its own height to stand on the bench.
                 s.transform.localPosition = new Vector2(RackSlotX(i, 1), RackLocal.y + SackHeight * 0.6f + 0.02f);
-                var art = MaltShared.AddArt(s.transform, MaltShared.HasUpgrade(UpgradeCatalog.SteepingVat) ? MaltArt.Basket() : MaltArt.MaltCrate(), 10 + i, 0.6f);
+                var art = MaltShared.AddArt(s.transform, MaltShared.HasUpgrade(UpgradeCatalog.SteepingVat) ? MaltArt.SmallBasket() : MaltArt.MaltCrate(), 10 + i, 0.6f);
                 art.enabled = false;
                 _rackSacks.Add(art);
             }

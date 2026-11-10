@@ -153,8 +153,8 @@ namespace AlchemistsArsenal.Art
         }
 
         /// <summary>
-        /// A wicker basket with a handle, the Steeping Vat's: the green malt goes into it
-        /// for the kiln. Drawn to the sack's size and pivot (the handle's top), so it
+        /// A tall wicker basket with a handle. The Turning Vat's malt now goes to the kiln in
+        /// <see cref="SmallBasket"/>; this one stays as the measure the small one is drawn against. Drawn to the sack's size and pivot (the handle's top), so it
         /// stands where the sack stood.
         /// </summary>
         public static Sprite Basket()
@@ -178,6 +178,39 @@ namespace AlchemistsArsenal.Art
             c.Fill((x, y) => y >= 10 && y <= 12 && PixelCanvas.InEllipse(x, y, 12.5f, 12.5f, 9f, 2.5f),
                 (x, y) => S(Barley, 0.55f + ((x * 7 + y * 3) % 5) * 0.06f, x, y));
             c.Fill((x, y) => y >= 12 && y <= 13 && x >= 1 && x <= w - 2, (x, y) => S(Wood, 0.55f, x, y));   // the rim
+            c.Outline(K);
+            return c.Bake(key, PPU, new Vector2(12.5f / w, 1f));
+        }
+
+        /// <summary>
+        /// A small, low wicker basket of sprouted malt, the Turning Vat's: the vat turns the
+        /// malt out into it for the kiln. On the tall basket's canvas and pivot, drawn at the
+        /// foot of it, so it stands where the tall one stood; a short loop of cane for a handle.
+        /// </summary>
+        public static Sprite SmallBasket()
+        {
+            const string key = "malt_basket_small";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 26, h = 30;
+            var c = new PixelCanvas(w, h);
+            // A short loop of cane over the heap.
+            c.Fill((x, y) => y >= 15 && y <= 19 && PixelCanvas.InEllipse(x, y, 12.5f, 19.5f, 5.5f, 4.5f) && !PixelCanvas.InEllipse(x, y, 12.5f, 19.5f, 4.2f, 3.4f),
+                (x, y) => S(Wood, 0.8f, x, y));
+            // The body: low and round-bellied, woven in rows, a little wider at the rim.
+            c.Fill((x, y) => y >= 21 && y <= h - 2 && Mathf.Abs(x + 0.5f - 12.5f) <= 9.5f - (y - 21) * 0.35f,
+                (x, y) =>
+                {
+                    bool row = (y - 21) % 2 == 0;
+                    bool weave = ((x + y) % 3) == 0;
+                    return S(Burlap, (row ? 0.9f : weave ? 0.62f : 0.48f) - (x - 4) * 0.012f, x, y);
+                });
+            // Green malt heaped above the rim, rootlets showing.
+            c.Fill((x, y) => y >= 18 && y <= 21 && PixelCanvas.InEllipse(x, y, 12.5f, 21f, 8.5f, 3f), (x, y) =>
+            {
+                int hash = (x * 7 + y * 13) % 9;
+                return hash < 3 ? S(Sprout, 0.55f + (y < 20 ? 0.3f : 0f), x, y) : S(Barley, 0.6f + ((x + y) % 3) * 0.08f, x, y);
+            });
+            c.Fill((x, y) => y == 21 && x >= 3 && x <= w - 4, (x, y) => S(Wood, 0.6f, x, y));   // the rim
             c.Outline(K);
             return c.Bake(key, PPU, new Vector2(12.5f / w, 1f));
         }

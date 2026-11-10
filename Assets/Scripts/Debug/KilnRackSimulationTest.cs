@@ -39,8 +39,29 @@ namespace AlchemistsArsenal.DebugTools
             Check(Differ(crate, basket) > 0.25f, $"art: the sprouted-malt crate is not the vat's wicker basket ({Differ(crate, basket):P0} differ)");
             Check(Sprouts(crate) >= 8 && Sprouts(sack) == 0, $"art: the crate shows sprouts ({Sprouts(crate)} green pixels), the sack none");
 
+            // With the Turning Vat the malt goes to the kiln in a small, low basket: not the
+            // tall wicker one, not the sack, not the crate.
+            Color32[] small = Read(MaltArt.SmallBasket());
+            Check(Differ(small, sack) > 0.25f && Differ(small, crate) > 0.25f,
+                $"art: the small basket is neither the sack ({Differ(small, sack):P0}) nor the crate ({Differ(small, crate):P0})");
+            Check(DrawnHeight(small) <= DrawnHeight(basket) * 0.6f,
+                $"art: the small basket stands at most 60 % of the tall basket's height ({DrawnHeight(small)} px against {DrawnHeight(basket)})");
+
             Done = true;
             Debug.Log($"<color=cyan><b>=== DONE — {_pass} pass, {_fail} fail ===</b></color>");
+        }
+
+        /// <summary>Rows that hold any opaque pixel.</summary>
+        private static int DrawnHeight(Color32[] px)
+        {
+            int w = 26, rows = 0;
+            for (int y = 0; y < px.Length / w; y++)
+            {
+                bool any = false;
+                for (int x = 0; x < w && !any; x++) any = px[y * w + x].a > 0;
+                if (any) rows++;
+            }
+            return rows;
         }
 
         private void Check(bool ok, string what)
