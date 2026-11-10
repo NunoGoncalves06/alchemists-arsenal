@@ -625,6 +625,7 @@ namespace AlchemistsArsenal.Core
                         foreach (var step in Settle($"day{day}_evening_upgrades_bought")) yield return step;
                     }
 
+                    if (day == 1) foreach (var step in CheckMapBack(eveningScreen)) { if (_errorCount > 0) yield break; yield return step; }
                     GameLoopManager.Instance.BeginBiomeMap();
                     foreach (var step in WaitForPhase(GamePhase.BiomeMap, 5f)) { if (_errorCount > 0) yield break; yield return step; }
                     if (_errorCount > 0) yield break;
@@ -632,6 +633,13 @@ namespace AlchemistsArsenal.Core
 
                     // Always on to the next road: each day brings the next level of the morning.
                     if (day < DaysToRun) GameLoopManager.Instance.Sleep(-1);
+                    if (day == 1 && _dayBeforeSleep >= 0)
+                    {
+                        // SLEEP after a BACK passes one night, like any other.
+                        if (SaveSystem.Instance.State.day != _dayBeforeSleep)
+                            Fail($"SLEEP after a map BACK moved the day {_dayBeforeSleep} -> {SaveSystem.Instance.State.day}; Sleep does not advance it (BeginEvening did).");
+                        _dayBeforeSleep = -1;
+                    }
                 }
 
 
@@ -2933,6 +2941,38 @@ namespace AlchemistsArsenal.Core
             /// the Evening plays reveal, ending and credits, and the run afterwards
             /// remembers it, keeps its last diary pages, and still reaches the map.
             /// </summary>
+            /// <summary>
+            /// The map's BACK: from the Upgrades tab to the map and back again, the day,
+            /// the gold and tomorrow's road are as they were, and the Evening is on the
+            /// tab the player left. Then the loop goes on to the map as usual.
+            /// </summary>
+            private IEnumerable CheckMapBack(object eveningScreen)
+            {
+                RunState st = SaveSystem.Instance.State;
+                var eve = eveningScreen as EveningScreen;
+                if (eve == null) { Fail("Map BACK: no Evening screen."); yield break; }
+                CallPrivate(eveningScreen, "ShowUpgrades");
+                int day0 = st.day, gold0 = st.gold, replay0 = st.replayBiomeIndex, tab0 = eve.ActiveTabIndex;
+                GameLoopManager.Instance.BeginBiomeMap();
+                foreach (var step in WaitForPhase(GamePhase.BiomeMap, 5f)) { if (_errorCount > 0) yield break; yield return step; }
+                foreach (var step in Settle("day1_biome_map_back")) yield return step;
+                CallPrivate(UIManager.Instance.ScreenOf(ScreenId.BiomeMap), "GoBack");
+                foreach (var step in WaitForPhase(GamePhase.Evening, 5f)) { if (_errorCount > 0) yield break; yield return step; }
+                if (_errorCount > 0) yield break;
+                if (UIManager.Instance.Current != ScreenId.Evening)
+                    Fail($"Map BACK: landed on {UIManager.Instance.Current}, not the Evening.");
+                else if (st.day != day0 || st.gold != gold0 || st.replayBiomeIndex != replay0)
+                    Fail($"Map BACK changed the run: day {day0}->{st.day}, gold {gold0}->{st.gold}, replay {replay0}->{st.replayBiomeIndex}.");
+                else if (eve.ActiveTabIndex != tab0)
+                    Fail($"Map BACK: the Evening came back on tab {eve.ActiveTabIndex}, not the one left ({tab0}).");
+                else Log("Map BACK: back at the Evening on the same tab; day, gold and tomorrow's road unchanged.");
+                foreach (var step in Settle("day1_evening_after_back")) yield return step;
+                _dayBeforeSleep = st.day;
+            }
+
+            /// <summary>The day before the first SLEEP after a map BACK: SLEEP must move it by exactly one.</summary>
+            private int _dayBeforeSleep = -1;
+
             /// <summary>
             /// The slot screen's DELETE, in a scratch save folder: three saves, the middle
             /// one deleted through the confirmation, the other two untouched. The run in

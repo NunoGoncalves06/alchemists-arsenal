@@ -278,6 +278,7 @@ namespace AlchemistsArsenal.Core
         public void BeginEvening()
         {
             if (Phase != GamePhase.Afternoon) { Debug.LogWarning($"[Loop] BeginEvening from {Phase} ignored"); return; }
+            EveningResumed = false;
 
             RunState s = SaveSystem.Instance.State;
             ExpeditionReport r = LatestReport;
@@ -421,6 +422,23 @@ namespace AlchemistsArsenal.Core
         {
             if (Phase != GamePhase.Evening) { Debug.LogWarning($"[Loop] BeginBiomeMap from {Phase} ignored"); return; }
             SetPhase(GamePhase.BiomeMap);
+        }
+
+        /// <summary>
+        /// True when the Evening was reopened from the map's BACK: the same evening, not
+        /// a new one (no greeting again, the tab the player left). BeginEvening clears it.
+        /// </summary>
+        public bool EveningResumed { get; private set; }
+
+        /// <summary>
+        /// The map's BACK: back to the Evening the player came from. Nothing is spent
+        /// or saved and the day does not move; only SLEEP does that.
+        /// </summary>
+        public void ReturnToEvening()
+        {
+            if (Phase != GamePhase.BiomeMap) { Debug.LogWarning($"[Loop] ReturnToEvening from {Phase} ignored"); return; }
+            EveningResumed = true;
+            SetPhase(GamePhase.Evening);
         }
 
         /// <summary>

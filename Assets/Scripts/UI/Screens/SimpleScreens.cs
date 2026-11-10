@@ -637,7 +637,21 @@ namespace AlchemistsArsenal.UI
             UIFactory.Label(nextBox, line, UITheme.SizeSmall, ready ? UITheme.Ok : UITheme.Danger);
 
             var sleep = UIFactory.Button(_dynamic, "SLEEP", () => GameLoopManager.Instance.Sleep(-1));
-            UIFactory.Place(sleep.image.rectTransform, 0.66f, 0.06f, 0.95f, 0.15f);
+            UIFactory.Place(sleep.image.rectTransform, 0.80f, 0.06f, 0.95f, 0.15f);
+            // Back to the Evening without sleeping: nothing spent, the day unchanged.
+            var back = UIFactory.Button(_dynamic, "BACK", GoBack, primary: false);
+            UIFactory.Place(back.image.rectTransform, 0.66f, 0.06f, 0.78f, 0.15f);
+        }
+
+        private void Update()
+        {
+            if (Input.GetKeyDown(KeyCode.Escape)) GoBack();
+        }
+
+        private void GoBack()
+        {
+            if (GameLoopManager.Instance != null && GameLoopManager.Instance.Phase == GamePhase.BiomeMap)
+                GameLoopManager.Instance.ReturnToEvening();
         }
 
         private void BuildRoadRow(Transform parent, RunState s, int index)

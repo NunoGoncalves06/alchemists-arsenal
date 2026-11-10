@@ -103,8 +103,22 @@ namespace AlchemistsArsenal.UI
 
         protected override void OnShow()
         {
-            LevelUpNote = null;   // a new evening: yesterday's level-up is old news
             RunState s = SaveSystem.Instance.State;
+            if (GameLoopManager.Instance != null && GameLoopManager.Instance.EveningResumed)
+            {
+                // Back from the map: the same evening, on the tab the player left.
+                _title.text = $"Evening of day {Mathf.Max(1, s.day - 1)}";
+                if (_menuBtn != null) _menuBtn.gameObject.SetActive(ShowsMenu(s));
+                _gold.text = $"{s.gold} g";
+                switch (_activeTab)
+                {
+                    case EveTab.Upgrades: ShowUpgrades(); break;
+                    case EveTab.Roster: ShowRoster(); break;
+                    default: ShowReport(); break;
+                }
+                return;
+            }
+            LevelUpNote = null;   // a new evening: yesterday's level-up is old news
 
             // Whatever part of the story today's fight earned plays first, over the
             // Evening, and comes back here when it is done.
