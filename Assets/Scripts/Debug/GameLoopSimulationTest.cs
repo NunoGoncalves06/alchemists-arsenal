@@ -37,7 +37,7 @@ namespace AlchemistsArsenal.DebugTools
             TestPerkSymmetry();
             TestCostCurve();
             TestCurveIsAffordable();
-            TestGuardianDays();
+            TestGuardianRoads();
             TestStoryRoundTrip();
             TestStoryRules();
             Done = true;
@@ -487,12 +487,29 @@ namespace AlchemistsArsenal.DebugTools
         /// <summary>How much of the morning a player has left, by how many bench machines they own.</summary>
         private delegate float MorningLeft(int benchesOwned);
 
-        /// <summary>Day 1 is the first job, not a guardian: the Woods end on the Woodwose from day 2 on.</summary>
-        private void TestGuardianDays()
+        /// <summary>
+        /// A guardian belongs to its road, not to a day: the Woods never have one, the
+        /// Woodwose is first met on the second road as it always was (tier 0), comes back
+        /// frozen in the Caverns and broken in the Swamp, and the Matriarch holds the Peak.
+        /// The road is all there is to it, so a replay on any day meets the same thing.
+        /// </summary>
+        private void TestGuardianRoads()
         {
-            Check(!BiomeLibrary.GuardianToday(1), "guardians: day 1 has no guardian");
-            Check(BiomeLibrary.GuardianToday(2) && BiomeLibrary.GuardianToday(9), "guardians: from day 2 the roads end on their guardian");
-            Check(BiomeLibrary.FirstGuardianDay == 2, $"guardians: the first guardian day is 2 ({BiomeLibrary.FirstGuardianDay})");
+            bool[] has = { false, true, true, true, true };
+            string[] who = { "", "woodwose", "woodwose", "woodwose", "matriarch" };
+            int[] tier = { -1, 0, 1, 2, 0 };
+            for (int b = 0; b < BiomeLibrary.Count; b++)
+            {
+                BiomeData d = BiomeLibrary.Get(b);
+                Check(d.HasBoss == has[b], $"guardians: {BiomeLibrary.Name(b)} {(has[b] ? "ends on a guardian" : "has no guardian")}");
+                if (!d.HasBoss) continue;
+                Check(d.Boss.StoryId == who[b] && d.Boss.Tier == tier[b],
+                    $"guardians: {BiomeLibrary.Name(b)} meets {who[b]} tier {tier[b]} ({d.Boss.StoryId} tier {d.Boss.Tier})");
+            }
+            Check(BiomeLibrary.Get(1).Waves.Count == 3, $"guardians: the Woodwose takes the Cinder Peaks' last wave ({BiomeLibrary.Get(1).Waves.Count} waves)");
+            Check(BiomeLibrary.Get(0).Waves.Count == 4, $"guardians: the Woods keep their four waves ({BiomeLibrary.Get(0).Waves.Count})");
+            Check(BiomeLibrary.Get(1).GuardianBountyMin == 12 && BiomeLibrary.Get(1).GuardianBountyMax == 24 && BiomeLibrary.Get(0).GuardianBountyMax == 0,
+                $"guardians: the Cinder Peaks pay back the lost wave's loot when the Woodwose falls ({BiomeLibrary.Get(1).GuardianBountyMin}-{BiomeLibrary.Get(1).GuardianBountyMax} g)");
         }
 
         private void TestCurveIsAffordable()
@@ -562,7 +579,8 @@ namespace AlchemistsArsenal.DebugTools
             float g = 0f;
             foreach (var w in BiomeLibrary.Get(biome).Waves)
                 g += w.count * (average ? (w.monster.GoldMin + w.monster.GoldMax) * 0.5f : w.monster.GoldMin);
-            return Mathf.RoundToInt(g);
+            BiomeData d = BiomeLibrary.Get(biome);
+            return Mathf.RoundToInt(g + (average ? (d.GuardianBountyMin + d.GuardianBountyMax) * 0.5f : d.GuardianBountyMin));
         }
 
         /// <summary>One day's gold: the party's purse for the best-paid job each fighter's flask meets, and the loot.</summary>

@@ -971,9 +971,10 @@ Prep, Cauldron, Bottling — and a flask cannot skip one (§12.6).
 | Elder Woodwose (Nature) | 1500 | Bramble Swipe, Thorn Volley, Root Slam, Briar Pulse |
 | Coven Matriarch (Arcane) | 1250 | Hex Volley, Hex Storm, Coven Slam, Sundering Ring, Ward Pulse |
 
-Day 1 has no guardian anywhere (`BiomeLibrary.GuardianToday`): the Woods are waves only,
-and the Woodwose ends them from day 2 on. Its scene and diary page come on the
-evening it first falls. How hard each road is, and what it takes, is in §12.6.
+A guardian belongs to its road (`BiomeData.Boss`), not to a day. The Woods have none,
+on any day or replay. The Woodwose is first met at the end of the Cinder Peaks, in
+place of their last wave, and its scene and diary page come on the evening it first
+falls. It returns frozen in the Caverns and broken in the Swamp; the Matriarch holds the Peak. How hard each road is, and what it takes, is in §12.6.
 
 ### 12.4 Arenas
 - **Backdrops:** `BiomeArt` draws each road (floor, skyline, margins, vignette),

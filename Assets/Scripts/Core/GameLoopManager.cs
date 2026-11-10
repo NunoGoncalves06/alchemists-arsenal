@@ -260,10 +260,9 @@ namespace AlchemistsArsenal.Core
             _expeditionWorld = _expeditionRoot.AddComponent<ExpeditionWorld>();
             _expeditionWorld.OnFinished += HandleExpeditionFinished;
 
-            // Every road that has a guardian ends on it, the first fight included: the
-            // Woods' Elder Woodwose is met on day 1, and again each time it comes back.
-            _expeditionWorld.Build(biome, PendingLoadouts, PendingParty,
-                enableBoss: BiomeLibrary.GuardianToday(party != null ? party.day : 1));
+            // A road's guardian is part of the road (BiomeData.Boss), whatever the day:
+            // the Woods never have one, and a replay meets exactly what it met before.
+            _expeditionWorld.Build(biome, PendingLoadouts, PendingParty);
 
             SetPhase(GamePhase.Afternoon);
         }

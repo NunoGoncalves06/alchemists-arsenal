@@ -44,7 +44,7 @@ namespace AlchemistsArsenal.Core
         private readonly List<HeroRecord> _partyRecords = new List<HeroRecord>();
 
         public void Build(BiomeData biome, IReadOnlyList<AdventurerLoadout> loadouts,
-            IReadOnlyList<HeroRecord> party, bool enableBoss = true)
+            IReadOnlyList<HeroRecord> party)
         {
             _biome = biome;
             transform.position = Vector3.zero;
@@ -119,7 +119,7 @@ namespace AlchemistsArsenal.Core
             // Configure() starts the run on the same frame — begin telemetry first.
             Telemetry.Begin(Expedition, biome.BiomeName, adventurerCount, biome.Waves.Count);
             Expedition.OnFinished += HandleFinished;
-            Expedition.Configure(biome, spawner, enableBoss);
+            Expedition.Configure(biome, spawner);
         }
 
         /// <summary>Read the day's customer off the contract; fall back to Rookie.</summary>

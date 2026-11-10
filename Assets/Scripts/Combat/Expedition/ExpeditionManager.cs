@@ -39,7 +39,6 @@ namespace AlchemistsArsenal.Combat
         [Min(10f)] [SerializeField] private float maxBossSeconds = 150f;
         [Tooltip("Grace after a fighter's last flask is thrown, so a bomb still in the air lands before they withdraw.")]
         [Min(0f)] [SerializeField] private float outOfFlasksGraceSeconds = 2.5f;
-        [SerializeField] private bool bossEnabled = true;
         [SerializeField] private bool logProgress = true;
 
         public ExpeditionPhase Phase { get; private set; } = ExpeditionPhase.Warmup;
@@ -63,6 +62,10 @@ namespace AlchemistsArsenal.Combat
         /// <summary>The road's guardian, if it has one (who it is to the story: see <see cref="Data.BossDefinition.StoryId"/>).</summary>
         public Data.BossDefinition Boss => biome != null && biome.HasBoss ? biome.Boss : null;
 
+        /// <summary>Gold the road pays when its guardian falls, rolled in <see cref="Data.BiomeData.GuardianBountyMin"/>..Max.</summary>
+        public int RollGuardianBounty() =>
+            biome != null && biome.GuardianBountyMax > 0 ? UnityEngine.Random.Range(biome.GuardianBountyMin, biome.GuardianBountyMax + 1) : 0;
+
         public event Action<ExpeditionPhase> OnPhaseChanged;
         public event Action<int> OnWaveStarted;
         public event Action<bool> OnFinished; // true = won
@@ -83,11 +86,10 @@ namespace AlchemistsArsenal.Combat
         private bool _running;
 
         /// <summary>Wire the expedition in code and start it (bootstrap / tests).</summary>
-        public void Configure(BiomeData biome, MonsterSpawner spawner, bool enableBoss = true)
+        public void Configure(BiomeData biome, MonsterSpawner spawner)
         {
             this.biome = biome;
             this.spawner = spawner;
-            bossEnabled = enableBoss;
             TryBegin();
         }
 
@@ -171,7 +173,7 @@ namespace AlchemistsArsenal.Combat
                 if (Phase == ExpeditionPhase.Lost) yield break;
             }
 
-            if (biome.HasBoss && bossEnabled)
+            if (biome.HasBoss)
             {
                 SetPhase(ExpeditionPhase.BossFight);
                 if (logProgress) Debug.Log($"[Expedition] BOSS: {biome.Boss.DisplayName}");

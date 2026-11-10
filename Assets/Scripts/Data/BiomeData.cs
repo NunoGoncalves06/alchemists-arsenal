@@ -42,6 +42,23 @@ namespace AlchemistsArsenal.Data
         public BossDefinition Boss => boss;
         public bool HasBoss => boss != null;
 
+        [Tooltip("Gold paid when this road's guardian falls, rolled in this range (guardians drop no loot of their own).")]
+        [Min(0)] [SerializeField] private int guardianBountyMin, guardianBountyMax;
+
+        /// <summary>
+        /// Gold the road pays when its guardian falls, least and most. A guardian takes
+        /// its road's last wave; where that wave's loot carried the economy, the road pays
+        /// it back here, rolled the way the wave's loot was.
+        /// </summary>
+        public int GuardianBountyMin => boss != null ? guardianBountyMin : 0;
+        public int GuardianBountyMax => boss != null ? Mathf.Max(guardianBountyMin, guardianBountyMax) : 0;
+
+        public void SetGuardianBounty(int min, int max)
+        {
+            guardianBountyMin = Mathf.Max(0, min);
+            guardianBountyMax = Mathf.Max(guardianBountyMin, max);
+        }
+
         public void Configure(string name, ElementType theme, Color groundTint, float arenaWidth,
             Wave[] waves, BossDefinition boss)
         {

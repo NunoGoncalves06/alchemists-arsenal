@@ -47,7 +47,7 @@ namespace AlchemistsArsenal.Core
         public const string ArmedKey = "AA_HeadlessPlaytestArmed";
         private const string ReportPath = "headless-playtest-report.txt";
         private const string ScreensDir = "headless-screens";
-        // day 1: tutorial, solo, the Woods' guardian at the end of the waves. day 2: solo.
+        // day 1: tutorial, solo, the Woods (no guardian). day 2: solo, the Woodwose first met.
         // day 3: REPLAYS biome 0 with a full three-hero party, so it is directly
         // comparable with day 1 on the same road - the regression test for
         // "does a bigger party trivialise the early game".
@@ -474,21 +474,24 @@ namespace AlchemistsArsenal.Core
                     ExpeditionReport today = GameLoopManager.Instance.LatestReport;
                     foreach (var step in CheckSpeedBonus(day, today)) yield return step;
                     var stw = SaveSystem.Instance.State;
-                    if (day == 1)
+                    int roadToday = today != null ? today.roadIndex : -1;
+                    if (roadToday == 0)
                     {
-                        // Day 1 is the first job: waves only, no guardian, nothing of the Woodwose yet.
-                        if (today != null && (today.bossDefeated || !string.IsNullOrEmpty(today.bossId)))
-                            Fail($"Day 1: a guardian was fought (id '{today.bossId}', defeated {today.bossDefeated}); day 1 has none.");
-                        else if (Story.StoryDirector.Has(stw, Story.StoryDirector.WoodwoseSeen) || stw.HasDiary("diary_woodwose"))
-                            Fail("Day 1: the Woodwose's scene or diary page appeared on the first night.");
-                        else Log("Day 1: no guardian, no Woodwose scene, no Woodwose page.");
+                        // The Woods are the first job: waves only, no guardian, on any day.
+                        if (today.bossDefeated || !string.IsNullOrEmpty(today.bossId))
+                            Fail($"Day {day}: a guardian was fought in the Woods (id '{today.bossId}', defeated {today.bossDefeated}); the Woods have none.");
+                        else if (!wwSeenBefore && (Story.StoryDirector.Has(stw, Story.StoryDirector.WoodwoseSeen) || stw.HasDiary("diary_woodwose")))
+                            Fail($"Day {day}: the Woodwose's scene or diary page appeared after the Woods.");
+                        else Log($"Day {day}: the Woods, no guardian, no Woodwose scene, no Woodwose page.");
                     }
                     else if (!wwSeenBefore && today != null && today.won && today.bossDefeated && today.bossId == "woodwose")
                     {
-                        // The first night the Woodwose falls: its scene plays and its page opens.
-                        if (!Story.StoryDirector.Has(stw, Story.StoryDirector.WoodwoseSeen) || !stw.HasDiary("diary_woodwose"))
+                        // The first night the Woodwose falls: on the second road, as first met; its scene plays and its page opens.
+                        if (roadToday != 1 || today.bossTier != 0)
+                            Fail($"Day {day}: the Woodwose first fell on road {roadToday} at tier {today.bossTier}; it is first met on road 1 at tier 0.");
+                        else if (!Story.StoryDirector.Has(stw, Story.StoryDirector.WoodwoseSeen) || !stw.HasDiary("diary_woodwose"))
                             Fail($"Day {day}: the Woodwose fell for the first time but its scene or diary page did not appear.");
-                        else Log($"Day {day}: the Woodwose fell for the first time (tier {today.bossTier}); its scene played and its page is unlocked.");
+                        else Log($"Day {day}: the Woodwose fell for the first time ({BiomeLibrary.Name(roadToday)}, tier {today.bossTier}); its scene played and its page is unlocked.");
                     }
                     if (today != null && today.won && today.bossDefeated && SaveSystem.Instance.State.TargetBiomeIndex >= 0)
                     {
@@ -679,6 +682,8 @@ namespace AlchemistsArsenal.Core
             /// <summary>Suffix for screenshots of the second and later orders of a morning ("_o2").</summary>
             private string _orderTag = "";
             private bool _lastScenarioWon;
+            /// <summary>The guardian the last scenario met (its story id), or "" when none came out.</summary>
+            private string _lastScenarioBossId = "";
             private int _clockworkBrews;
 
             /// <summary>
@@ -1652,8 +1657,8 @@ namespace AlchemistsArsenal.Core
                     // The guardian at the end of the waves, once it has come out of the ground.
                     if (world.Expedition.Phase == ExpeditionPhase.BossFight && world.Expedition.BossInstance != null)
                     {
-                        if (bossSeenAt < 0f && SaveSystem.Instance.State.day < BiomeLibrary.FirstGuardianDay)
-                            Fail($"Day {SaveSystem.Instance.State.day}: a guardian came out ({world.Expedition.BossInstance.name}); day 1 has none.");
+                        if (bossSeenAt < 0f && GameLoopManager.Instance.TargetBiomeIndex == 0)
+                            Fail($"Day {SaveSystem.Instance.State.day}: a guardian came out in the Woods ({world.Expedition.BossInstance.name}); the Woods have none.");
                         if (bossSeenAt < 0f) bossSeenAt = Time.time;
                         if (!bossShot && Time.time - bossSeenAt > 2.2f) { bossShot = true; Capture($"{namePrefix}_boss"); Capture($"{namePrefix}_hud_damage"); }
                     }
@@ -2333,12 +2338,17 @@ namespace AlchemistsArsenal.Core
 
             /// <summary>
             /// Each guardian, fought once on a fixed seed. The day loop never reaches the
-            /// Coven Matriarch and only meets the Woodwose on the day-3 replay, so without
+            /// Coven Matriarch, and meets the Woodwose only on the roads it guards, so without
             /// this the bosses were barely exercised at all.
             /// </summary>
             private IEnumerable RunBossScenarios()
             {
-                foreach (var step in RunScenario(0, 5, "boss_woodwose", capture: true)) yield return step;
+                foreach (var step in RunScenario(1, 5, "boss_woodwose", capture: true)) yield return step;
+                // A replay of the Woods late in the run is still the first road: no guardian.
+                foreach (var step in RunScenario(0, 5, "replay_woods_day5", capture: false)) yield return step;
+                if (!string.IsNullOrEmpty(_lastScenarioBossId))
+                    Fail($"replay_woods_day5: a guardian ('{_lastScenarioBossId}') came out in the Woods on day 5; the Woods have none.");
+                else Log("replay_woods_day5: no guardian.");
                 // The Peak is tuned to need the road kit (BiomeLibrary.RoadTierNeeded): she is
                 // met by the party a player has to bring there.
                 var saved = WithRoadKit(BiomeLibrary.RoadTierNeeded[BiomeLibrary.Count - 1]);
@@ -2489,10 +2499,10 @@ namespace AlchemistsArsenal.Core
             {
                 int[] grades = { 97, 85, 70, 50 };
                 foreach (int q in grades)
-                    foreach (var step in RunScenario(0, 11, $"grade_b0_q{q}_x3", capture: false, quality: q, partySize: 3))
+                    foreach (var step in RunScenario(1, 11, $"grade_b1_q{q}_x3", capture: false, quality: q, partySize: 3))
                         yield return step;
                 foreach (int q in new[] { 97, 85, 70 })
-                    foreach (var step in RunScenario(0, 11, $"grade_b0_q{q}_x1", capture: false, quality: q, partySize: 1))
+                    foreach (var step in RunScenario(1, 11, $"grade_b1_q{q}_x1", capture: false, quality: q, partySize: 1))
                         yield return step;
 
                 int peak = BiomeLibrary.Count - 1;
@@ -2555,8 +2565,8 @@ namespace AlchemistsArsenal.Core
                         table.Append($" {cell.tag}={wins}/{seeds.Length}");
                     }
                 }
-                // Day 1 is the Woods without their guardian (BiomeLibrary.GuardianToday): a first-time
-                // player, solo, nothing bought, must win it even with a weak flask.
+                // The Woods have no guardian: a first-time player, solo, nothing bought,
+                // must win them even with a weak flask.
                 var firstDay = new StringBuilder();
                 foreach (int q in new[] { 70, 55, 40 })
                 {
@@ -2564,8 +2574,7 @@ namespace AlchemistsArsenal.Core
                     foreach (int seed in seeds)
                     {
                         st.ownedUpgrades = new List<string>(none);
-                        foreach (var step in RunScenario(0, seed, $"day1_q{q}_s{seed}", capture: false, quality: q, partySize: 1,
-                                     boss: BiomeLibrary.GuardianToday(1)))
+                        foreach (var step in RunScenario(0, seed, $"day1_q{q}_s{seed}", capture: false, quality: q, partySize: 1))
                             yield return step;
                         if (_lastScenarioWon) w++;
                     }
@@ -2645,7 +2654,7 @@ namespace AlchemistsArsenal.Core
             /// seeds the monster spawner, so the fight is reproducible.
             /// </summary>
             private IEnumerable RunScenario(int biome, int seedDay, string label, bool capture, int quality = 85, int partySize = 0,
-                float snapAt = -1f, ExpeditionHudScreen hudWatch = null, bool boss = true, bool mixedVariants = false)
+                float snapAt = -1f, ExpeditionHudScreen hudWatch = null, bool mixedVariants = false)
             {
                 RunState st = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
                 if (st == null) { Fail($"Scenario {label}: no run state."); yield break; }
@@ -2680,7 +2689,8 @@ namespace AlchemistsArsenal.Core
 
                 var root = new GameObject($"~Scenario_{label}");
                 var world = root.AddComponent<ExpeditionWorld>();
-                world.Build(data, loadouts, party, enableBoss: boss);
+                world.Build(data, loadouts, party);
+                _lastScenarioBossId = "";
                 if (hudWatch != null) hudWatch.Watch(world, biome);
 
                 float start = Time.time, nextCapture = 0f;
@@ -2692,6 +2702,7 @@ namespace AlchemistsArsenal.Core
                     if (world.Expedition.Phase == ExpeditionPhase.BossFight && world.Expedition.BossInstance != null)
                     {
                         watch.Attach(world.Expedition.BossInstance);
+                        if (string.IsNullOrEmpty(_lastScenarioBossId)) _lastScenarioBossId = data.Boss != null && data.Boss.StoryId.Length > 0 ? data.Boss.StoryId : world.Expedition.BossInstance.name;
                         watch.Tick();
                         if (capture)
                         {

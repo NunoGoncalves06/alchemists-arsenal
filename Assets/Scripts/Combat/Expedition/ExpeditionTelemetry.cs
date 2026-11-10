@@ -130,6 +130,11 @@ namespace AlchemistsArsenal.Combat
             var def = _expedition != null ? _expedition.Boss : null;
             Report.bossId = Report.bossDefeated && def != null ? def.StoryId : "";
             Report.bossTier = Report.bossDefeated && def != null ? def.Tier : 0;
+            if (Report.bossDefeated && _expedition != null)
+            {
+                Report.guardianBounty = _expedition.RollGuardianBounty();
+                Report.goldFromLoot += Report.guardianBounty;
+            }
 
             Unsubscribe();
         }

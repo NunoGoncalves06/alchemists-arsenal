@@ -41,13 +41,6 @@ namespace AlchemistsArsenal.Combat
         /// </summary>
         public static readonly int[] FightersNeeded = { 1, 1, 2, 3, 3 };
 
-        /// <summary>
-        /// The first day a road ends on its guardian. Day 1 is the first job: the Woods
-        /// are waves only, and the Woodwose (with its scene and diary page) waits for day 2 on.
-        /// </summary>
-        public const int FirstGuardianDay = 2;
-
-        public static bool GuardianToday(int day) => day >= FirstGuardianDay;
         public static readonly int[] RoadTierNeeded = { 0, 0, 1, 2, 2 };
 
         /// <summary>The road's ask, as the biome map says it.</summary>
@@ -93,10 +86,10 @@ namespace AlchemistsArsenal.Combat
                         // Counter steers you to a Fire flask, which Water halves. That is
                         // the intended lesson — one flask cannot cover a whole road.
                         BiomeData.MakeWave(MonsterData.Create("Mossback", ElementType.Water, 46, 1.9f, 4, 8, "Frostmoss", 0.3f), 3, 0.6f, 1.4f),
-                        // A last straggle of Thornlings before the Woodwose: a longer road,
-                        // not a harder one.
+                        // A last straggle of Thornlings: a longer road, not a harder one.
                         BiomeData.MakeWave(MonsterData.Create("Thornling", ElementType.Nature, 34, 2.6f, 2, 5, ""), 2, 1.0f, 1.4f),
-                    }, DefaultExpeditionData.Woodwose());
+                        // The Woods have no guardian, on any day or replay: the first road is the first job.
+                    }, null);
                     break;
 
                 case 1:
@@ -105,8 +98,12 @@ namespace AlchemistsArsenal.Combat
                         BiomeData.MakeWave(MonsterData.Create("Emberling", ElementType.Fire, 40, 2.8f, 4, 8, "Cinder Heart", 0.15f), 4, 0.5f, 1f),
                         BiomeData.MakeWave(MonsterData.Create("Cinder Hound", ElementType.Fire, 55, 3.2f, 5, 10, ""), 3, 0.6f, 1.5f),
                         BiomeData.MakeWave(MonsterData.Create("Bark Treant", ElementType.Nature, 60, 1.6f, 4, 8, ""), 2, 0.7f, 1.5f),
-                        BiomeData.MakeWave(MonsterData.Create("Emberling", ElementType.Fire, 40, 2.8f, 4, 8, ""), 3, 0.6f, 1.4f),
-                    }, null);
+                        // The Elder Woodwose is met here first, in place of the last wave
+                        // (3x Emberling), as every guardian takes its road's last wave.
+                    }, DefaultExpeditionData.Woodwose());
+                    // The road pays back that wave's loot (3 Emberlings at 4-8 g: 12-24 g) when
+                    // the Woodwose falls, so the economy keeps the gold it was balanced on.
+                    b.SetGuardianBounty(12, 24);
                     break;
 
                 case 2:
@@ -120,7 +117,7 @@ namespace AlchemistsArsenal.Combat
                         BiomeData.MakeWave(MonsterData.Create("Rimebeast", ElementType.Water, 180, 1.7f, 7, 13, "", contactDamage: 11), 5, 0.7f, 1.4f),
                         BiomeData.MakeWave(MonsterData.Create("Rime Wraith", ElementType.Arcane, 120, 2.6f, 6, 11, "", contactDamage: 9), 7, 0.45f, 1.4f),
                         BiomeData.MakeWave(MonsterData.Create("Frost Troll", ElementType.Water, 390, 1.3f, 10, 18, "", contactDamage: 15), 3, 1.1f, 1.6f),
-                        // The last wave is the Woods' guardian, back at the end of the ice.
+                        // The last wave is the Woodwose, back at the end of the ice.
                     }, DefaultExpeditionData.Woodwose(1));
                     break;
 

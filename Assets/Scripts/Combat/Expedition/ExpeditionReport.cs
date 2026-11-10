@@ -40,6 +40,8 @@ namespace AlchemistsArsenal.Combat
         public readonly List<string> withdrawnHeroIds = new List<string>();
 
         public int goldFromLoot;
+        /// <summary>Of the loot, what the road paid for its fallen guardian (BiomeData.GuardianBountyMin..Max).</summary>
+        public int guardianBounty;
         public int goldPaidByGrade;   // filled by Economy at hand-off to Evening
 
         /// <summary>The quick-hands bonus on the purse (<see cref="Economy.SpeedBonusGold"/>), and the share of the morning left that earned it.</summary>

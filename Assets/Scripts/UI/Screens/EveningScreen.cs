@@ -364,7 +364,7 @@ namespace AlchemistsArsenal.UI
             UIFactory.Flex(row.gameObject, 1f, 1f, minHeight: 60f);
 
             var gold = UIFactory.Label(row.transform,
-                $"<size=160%><b>{r.TotalGold} g</b></size>\n<size=85%>{r.goldPaidByGrade} g fee  ·  {r.goldFromLoot} g loot{(r.speedBonus > 0 ? $"  ·  {r.speedBonus} g quick hands" : "")}</size>",
+                $"<size=160%><b>{r.TotalGold} g</b></size>\n<size=85%>{r.goldPaidByGrade} g fee  ·  {r.goldFromLoot} g loot{(r.guardianBounty > 0 ? $" (with {r.guardianBounty} g for the guardian)" : "")}{(r.speedBonus > 0 ? $"  ·  {r.speedBonus} g quick hands" : "")}</size>",
                 UITheme.SizeBody, UITheme.Candle, TextAlignmentOptions.TopLeft);
             UIFactory.Flex(gold.gameObject, 0.6f, 1f, minWidth: 220f);
 
