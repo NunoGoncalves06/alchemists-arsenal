@@ -37,6 +37,7 @@ namespace AlchemistsArsenal.DebugTools
                 TestChoice(save, dir);
                 TestMigration(save, dir);
                 TestAtomicSave(save, dir);
+                TestDelete(save, dir);
                 TestSummary();
                 TestEveningMenu();
             }
@@ -125,6 +126,32 @@ namespace AlchemistsArsenal.DebugTools
             Check(s != null && s.saveVersion == RunState.CurrentVersion && s.storyFlags != null,
                 "migration: the save comes up to the current version");
             Check(save.Load(0) && save.State.slot == 0, "migration: Continue on slot 1 resumes it");
+        }
+
+        /// <summary>The slot screen's DELETE: only that slot goes, its backup with it, and nothing brings it back.</summary>
+        private void TestDelete(SaveSystem save, string dir)
+        {
+            foreach (string f in Directory.GetFiles(dir)) File.Delete(f);
+            for (int i = 0; i < SaveSystem.Slots; i++)
+            {
+                save.NewGame(i);
+                save.State.day = 3 + 2 * i;
+                save.Save();
+                save.Save();   // a second write leaves a .bak beside it
+            }
+            save.Delete(1);
+            string p1 = Path.Combine(dir, "slot_1.json");
+            Check(!save.SlotExists(1), "delete: the deleted slot is gone");
+            Check(!File.Exists(p1 + ".bak") && !File.Exists(p1 + ".tmp"), "delete: its backup goes with it");
+            Check(save.Peek(0) != null && save.Peek(0).day == 3 && save.Peek(2) != null && save.Peek(2).day == 7,
+                "delete: the other slots are untouched");
+
+            save.Load(2);
+            save.MarkDirty();
+            save.Delete(2);
+            save.AutoSave();
+            Check(!save.SlotExists(2), "delete: deleting the slot in play is not undone by the next autosave");
+            Check(save.Peek(0) != null && save.Peek(0).day == 3, "delete: slot 1 still holds its run");
         }
 
         private void TestAtomicSave(SaveSystem save, string dir)

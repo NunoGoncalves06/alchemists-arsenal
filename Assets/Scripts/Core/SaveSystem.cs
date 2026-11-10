@@ -115,10 +115,19 @@ namespace AlchemistsArsenal.Core
             return true;
         }
 
+        /// <summary>
+        /// Removes the slot's file and its leftovers (.bak, .tmp). If it is the run in
+        /// memory, nothing is pending any more: the next AutoSave must not write it back.
+        /// </summary>
         public void Delete(int slot)
         {
-            try { if (File.Exists(PathFor(slot))) File.Delete(PathFor(slot)); }
-            catch (Exception e) { Debug.LogWarning($"[SaveSystem] delete slot {slot}: {e.Message}"); }
+            string path = PathFor(slot);
+            foreach (string p in new[] { path, path + ".bak", path + ".tmp" })
+            {
+                try { if (File.Exists(p)) File.Delete(p); }
+                catch (Exception e) { Debug.LogWarning($"[SaveSystem] delete {p}: {e.Message}"); }
+            }
+            if (State != null && State.slot == slot) _dirty = false;
         }
 
         // --------------------------------------------------------------- save

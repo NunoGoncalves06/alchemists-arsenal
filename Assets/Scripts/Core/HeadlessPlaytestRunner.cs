@@ -652,6 +652,8 @@ namespace AlchemistsArsenal.Core
                     foreach (var step in RunDifficultyCurve()) yield return step;
                 }
 
+                foreach (var step in CheckSlotDelete()) yield return step;
+
                 // Last, because it changes what the whole run remembers.
                 foreach (var step in RunEnding()) yield return step;
 
@@ -2920,6 +2922,54 @@ namespace AlchemistsArsenal.Core
             /// the Evening plays reveal, ending and credits, and the run afterwards
             /// remembers it, keeps its last diary pages, and still reaches the map.
             /// </summary>
+            /// <summary>
+            /// The slot screen's DELETE, in a scratch save folder: three saves, the middle
+            /// one deleted through the confirmation, the other two untouched. The run in
+            /// memory and the harness's own folder are put back afterwards.
+            /// </summary>
+            private IEnumerable CheckSlotDelete()
+            {
+                string before = SaveSystem.DirectoryOverride;
+                string dir = System.IO.Path.Combine(before ?? Application.persistentDataPath, "delete-test");
+                ScreenId was = UIManager.Instance.Current;
+                try
+                {
+                    if (System.IO.Directory.Exists(dir)) System.IO.Directory.Delete(dir, true);
+                    System.IO.Directory.CreateDirectory(dir);
+                    for (int i = 0; i < SaveSystem.Slots; i++)
+                    {
+                        RunState r = RunState.NewGame(i);
+                        r.day = 3 + 2 * i;
+                        r.lastSavedUnixSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                        System.IO.File.WriteAllText(System.IO.Path.Combine(dir, $"slot_{i}.json"), JsonUtility.ToJson(r, true));
+                    }
+                    SaveSystem.DirectoryOverride = dir;
+                }
+                catch (Exception e) { Fail($"Slot delete: could not set up the scratch saves: {e.Message}"); SaveSystem.DirectoryOverride = before; yield break; }
+
+                SlotScreen.Open(newGame: false);
+                yield return null;
+                var screen = UIManager.Instance.ScreenOf(ScreenId.Slots) as SlotScreen;
+                if (screen == null) { Fail("Slot delete: no slot screen."); SaveSystem.DirectoryOverride = before; yield break; }
+                CallPrivate(screen, "AskDelete", 1);
+                if (screen.DeletePending != 1) Fail("Slot delete: DELETE on slot 2 did not ask first.");
+                foreach (var step in Settle("slots_delete_confirm")) yield return step;
+                CallPrivate(screen, "ConfirmDelete");
+                SaveSystem save = SaveSystem.Instance;
+                RunState s0 = save.Peek(0), s2 = save.Peek(2);
+                if (save.SlotExists(1)) Fail("Slot delete: the deleted slot is still on disk.");
+                else if (s0 == null || s0.day != 3 || s2 == null || s2.day != 7)
+                    Fail("Slot delete: deleting slot 2 changed another slot.");
+                else if (screen.DeletePending != -1) Fail("Slot delete: the confirmation stayed open after DELETE.");
+                else Log("Slot delete: slot 2 deleted after the confirmation; slots 1 and 3 untouched.");
+                foreach (var step in Settle("slots_after_delete")) yield return step;
+
+                SaveSystem.DirectoryOverride = before;
+                try { System.IO.Directory.Delete(dir, true); } catch { /* best effort */ }
+                UIManager.Instance.Show(was);
+                yield return null;
+            }
+
             private IEnumerable RunEnding()
             {
                 RunState s = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;

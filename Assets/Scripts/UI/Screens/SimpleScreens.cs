@@ -228,7 +228,14 @@ namespace AlchemistsArsenal.UI
         private readonly TextMeshProUGUI[] _head = new TextMeshProUGUI[SaveSystem.Slots];
         private readonly TextMeshProUGUI[] _body = new TextMeshProUGUI[SaveSystem.Slots];
         private readonly Button[] _go = new Button[SaveSystem.Slots];
+        private readonly Button[] _del = new Button[SaveSystem.Slots];
         private int _confirm = -1;
+        // The DELETE confirmation: one modal over the cards, for the slot in _deleting.
+        private RectTransform _deleteModal;
+        private int _deleting = -1;
+
+        /// <summary>The slot the DELETE confirmation is asking about, or -1 when it is closed.</summary>
+        public int DeletePending => _deleting;
 
         /// <summary>True when the screen is choosing where to start a new game.</summary>
         public static bool NewGameMode => _newGame;
@@ -261,10 +268,14 @@ namespace AlchemistsArsenal.UI
                 _head[i] = UIFactory.Heading(card.transform, $"Slot {i + 1}", UITheme.TextHi);
                 UIFactory.Place(_head[i].rectTransform, 0.08f, 0.80f, 0.92f, 0.94f);
                 _body[i] = UIFactory.Label(card.transform, "", UITheme.SizeBody, UITheme.TextMid, TextAlignmentOptions.TopLeft);
-                UIFactory.Place(_body[i].rectTransform, 0.08f, 0.30f, 0.92f, 0.78f);
+                UIFactory.Place(_body[i].rectTransform, 0.08f, 0.34f, 0.92f, 0.78f);
                 _go[i] = UIFactory.Button(card.transform, "", () => Choose(slot));
                 UIFactory.Place(_go[i].image.rectTransform, 0.08f, 0.06f, 0.92f, 0.22f);
+                _del[i] = UIFactory.Button(card.transform, "DELETE", () => AskDelete(slot), primary: false);
+                UIFactory.Place(_del[i].image.rectTransform, 0.56f, 0.24f, 0.92f, 0.32f);
             }
+
+            BuildDeleteModal();
 
             var back = UIFactory.Button(transform, "BACK", () => UIManager.Instance.Show(ScreenId.MainMenu), primary: false);
             UIFactory.Place(back.image.rectTransform, 0.06f, 0.10f, 0.22f, 0.18f);
@@ -273,7 +284,53 @@ namespace AlchemistsArsenal.UI
         protected override void OnShow()
         {
             _confirm = -1;
+            CancelDelete();
             Refresh();
+        }
+
+        private void BuildDeleteModal()
+        {
+            _deleteModal = UIFactory.Root(transform, "DeleteConfirm");
+            var scrim = UIFactory.Panel(_deleteModal, UITheme.Alpha(UITheme.Ink900, 0.78f), "Scrim");
+            UIFactory.Stretch(scrim.rectTransform);   // takes every click behind the question
+            var box = UIFactory.Panel(_deleteModal, UITheme.Surface, "Question");
+            UIFactory.Place(box.rectTransform, 0.30f, 0.38f, 0.70f, 0.62f);
+            var q = UIFactory.Label(box.transform, "Delete this save? This cannot be undone.", UITheme.SizeBody,
+                UITheme.TextHi, TextAlignmentOptions.Center, true);
+            UIFactory.Place(q.rectTransform, 0.06f, 0.48f, 0.94f, 0.92f);
+            var yes = UIFactory.Button(box.transform, "DELETE", ConfirmDelete);
+            UIFactory.TintButton(yes, UITheme.Danger, UITheme.Alpha(UITheme.Danger, 0.8f), UITheme.TextHi);
+            UIFactory.Place(yes.image.rectTransform, 0.06f, 0.10f, 0.46f, 0.38f);
+            var no = UIFactory.Button(box.transform, "CANCEL", CancelDelete, primary: false);
+            UIFactory.Place(no.image.rectTransform, 0.54f, 0.10f, 0.94f, 0.38f);
+            _deleteModal.gameObject.SetActive(false);
+        }
+
+        private void Update()
+        {
+            if (_deleting >= 0 && Input.GetKeyDown(KeyCode.Escape)) CancelDelete();
+        }
+
+        private void AskDelete(int slot)
+        {
+            if (SaveSystem.Instance == null || !SaveSystem.Instance.SlotExists(slot)) return;
+            _deleting = slot;
+            _confirm = -1;
+            _deleteModal.gameObject.SetActive(true);
+            _deleteModal.SetAsLastSibling();
+        }
+
+        private void ConfirmDelete()
+        {
+            if (_deleting >= 0 && SaveSystem.Instance != null) SaveSystem.Instance.Delete(_deleting);
+            CancelDelete();
+            Refresh();
+        }
+
+        private void CancelDelete()
+        {
+            _deleting = -1;
+            if (_deleteModal != null) _deleteModal.gameObject.SetActive(false);
         }
 
         private void Refresh()
@@ -298,6 +355,7 @@ namespace AlchemistsArsenal.UI
                     ? (exists ? (_confirm == i ? "Sure? Click again" : "OVERWRITE") : "START HERE")
                     : "CONTINUE";
                 UIFactory.SetButtonText(_go[i], label);
+                _del[i].gameObject.SetActive(exists);   // a corrupt file can be deleted too
                 bool can = _newGame || s != null;
                 _go[i].interactable = can;
                 // Nothing to continue here: dark, like the title's CONTINUE.
