@@ -35,6 +35,19 @@ namespace AlchemistsArsenal.UI.Stations
         private PrepBench _hooked;
         private int _stepsSig = -1;
 
+        // The note's leaf marks and what each one is, for the tooltip.
+        private readonly System.Collections.Generic.List<RectTransform> _stepIcons = new System.Collections.Generic.List<RectTransform>();
+        private readonly System.Collections.Generic.List<ElementType> _stepKinds = new System.Collections.Generic.List<ElementType>();
+        private Image _tip;
+        private TextMeshProUGUI _tipText;
+        private int _tipAt = -1;
+
+        /// <summary>What the leaf tooltip says right now, or null while it is hidden.</summary>
+        public string TooltipText => _tip != null && _tip.gameObject.activeSelf ? _tipText.text : null;
+
+        /// <summary>The note's leaf mark <paramref name="i"/>, or null.</summary>
+        public RectTransform StepIcon(int i) => i >= 0 && i < _stepIcons.Count ? _stepIcons[i] : null;
+
         protected override void BuildContent(RectTransform root)
         {
             // The recipe, pinned to the wall above the bench: a paper note.
@@ -54,6 +67,17 @@ namespace AlchemistsArsenal.UI.Stations
 
             _caption = UIKit.Caption(root, "PrepCaption");
             UIFactory.Place(_caption.Root.rectTransform, 0.18f, 0.035f, 0.82f, 0.095f);
+
+            // The leaf tooltip: the leaf's kind, over the mark the pointer is on, at once.
+            _tip = UIFactory.Panel(root, UITheme.Ink900, "LeafTip");
+            var tr = _tip.rectTransform;
+            tr.anchorMin = tr.anchorMax = new Vector2(0.5f, 0.5f);
+            tr.pivot = new Vector2(0.5f, 0f);
+            tr.sizeDelta = new Vector2(96f, 26f);
+            _tipText = UIFactory.Label(_tip.transform, "", UITheme.SizeSmall, UITheme.TextHi, TextAlignmentOptions.Center, true);
+            UIFactory.Stretch(_tipText.rectTransform, 2f);
+            PassThrough(_tip.transform);
+            _tip.gameObject.SetActive(false);
         }
 
         /// <summary>Overlays must never eat a click meant for the bench behind them.</summary>
@@ -121,6 +145,9 @@ namespace AlchemistsArsenal.UI.Stations
         private void BuildSteps(BrewMixture mix)
         {
             Clear(_stepRow);
+            _stepIcons.Clear();
+            _stepKinds.Clear();
+            _tipAt = -1;
             for (int i = 0; i < mix.Recipe.StepCount; i++)
             {
                 ElementType want = mix.Recipe.Steps[i];
@@ -129,12 +156,15 @@ namespace AlchemistsArsenal.UI.Stations
                 var icon = UIFactory.Icon(_stepRow, PixelSprites.Herb(got), 26f,
                     filled ? (got == want ? Color.white : UITheme.Alpha(UITheme.Danger, 0.9f)) : UITheme.Alpha(Color.white, 0.35f));
                 UIFactory.Flex(icon.gameObject, 0f, 0f, minWidth: 28f, minHeight: 28f);
+                _stepIcons.Add(icon.rectTransform);
+                _stepKinds.Add(got);   // the mark shows what went in, so the tip names that
             }
             PassThrough(_stepRow);
         }
 
         public override void Tick()
         {
+            TickTooltip();
             var bench = PrepBench.Instance;
             if (bench == null) return;
             var leaf = bench.Hovered;
@@ -148,6 +178,28 @@ namespace AlchemistsArsenal.UI.Stations
                 line = !string.IsNullOrEmpty(bench.Reaction) && bench.StrikesLeft < QualityBudget.GrindStrikes && !bench.Lifting
                     ? bench.Reaction : bench.Hint;
             _caption.Set(line);
+        }
+
+        /// <summary>Shows the kind of the leaf mark under the pointer (no delay), hides it otherwise.</summary>
+        private void TickTooltip()
+        {
+            if (_tip == null) return;
+            int hit = -1;
+            if (_note != null && _note.gameObject.activeInHierarchy)
+            {
+                Vector2 at = PhysicsKit.Pointer.Screen(Camera.main);
+                for (int i = 0; i < _stepIcons.Count; i++)
+                    if (_stepIcons[i] != null && RectTransformUtility.RectangleContainsScreenPoint(_stepIcons[i], at, null)) { hit = i; break; }
+            }
+            if (hit < 0) { _tipAt = -1; if (_tip.gameObject.activeSelf) _tip.gameObject.SetActive(false); return; }
+            if (hit == _tipAt && _tip.gameObject.activeSelf) return;
+            _tipAt = hit;
+            _tipText.text = _stepKinds[hit].ToString();
+            RectTransform icon = _stepIcons[hit];
+            Vector3 top = icon.TransformPoint(new Vector3(icon.rect.center.x, icon.rect.yMax + 4f, 0f));
+            _tip.rectTransform.position = top;
+            if (!_tip.gameObject.activeSelf) _tip.gameObject.SetActive(true);
+            _tip.rectTransform.SetAsLastSibling();
         }
     }
 }

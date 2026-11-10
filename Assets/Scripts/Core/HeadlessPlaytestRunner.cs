@@ -1156,6 +1156,32 @@ namespace AlchemistsArsenal.Core
                     Log($"Steep: the water sorted the grain — {husks} husks floating at {huskY:0.00}, {good} grains sunk to {goodY:0.00}.");
             }
 
+            /// <summary>
+            /// The recipe note's leaf marks: with the pointer on one, a tooltip names its
+            /// kind ("Poison") at once; off it, the tooltip is gone.
+            /// </summary>
+            private IEnumerable CheckLeafTooltip(BrewMixture mix)
+            {
+                var morning = UIManager.Instance != null ? UIManager.Instance.ScreenOf(ScreenId.Morning) as MorningScreen : null;
+                var prep = morning != null ? morning.Prep : null;
+                Camera cam = Camera.main;
+                foreach (var f in Frames(3)) yield return f;   // the note builds its marks on Refresh
+                RectTransform icon = prep != null ? prep.StepIcon(0) : null;
+                if (icon == null || cam == null) { Fail("Leaf tooltip: no leaf mark on the recipe note (or no camera)."); yield break; }
+                Vector2 screen = RectTransformUtility.WorldToScreenPoint(null, icon.TransformPoint(icon.rect.center));
+                Vector3 sp = new Vector3(screen.x, screen.y, Mathf.Abs(cam.transform.position.z));
+                Vector2 saved = _pointer.World;
+                _pointer.World = cam.ScreenToWorldPoint(sp);
+                foreach (var f in Frames(2)) yield return f;
+                string want = mix.Recipe.Steps[0].ToString();
+                if (prep.TooltipText != want) Fail($"Leaf tooltip: on the first leaf mark it says '{prep.TooltipText ?? "(hidden)"}', not '{want}'.");
+                Capture("day1_prep_tooltip");
+                _pointer.World = saved;
+                foreach (var f in Frames(2)) yield return f;
+                if (prep.TooltipText != null) Fail($"Leaf tooltip: still up ('{prep.TooltipText}') after the pointer left the mark.");
+                else Log($"Leaf tooltip: '{want}' over the first leaf mark, gone off it.");
+            }
+
             private IEnumerable DrivePrep(ActiveOrder order, int day)
             {
                 var bench = Crafting.PrepBench.Instance;
@@ -1167,6 +1193,7 @@ namespace AlchemistsArsenal.Core
                 var mix = order.Mixture;
                 if (mix == null) { Fail("Order has no mixture."); yield break; }
                 PhysicsKit.Pointer.Scripted = _pointer;
+                if (day == 1 && _orderTag == "") foreach (var step in CheckLeafTooltip(mix)) yield return step;
 
                 // Leaves: click each one the recipe asks for; a click tosses it into the bowl.
                 foreach (ElementType want in mix.Recipe.Steps)

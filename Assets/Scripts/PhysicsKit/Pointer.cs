@@ -28,6 +28,13 @@ namespace AlchemistsArsenal.PhysicsKit
             return cam.ScreenToWorldPoint(p);
         }
 
+        /// <summary>Pointer position on screen, in pixels (the scripted pointer seen through <paramref name="cam"/>).</summary>
+        public static Vector2 Screen(Camera cam)
+        {
+            if (Scripted == null) return Input.mousePosition;
+            return cam != null ? (Vector2)cam.WorldToScreenPoint(Scripted.World) : Vector2.zero;
+        }
+
         public static bool Held => Scripted != null ? Scripted.Held : Input.GetMouseButton(0);
         public static bool PressedThisFrame => Scripted != null ? Scripted.PressedThisFrame : Input.GetMouseButtonDown(0);
         public static bool ReleasedThisFrame => Scripted != null ? Scripted.ReleasedThisFrame : Input.GetMouseButtonUp(0);

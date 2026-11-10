@@ -54,6 +54,7 @@ namespace AlchemistsArsenal.UI
 
         // --- what the tutorial and the harness look at --------------------------
         public CounterStation Counter => (CounterStation)_stations[(int)StationTab.Counter];
+        public PrepStation Prep => (PrepStation)_stations[(int)StationTab.Prep];
         /// <summary>0 Counter, 1 Steep, 2 Kiln, 3 Prep, 4 Cauldron, 5 Bottling, 6 Delivery.</summary>
         public int ActiveTabIndex => (int)_activeTab;
         public RectTransform RailTabRect(int index) =>
