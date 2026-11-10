@@ -75,11 +75,9 @@ namespace AlchemistsArsenal.Core
             float cdMult = s != null && s.HasUpgrade(UpgradeCatalog.QuickHands) ? 0.75f : 1f;
             int ammoBonus = HeroStats.KitFlasks(s) + Mathf.Max(0, heroAmmoBonus);
 
-            // Day 1 is a first-timer's fight with whatever quality potion they
-            // managed on their very first try at the cauldron — a flat "beginner's
-            // luck" bonus keeps that fight winnable instead of a rough first
-            // impression (playtest: "combat is all fucked" on day 1 specifically).
-            if (s != null && s.day <= 1) dmgMult *= 1.5f;
+            // No day enters into it: a road is as hard on a replay as it was the first
+            // time (the old day-1 "beginner's luck" x1.5 made a lost Woods harder to
+            // win back). The Woods themselves are tuned for a Poor first flask.
 
             // Base stats are the "spec" of the potion; the 0..1 quality that scales
             // damage/blast/elemental is carried separately via the live ActiveOrder.

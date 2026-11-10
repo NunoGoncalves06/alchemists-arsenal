@@ -43,6 +43,12 @@ namespace AlchemistsArsenal.Core
 
         private readonly List<HeroRecord> _partyRecords = new List<HeroRecord>();
 
+        /// <summary>The harness's variation: when set, fights are seeded with it instead of the road's own seed.</summary>
+        public static int? SpawnSeedOverride;
+
+        /// <summary>The spawner's seed for a road: the road alone decides it (or the harness's override).</summary>
+        public static int SpawnSeed(int biomeIndex) => SpawnSeedOverride ?? 7919 + 31 * biomeIndex;
+
         public void Build(BiomeData biome, IReadOnlyList<AdventurerLoadout> loadouts,
             IReadOnlyList<HeroRecord> party)
         {
@@ -101,12 +107,13 @@ namespace AlchemistsArsenal.Core
 
             var spawner = new GameObject("MonsterSpawner").AddComponent<MonsterSpawner>();
             spawner.transform.SetParent(transform, false);
-            // Deterministic per (day, biome) so a fight is reproducible, and isolated
+            // Deterministic per road, so a road is the same fight every time it is walked
+            // (a replay is exactly as hard as the first try, whatever the day), and isolated
             // from the global random stream so unrelated features cannot shift it.
             RunState run = SaveSystem.Instance != null ? SaveSystem.Instance.State : null;
             int day = run != null ? run.day : 1;
             int biomeIndex = run != null ? run.TargetBiomeIndex : 0;
-            spawner.Configure(matrix, biome.ArenaWidth * 0.5f, 7919 * day + 31 * biomeIndex);
+            spawner.Configure(matrix, biome.ArenaWidth * 0.5f, SpawnSeed(biomeIndex));
             spawner.PartySize = adventurerCount;
             ElementType ground = biome.Theme;
             spawner.Spawned += body => ArenaSurface.Apply(body, ground);

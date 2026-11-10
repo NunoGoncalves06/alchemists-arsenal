@@ -663,6 +663,7 @@ namespace AlchemistsArsenal.Core
                     foreach (var step in RunDifficultyCurve()) yield return step;
                 }
 
+                CheckReplayLoadout();
                 foreach (var step in CheckSlotDelete()) yield return step;
 
                 // Last, because it changes what the whole run remembers.
@@ -2826,7 +2827,10 @@ namespace AlchemistsArsenal.Core
                 if (hudWatch != null) hudWatch.Watch(world, biome);
 
                 float start = Time.time, nextCapture = 0f;
+                // The road's own fight varies only by the harness's seed (the game seeds by road alone).
+                ExpeditionWorld.SpawnSeedOverride = 7919 * seedDay + 31 * biome;
                 const float Timeout = 240f;
+                ExpeditionWorld.SpawnSeedOverride = null;
                 var watch = new BossWatch();
                 while (world.Expedition.Phase != ExpeditionPhase.Won && world.Expedition.Phase != ExpeditionPhase.Lost
                        && Time.time - start < Timeout)
@@ -3116,6 +3120,22 @@ namespace AlchemistsArsenal.Core
                         RunState r = RunState.NewGame(i);
                         r.day = 3 + 2 * i;
                         r.lastSavedUnixSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            /// <summary>A road is as hard on a replay: the same order arms the same bomb on day 1 and day 5.</summary>
+            private void CheckReplayLoadout()
+            {
+                RunState s = SaveSystem.Instance.State;
+                int day0 = s.day;
+                var order = new ActiveOrder("T", "Ember Tonic", ElementType.Fire);
+                s.day = 1;
+                var d1 = LoadoutBuilder.Build(order);
+                s.day = 5;
+                var d5 = LoadoutBuilder.Build(order);
+                s.day = day0;
+                if (d1.Slots[0].bomb.BaseDamage != d5.Slots[0].bomb.BaseDamage || d1.Slots[0].count != d5.Slots[0].count)
+                    Fail($"Replay: the same flask is {d1.Slots[0].bomb.BaseDamage} dmg x{d1.Slots[0].count} on day 1 but {d5.Slots[0].bomb.BaseDamage} x{d5.Slots[0].count} on day 5.");
+                else Log($"Replay: the same flask arms the same bomb on day 1 and day 5 ({d1.Slots[0].bomb.BaseDamage} dmg x{d1.Slots[0].count}).");
+            }
+
                         System.IO.File.WriteAllText(System.IO.Path.Combine(dir, $"slot_{i}.json"), JsonUtility.ToJson(r, true));
                     }
                     SaveSystem.DirectoryOverride = dir;
