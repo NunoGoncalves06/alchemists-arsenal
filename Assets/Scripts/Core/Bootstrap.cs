@@ -58,7 +58,12 @@ namespace AlchemistsArsenal.Core
             Add<UIManager>("UIManager");
 
             // "-smoketest": reach the main menu, say so in the log, and quit (the release script's launch check).
-            if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-smoketest") >= 0) StartCoroutine(SmokeTest());
+            string[] args = System.Environment.GetCommandLineArgs();
+            if (System.Array.IndexOf(args, "-smoketest") >= 0)
+            {
+                if (System.Array.IndexOf(args, "-sound") < 0) AudioListener.volume = 0f;   // a launch check is silent unless asked
+                StartCoroutine(SmokeTest());
+            }
         }
 
         private System.Collections.IEnumerator SmokeTest()
