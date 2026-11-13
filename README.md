@@ -36,11 +36,21 @@ Every monster has an element, and so does every flask. The right one hits twice 
 
 ## Download and play
 
-1. Open the [Releases](../../releases) page and download `AlchemistsArsenal-Windows.zip`.
-2. Unzip it anywhere. Keep the files together: the `.exe` won't start without the folder next to it.
-3. Run `AlchemistsArsenal.exe`.
+Get the latest build from the [Releases](../../releases) page.
 
-The game isn't signed, so Windows may say it protected your PC. Click **More info**, then **Run anyway**. You don't need to install anything else.
+### Windows
+
+1. Download `AlchemistsArsenal-Windows.zip` and unzip it anywhere. Keep the files together: the `.exe` won't start without the folder next to it.
+2. Run `AlchemistsArsenal.exe`.
+
+The game isn't signed, so Windows may say it protected your PC. Click **More info**, then **Run anyway**.
+
+### Linux
+
+1. Download `AlchemistsArsenal-Linux.tar.gz` and unpack it: `tar -xzf AlchemistsArsenal-Linux.tar.gz`
+2. Run `./AlchemistsArsenal/AlchemistsArsenal.x86_64`
+
+You don't need to install anything else on either system.
 
 ## Controls
 
@@ -54,13 +64,13 @@ The game is played with the mouse.
 
 ## Minimum requirements
 
-- Windows 10 or 11, 64-bit
-- A graphics card with DirectX 11 support
+- Windows 10 or 11, 64-bit, with a DirectX 11 graphics card
+- or Linux x86_64 (Ubuntu 22.04 or similar), with a graphics card that supports Vulkan or OpenGL 4.5
 
 ## Building from source
 
-Open the project in Unity 6000.6 and build for Windows x64 from **File > Build Profiles**.
+Open the project in Unity 6000.6 and build from **File > Build Profiles** (Windows x64, or Linux x64 with the Linux Build Support module).
 
 ## License
 
-All rights reserved. You can download and play the game, but the code, art and music may not be reused without permission. See [LICENSE](LICENSE).
+All rights reserved. You can download and play the game, but the code, art and music may not be reused without permission. See [LICENSE](LICENSE). The fonts (Gelasio, Selawik and Inconsolata) are used under the SIL Open Font License, with their licences in `Assets/Resources/Fonts`.
