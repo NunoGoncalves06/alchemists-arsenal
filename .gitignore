@@ -97,3 +97,7 @@ crashlytics-build.properties
 # *.mp4
 # *.mov
 # *.wav
+
+# --- release script output ---
+/build-release/
+/build.log
