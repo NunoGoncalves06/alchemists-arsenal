@@ -121,17 +121,17 @@ namespace AlchemistsArsenal.UI
         /// <summary>Serif display face — titles, the shop sign, hero numbers.</summary>
         public static TMP_FontAsset Display => _display != null
             ? _display
-            : _display = BuildFont("DisplayFont", DisplayFamilies);
+            : _display = BuildFont("DisplayFont", "Fonts/Gelasio-Regular", DisplayFamilies);
 
         /// <summary>The reading face — every label, button and paragraph.</summary>
         public static TMP_FontAsset Body => _body != null
             ? _body
-            : _body = BuildFont("BodyFont", BodyFamilies);
+            : _body = BuildFont("BodyFont", "Fonts/Selawik-Semibold", BodyFamilies);
 
         /// <summary>Fixed-pitch — ledgers, the deduction log, aligned figures.</summary>
         public static TMP_FontAsset Mono => _mono != null
             ? _mono
-            : _mono = BuildFont("MonoFont", MonoFamilies);
+            : _mono = BuildFont("MonoFont", "Fonts/Inconsolata-Regular", MonoFamilies);
 
         /// <summary>Back-compat alias for the pre-redesign single font.</summary>
         public static TMP_FontAsset Font => Body;
@@ -178,8 +178,25 @@ namespace AlchemistsArsenal.UI
         /// the game rendered in the same sans as the body text (caught by comparing a
         /// headless-playtest screenshot against what the serif should look like).
         /// </summary>
-        private static TMP_FontAsset BuildFont(string name, string[] families)
+        private static TMP_FontAsset BuildFont(string name, string bundled, string[] families)
         {
+            // The game ships its own faces (Resources/Fonts, SIL OFL, licences beside them), so every
+            // OS draws the same letters: Linux has none of the Windows families below. An imported
+            // font carries its file data, so CreateFontAsset(Font) works here, unlike an OS font.
+            Font file = Resources.Load<Font>(bundled);
+            if (file != null)
+            {
+                TMP_FontAsset own = TMP_FontAsset.CreateFontAsset(file);
+                if (own != null)
+                {
+                    own.name = $"{name} ({file.name})";
+                    TMP_FontAsset fb = Fallback;
+                    if (fb != null && fb != own) own.fallbackFontAssetTable = new List<TMP_FontAsset> { fb };
+                    return own;
+                }
+            }
+            Debug.LogWarning($"[UITheme] {name}: the bundled face '{bundled}' did not load; trying the system's.");
+
             foreach (string family in families)
             {
                 TMP_FontAsset asset = null;
