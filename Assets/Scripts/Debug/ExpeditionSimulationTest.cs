@@ -1,0 +1,294 @@
+using System.Linq;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using AlchemistsArsenal.Combat;
+using AlchemistsArsenal.Combat.Considerations;
+using AlchemistsArsenal.Data;
+
+namespace AlchemistsArsenal.DebugTools
+{
+    /// <summary>
+    /// Play-mode integration test for the playable slice: spins up a tiny expedition
+    /// (spawner + wave director + one real adventurer) and asserts it reaches a
+    /// terminal Won / Lost state for the right reason.
+    /// </summary>
+    public class ExpeditionSimulationTest : MonoBehaviour, ISimulationSuite
+    {
+        public bool Done => Finished;
+        /// <summary>Set when every scenario has resolved, so a harness can wait on it.</summary>
+        public static bool Finished { get; private set; }
+
+        private void Start() { Finished = false; StartCoroutine(Run()); }
+
+        private IEnumerator Run()
+        {
+            Debug.Log("<color=cyan><b>=== EXPEDITION SLICE SIMULATION ===</b></color>");
+            yield return Scenario_Win();
+            yield return Scenario_Lose();
+            yield return Scenario_OutOfFlasks();
+            yield return Scenario_Withdraw();
+            Finished = true;
+            Debug.Log("<color=cyan><b>=== SIMULATION COMPLETE ===</b></color>");
+        }
+
+        private IEnumerator Scenario_Win()
+        {
+            MonsterRegistry.Clear();
+            AdventurerRegistry.Clear();
+
+            ElementalMatrix matrix = BuildMatrix();
+            SpawnAdventurer(new Vector2(-8f, 0f), 300, matrix);
+
+            MonsterData weakling = MonsterData.Create("Weakling", ElementType.Nature, 8, 1.2f);
+            var biome = ScriptableObject.CreateInstance<BiomeData>();
+            biome.Configure("Test Grove", ElementType.Nature, Color.gray, 20f,
+                new[] { BiomeData.MakeWave(weakling, 3, 0.3f, 0.3f) }, null);
+
+            ExpeditionManager mgr = BuildExpedition(biome, matrix);
+
+            bool finished = false, won = false;
+            mgr.OnFinished += w => { finished = true; won = w; };
+
+            float t = 0f;
+            while (!finished && t < 30f) { t += Time.deltaTime; yield return null; }
+
+            Report($"Win scenario finished ({t:F1}s)", finished);
+            Report("Win scenario outcome = Won", won && mgr.Phase == ExpeditionPhase.Won);
+
+            CleanupExpedition(mgr, biome);
+        }
+
+        private IEnumerator Scenario_Lose()
+        {
+            MonsterRegistry.Clear();
+            AdventurerRegistry.Clear();
+
+            ElementalMatrix matrix = BuildMatrix();
+            // Fragile, starts close, and unarmed. This used to be armed and only lost
+            // because a monster hugging the hero vetoed every throw (the min-safe-range
+            // stall); with point-blank throws legal, a Perfect flask every 0.8 s
+            // juggles three brutes with knockback and wins. The scenario is about the
+            // wipe path, so the hero is given nothing to fight back with.
+            SpawnAdventurer(new Vector2(-3f, 0f), 12, matrix, armed: false);
+
+            MonsterData brute = MonsterData.Create("Brute", ElementType.Fire, 400, 4.5f);
+            var biome = ScriptableObject.CreateInstance<BiomeData>();
+            biome.Configure("Test Pit", ElementType.Fire, Color.gray, 16f,
+                new[] { BiomeData.MakeWave(brute, 3, 0.2f, 0.2f) }, null);
+
+            ExpeditionManager mgr = BuildExpedition(biome, matrix);
+
+            bool finished = false, won = true;
+            mgr.OnFinished += w => { finished = true; won = w; };
+
+            float t = 0f;
+            while (!finished && t < 30f) { t += Time.deltaTime; yield return null; }
+
+            Report($"Lose scenario finished ({t:F1}s)", finished);
+            Report("Lose scenario outcome = Lost", !won && mgr.Phase == ExpeditionPhase.Lost);
+            Report($"Lose scenario says the party was wiped out ('{mgr.OutcomeReason}')",
+                mgr.OutcomeReason.Contains("wiped out"));
+
+            CleanupExpedition(mgr, biome);
+        }
+
+        /// <summary>
+        /// Regression test for the reported bug: the player ran out of flasks, the
+        /// adventurer stood there taking contact damage, each wave hit its safety
+        /// cap, the monsters were despawned, and the run reported a VICTORY with a
+        /// full wave clear.
+        ///
+        /// Two separate faults: the timeout despawned the survivors and fell
+        /// through to Win(), and nothing ever noticed the party could no longer
+        /// damage anything. This asserts both are fixed - an unarmed party must
+        /// LOSE, promptly, and must not be credited with clearing anything.
+        /// </summary>
+        private IEnumerator Scenario_OutOfFlasks()
+        {
+            MonsterRegistry.Clear();
+            AdventurerRegistry.Clear();
+
+            ElementalMatrix matrix = BuildMatrix();
+            // Tough enough to survive the whole wave, but with a single flask -
+            // far too little to kill anything here.
+            SpawnAdventurer(new Vector2(-8f, 0f), 4000, matrix, ammo: 1);
+
+            MonsterData tank = MonsterData.Create("Tank", ElementType.Nature, 5000, 0.6f);
+            var biome = ScriptableObject.CreateInstance<BiomeData>();
+            biome.Configure("Test Impasse", ElementType.Nature, Color.gray, 20f,
+                new[] { BiomeData.MakeWave(tank, 2, 0.3f, 0.3f) }, null);
+
+            ExpeditionManager mgr = BuildExpedition(biome, matrix);
+            CombatantBody hero = AdventurerRegistry.ActiveAdventurers.Count > 0
+                ? AdventurerRegistry.ActiveAdventurers[0] as CombatantBody : null;
+
+            bool finished = false, won = true;
+            mgr.OnFinished += w => { finished = true; won = w; };
+
+            float t = 0f;
+            while (!finished && t < 40f) { t += Time.deltaTime; yield return null; }
+
+            Report("Out-of-flasks: the dry fighter withdrew (not killed)",
+                hero != null && hero.IsWithdrawn && hero.CurrentHP > 0);
+            Report($"Out-of-flasks says the party retreated ('{mgr.OutcomeReason}')",
+                mgr.OutcomeReason.Contains("retreated"));
+
+            Report($"Out-of-flasks scenario finished ({t:F1}s)", finished);
+            Report("Out-of-flasks outcome = Lost (NOT a phantom victory)",
+                finished && !won && mgr.Phase == ExpeditionPhase.Lost);
+            Report($"Out-of-flasks credits 0 waves cleared (got {mgr.WavesCleared})",
+                mgr.WavesCleared == 0);
+            Report($"Out-of-flasks says why ('{mgr.OutcomeReason}')",
+                !string.IsNullOrEmpty(mgr.OutcomeReason));
+
+            // It must give up rather than let the player be chewed on for the full
+            // safety cap of every wave in the biome.
+            Report($"Out-of-flasks ends promptly, not after the wave timeout ({t:F1}s)", t < 15f);
+
+            CleanupExpedition(mgr, biome);
+        }
+
+        /// <summary>
+        /// One of two fighters runs out of flasks: they leave the road (no longer a
+        /// target, not dead), the other wins it alone, and the star for bringing every
+        /// hero back is lost because one did not stay to the end.
+        /// </summary>
+        private IEnumerator Scenario_Withdraw()
+        {
+            MonsterRegistry.Clear();
+            AdventurerRegistry.Clear();
+
+            ElementalMatrix matrix = BuildMatrix();
+            SpawnAdventurer(new Vector2(-8f, 0.6f), 4000, matrix, ammo: 1);
+            CombatantBody dry = AdventurerRegistry.ActiveAdventurers[0] as CombatantBody;
+            SpawnAdventurer(new Vector2(-8f, -0.6f), 4000, matrix, ammo: 99);
+            // The flask at the dry fighter's belt, as the arena hangs it there.
+            var beltGo = new GameObject("BeltFlask");
+            beltGo.transform.SetParent(dry.transform, false);
+            beltGo.AddComponent<SpriteRenderer>();
+            BeltFlaskView belt = beltGo.AddComponent<BeltFlaskView>();
+            belt.Bind(dry.GetComponent<UtilityAI_CombatController>());
+            bool beltAtLeave = true;
+
+            MonsterData weakling = MonsterData.Create("Straggler", ElementType.Nature, 40, 0.8f);
+            var biome = ScriptableObject.CreateInstance<BiomeData>();
+            biome.Configure("Test Lane", ElementType.Nature, Color.gray, 20f,
+                new[] { BiomeData.MakeWave(weakling, 6, 1.2f, 1.2f) }, null);
+
+            ExpeditionManager mgr = BuildExpedition(biome, matrix, out ExpeditionTelemetry tel);
+
+            bool finished = false, won = false, leftRoster = false;
+            int hpAtLeave = -1;
+            mgr.OnFinished += w => { finished = true; won = w; };
+
+            float t = 0f;
+            while (!finished && t < 40f)
+            {
+                if (dry != null && dry.IsWithdrawn && !AdventurerRegistry.ActiveAdventurers.Contains(dry)) leftRoster = true;
+                if (dry != null && dry.IsWithdrawn && hpAtLeave < 0) { hpAtLeave = dry.CurrentHP; beltAtLeave = belt.Visible; }
+                t += Time.deltaTime;
+                yield return null;
+            }
+
+            ExpeditionReport r = tel.Report;
+            Report($"Withdraw scenario finished and was Won by the fighter who stayed ({t:F1}s)", finished && won);
+            Report("Withdraw: the dry fighter withdrew", dry != null && dry.IsWithdrawn);
+            Report("Withdraw: they walk off with no flask in hand (hidden after the last throw)", !beltAtLeave);
+            Report("Withdraw: they left the targets list (monsters and the boss read it)", leftRoster);
+            Report($"Withdraw: they did not die (hp {(dry != null ? dry.CurrentHP : -1)})", dry != null && dry.CurrentHP > 0);
+            Report($"Withdraw: they took no damage after leaving ({hpAtLeave} -> {(dry != null ? dry.CurrentHP : -1)})",
+                dry != null && hpAtLeave > 0 && dry.CurrentHP == hpAtLeave);
+            Report($"Withdraw: counted as not back (partyDown {r.partyDown}, withdrew {r.partyWithdrew})",
+                r.partyDown == 1 && r.partyWithdrew == 1);
+            Report("Withdraw: nobody counted as fallen in battle", r.downedHeroIds.Count == 0);
+            Report("Withdraw: the star for bringing every hero back is lost", !r.StarEveryHeroBack);
+
+            Destroy(tel.gameObject);
+            CleanupExpedition(mgr, biome);
+        }
+
+        // ------------------------------------------------------------- helpers
+
+        private static ElementalMatrix BuildMatrix()
+        {
+            var m = ScriptableObject.CreateInstance<ElementalMatrix>();
+            m.SetMultiplier(ElementType.Fire, ElementType.Nature, 2f);
+            m.SetMultiplier(ElementType.Nature, ElementType.Fire, 0.5f);
+            return m;
+        }
+
+        private static void SpawnAdventurer(Vector2 pos, int hp, ElementalMatrix matrix, int ammo = 99, bool armed = true)
+        {
+            var go = new GameObject("TestAdventurer");
+            go.SetActive(false);
+            go.transform.position = pos;
+
+            var rb = go.AddComponent<Rigidbody2D>();
+            rb.gravityScale = 0f;
+            rb.linearDamping = 2.5f;
+            rb.freezeRotation = true;
+            go.AddComponent<CircleCollider2D>().radius = 0.4f;
+
+            var body = go.AddComponent<CombatantBody>();
+            body.Initialise(Team.Adventurer, ElementType.Nature, hp);
+
+            go.AddComponent<AdventurerMovementController>();
+            if (!armed) { go.SetActive(true); return; }
+
+            var ai = go.AddComponent<UtilityAI_CombatController>();
+            var elemental = ScriptableObject.CreateInstance<ElementalVulnerabilityConsideration>();
+            elemental.Configure(AnimationCurve.Linear(0, 0, 1, 1), 1.2f);
+            var distance = ScriptableObject.CreateInstance<DistanceConsideration>();
+            distance.Configure(new AnimationCurve(new Keyframe(0, 0), new Keyframe(0.5f, 1), new Keyframe(1, 0.2f)), 1f);
+            var loadout = AdventurerLoadout.Create(
+                AdventurerLoadout.Slot(BombData.Create("Fire", ElementType.Fire, 40, 2.6f, 13f, 6f, 2f, 13f, 0.8f), ammo));
+            ai.Configure(body, loadout, matrix, new List<UtilityConsideration> { elemental, distance });
+
+            go.AddComponent<BallisticBombLauncher>().Configure(ai, matrix);
+
+            go.SetActive(true);
+        }
+
+        private static ExpeditionManager BuildExpedition(BiomeData biome, ElementalMatrix matrix, out ExpeditionTelemetry telemetry)
+        {
+            var spawnerGo = new GameObject("TestSpawner");
+            var spawner = spawnerGo.AddComponent<MonsterSpawner>();
+            spawner.Configure(matrix, biome.ArenaWidth * 0.5f);
+
+            var mgrGo = new GameObject("TestExpedition");
+            var mgr = mgrGo.AddComponent<ExpeditionManager>();
+            telemetry = new GameObject("TestTelemetry").AddComponent<ExpeditionTelemetry>();
+            telemetry.Begin(mgr, biome.BiomeName, AdventurerRegistry.ActiveAdventurers.Count, biome.Waves.Count);
+            mgr.Configure(biome, spawner);
+            return mgr;
+        }
+
+        private static ExpeditionManager BuildExpedition(BiomeData biome, ElementalMatrix matrix)
+        {
+            var spawnerGo = new GameObject("TestSpawner");
+            var spawner = spawnerGo.AddComponent<MonsterSpawner>();
+            spawner.Configure(matrix, biome.ArenaWidth * 0.5f);
+
+            var mgrGo = new GameObject("TestExpedition");
+            var mgr = mgrGo.AddComponent<ExpeditionManager>();
+            mgr.Configure(biome, spawner); // starts the run
+            return mgr;
+        }
+
+        private static void CleanupExpedition(ExpeditionManager mgr, Object biome)
+        {
+            foreach (var b in Object.FindObjectsByType<CombatantBody>(FindObjectsInactive.Include))
+                if (b != null) Destroy(b.gameObject);
+            if (mgr != null) Destroy(mgr.gameObject);
+            MonsterRegistry.Clear();
+            AdventurerRegistry.Clear();
+        }
+
+        private static void Report(string label, bool pass)
+        {
+            if (pass) Debug.Log($"<color=green><b>PASS</b></color> {label}");
+            else Debug.LogError($"<color=red><b>FAIL</b></color> {label}");
+        }
+    }
+}

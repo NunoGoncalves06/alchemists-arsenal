@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b025a91bcb3648df807675edd1b6761d, type: 3}
+  m_Name: BossPhase_Recovering
+  m_EditorClassIdentifier: Assembly-CSharp::AlchemistsArsenal.Data.BossPhaseData
+  phase: 3
+  entryConsiderations:
+  - {fileID: 11400000, guid: 20c989405be8cc54eb5387eff2c19785, type: 2}
+  - {fileID: 11400000, guid: a2c2a219ad57ba249bc139272ac1e241, type: 2}
+  attackPatterns: []
+  minDwellSeconds: 1
+  moveSpeedMultiplier: 1

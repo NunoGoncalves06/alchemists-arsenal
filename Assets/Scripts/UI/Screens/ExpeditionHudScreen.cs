@@ -1,0 +1,663 @@
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+using AlchemistsArsenal.Core;
+using AlchemistsArsenal.Data;
+using AlchemistsArsenal.Combat;
+
+namespace AlchemistsArsenal.UI
+{
+    /// <summary>
+    /// Afternoon expedition HUD (DESIGN.md §7.8). Replaces the old
+    /// <c>ExpeditionBootstrap.OnGUI</c>. Wave/boss banner, party dock, always-on
+    /// AI ticker (<c>[floor]</c> — cat 8 visible), speed control via
+    /// <see cref="TimeControl"/>, result slab.
+    /// </summary>
+    public class ExpeditionHudScreen : GameScreen
+    {
+        private TextMeshProUGUI _banner, _ticker, _slab;
+        private Image _bossFill; private RectTransform _pips;
+        private RectTransform _dock;
+        private Button _speed1, _speed2, _pause, _continueBtn;
+        private RectTransform _slabPanel;
+
+        private ExpeditionWorld _world;
+        private readonly List<UtilityAI_CombatController> _ai = new List<UtilityAI_CombatController>();
+        /// <summary>Each party body's display name, resolved once with its dock card so
+        /// the ticker and the dock can never disagree about who threw.</summary>
+        private readonly Dictionary<ICombatant, string> _throwerNames = new Dictionary<ICombatant, string>();
+
+        /// <summary>Each fighter's card: the running damage total and the strip above it where their throws and hits float up.</summary>
+        private sealed class FighterCard
+        {
+            public TextMeshProUGUI Damage;
+            public RectTransform Above;
+            public int Total;
+            public int Hits;   // staggers successive numbers so they never land on one another
+        }
+        private readonly Dictionary<ICombatant, FighterCard> _cards = new Dictionary<ICombatant, FighterCard>();
+        // Each fighter's own last bomb, over their head in the arena (one per fighter).
+        private readonly Dictionary<ICombatant, WorldToast> _toasts = new Dictionary<ICombatant, WorldToast>();
+
+        /// <summary>The bomb line over fighter <paramref name="i"/>'s head, or null while none is up.</summary>
+        public string ToastText(int i) =>
+            i >= 0 && i < _cardOrder.Count && _toasts.TryGetValue(_cardOrder[i], out WorldToast t) && t != null ? t.Text : null;
+
+        /// <summary>Where fighter <paramref name="i"/>'s bomb line is, in the world (null if none).</summary>
+        public Vector3? ToastPosition(int i) =>
+            i >= 0 && i < _cardOrder.Count && _toasts.TryGetValue(_cardOrder[i], out WorldToast t) && t != null ? t.Position : (Vector3?)null;
+        private readonly List<ICombatant> _cardOrder = new List<ICombatant>();
+        private TextMeshProUGUI _tips;
+
+        /// <summary>Damage credited to party card <paramref name="i"/> (dock order) this road.</summary>
+        public int CardDamage(int i) => i >= 0 && i < _cardOrder.Count ? _cards[_cardOrder[i]].Total : 0;
+        public int CardCount => _cardOrder.Count;
+
+        /// <summary>The tips under DEFEAT, one per line (empty after a win).</summary>
+        public string TipsText => _tips != null && _tips.gameObject.activeSelf ? _tips.text : "";
+        private TimeControl.Handle _pauseHandle;
+        private TimeControl.Handle _speedHandle;
+        private bool _paused, _fast;
+
+        protected override void Build()
+        {
+            // no full-screen box — the arena camera renders behind the overlay
+            var top = UIFactory.Panel(transform, UITheme.Alpha(UITheme.Surface, 0.92f), "Banner");
+            top.rectTransform.anchorMin = new Vector2(0.32f, 0.88f); top.rectTransform.anchorMax = new Vector2(0.68f, 0.99f);
+            top.rectTransform.offsetMin = top.rectTransform.offsetMax = Vector2.zero;
+            _banner = UIFactory.Label(top.transform, "", UITheme.SizeHeading, UITheme.Candle,
+                TextAlignmentOptions.Center, true);
+            _banner.characterSpacing = 4f;
+            UIFactory.Stretch(_banner.rectTransform, 6f);
+
+            var bossBg = UIFactory.Bar(transform, UITheme.Ground, UITheme.Danger, out _bossFill);
+            bossBg.rectTransform.anchorMin = new Vector2(0.3f, 0.83f); bossBg.rectTransform.anchorMax = new Vector2(0.7f, 0.86f);
+            bossBg.rectTransform.offsetMin = bossBg.rectTransform.offsetMax = Vector2.zero;
+            bossBg.gameObject.SetActive(false);
+            _bossBar = bossBg;
+
+            // The boss phase strip. It used to be four bare stripes with no captions:
+            // you could see one light up and had no way to know what it meant or
+            // whether anything was actually happening (playtest: "weird stripes that
+            // don't have description"). Each segment is named now, and the line under
+            // it says what the live phase is doing to your damage.
+            var pipsStack = UIFactory.HStack(transform, 4f);
+            _pips = (RectTransform)pipsStack.transform;
+            _pips.anchorMin = new Vector2(0.3f, 0.785f); _pips.anchorMax = new Vector2(0.7f, 0.825f);
+            _pips.offsetMin = _pips.offsetMax = Vector2.zero;
+            foreach (var name in new[] { "NEUTRAL", "ENRAGED", "WARD", "RECOVER" })
+            {
+                var pip = UIFactory.Panel(_pips, UITheme.SurfaceHi, name);
+                UIFactory.Flex(pip.gameObject, 1f, 1f, minHeight: 22f);
+                var label = UIFactory.Label(pip.transform, name, UITheme.SizeTiny, UITheme.TextLow,
+                    TextAlignmentOptions.Center, true);
+                label.characterSpacing = 2f;
+                UIFactory.Stretch(label.rectTransform, 2f);
+                _pipLabels.Add(label);
+            }
+            _pips.gameObject.SetActive(false);
+
+            _bossPhaseText = UIFactory.Label(transform, "", UITheme.SizeSmall, UITheme.TextMid,
+                TextAlignmentOptions.Center);
+            UIFactory.Place(_bossPhaseText.rectTransform, 0.22f, 0.735f, 0.78f, 0.782f);
+            _bossPhaseText.gameObject.SetActive(false);
+
+            // controls
+            var ctrl = UIFactory.HStack(transform, 6f);
+            var crt = (RectTransform)ctrl.transform;
+            crt.anchorMin = new Vector2(0.86f, 0.9f); crt.anchorMax = new Vector2(0.99f, 0.97f);
+            crt.offsetMin = crt.offsetMax = Vector2.zero;
+            _speed1 = MiniBtn(ctrl.transform, "1x", () => SetFast(false));
+            _speed2 = MiniBtn(ctrl.transform, "2x", () => SetFast(true));
+            _pause = MiniBtn(ctrl.transform, "", TogglePause);
+            BuildPauseIcons(_pause.transform);
+
+            // No NEXT WAVE button. Since a road is only won by clearing every wave,
+            // skipping one was a silent forfeit dressed as a fast-forward. The 2x
+            // speed control is the answer to "waves drag".
+
+            // The AI ticker gets its own slab so it reads as HUD rather than as text
+            // floating in the middle of the fight.
+            var tickerBg = UIFactory.Panel(transform, UITheme.Alpha(UITheme.Ground, 0.78f), "TickerBg");
+            UIFactory.Place(tickerBg.rectTransform, 0.28f, 0.165f, 0.72f, 0.215f);
+            _ticker = UIFactory.MonoLabel(tickerBg.transform, "", UITheme.SizeSmall, UITheme.TextMid,
+                TextAlignmentOptions.Center);
+            UIFactory.Stretch(_ticker.rectTransform, 4f);
+
+            _dock = UIFactory.Root(transform, "PartyDock");
+            _dock.anchorMin = new Vector2(0f, 0f); _dock.anchorMax = new Vector2(1f, 0.16f);
+            _dock.offsetMin = _dock.offsetMax = Vector2.zero;
+
+            // The guardian's title card: its name and what it is, as it arrives.
+            _title = UIFactory.Root(transform, "BossTitle");
+            // The lower third: the boss is arriving in the middle of the arena, not behind a card.
+            UIFactory.Place(_title, 0.2f, 0.235f, 0.8f, 0.4f);
+            _titleGroup = _title.gameObject.AddComponent<CanvasGroup>();
+            _titleGroup.blocksRaycasts = false;
+            _titleGroup.interactable = false;
+            var titleBack = UIFactory.Panel(_title, UITheme.Alpha(UITheme.Ground, 0.5f), "Back");
+            UIFactory.Place(titleBack.rectTransform, 0f, 0f, 1f, 1f);
+            _titleName = UIFactory.Title(_title, "", UITheme.SizeDisplay + 8, UITheme.Candle, TextAlignmentOptions.Center);
+            UIFactory.Place(_titleName.rectTransform, 0.02f, 0.40f, 0.98f, 0.96f);
+            var rule = UIFactory.Panel(_title, UITheme.Alpha(UITheme.Danger, 0.9f), "Rule");
+            UIFactory.Place(rule.rectTransform, 0.3f, 0.36f, 0.7f, 0.375f);
+            _titleEpithet = UIFactory.Label(_title, "", UITheme.SizeHeading, UITheme.TextMid, TextAlignmentOptions.Center, true);
+            _titleEpithet.characterSpacing = 6f;
+            UIFactory.Place(_titleEpithet.rectTransform, 0.02f, 0.06f, 0.98f, 0.34f);
+            _title.gameObject.SetActive(false);
+
+            _slabPanel = UIFactory.Root(transform, "Slab");
+            var scrim = UIFactory.Box(_slabPanel, new Color(0f, 0f, 0f, 0.6f), _slabPanel);
+            _slab = UIFactory.Title(_slabPanel, "", UITheme.SizeDisplay + 14, UITheme.Candle, TextAlignmentOptions.Center);
+            UIFactory.Stretch(_slab.rectTransform);
+            // What to try next, read off the road just lost (DefeatTips).
+            _tips = UIFactory.Label(_slabPanel, "", UITheme.SizeBody, UITheme.TextHi, TextAlignmentOptions.Center);
+            UIFactory.Place(_tips.rectTransform, 0.22f, 0.395f, 0.78f, 0.53f);
+            _tips.gameObject.SetActive(false);
+            _continueBtn = UIFactory.Button(_slabPanel, "CONTINUE", () => GameLoopManager.Instance.BeginEvening());
+            var cbrt = _continueBtn.image.rectTransform;
+            cbrt.anchorMin = new Vector2(0.4f, 0.3f); cbrt.anchorMax = new Vector2(0.6f, 0.38f);
+            cbrt.offsetMin = cbrt.offsetMax = Vector2.zero;
+            _slabPanel.gameObject.SetActive(false);
+        }
+
+        private Image _bossBar;
+        private TextMeshProUGUI _bossPhaseText;
+        private RectTransform _title;
+        private CanvasGroup _titleGroup;
+        private TextMeshProUGUI _titleName, _titleEpithet;
+        private GameObject _titleFor;
+        private float _titleT;
+
+        /// <summary>Seconds the title card stays up (fade in, hold, fade out).</summary>
+        public const float TitleSeconds = 3.2f;
+        private readonly List<TextMeshProUGUI> _pipLabels = new List<TextMeshProUGUI>();
+
+        private Button MiniBtn(Transform p, string t, System.Action a)
+        {
+            var b = UIFactory.Button(p, t, a, primary: false);
+            var le = b.gameObject.AddComponent<LayoutElement>(); le.minWidth = 40; le.minHeight = 28;
+            return b;
+        }
+
+        /// <summary>The road being fought, for the defeat tips.</summary>
+        private int _road;
+
+        protected override void OnShow() => Bind(GameLoopManager.Instance != null ? GameLoopManager.Instance.CurrentExpedition : null,
+            GameLoopManager.Instance != null ? GameLoopManager.Instance.TargetBiomeIndex : 0);
+
+        /// <summary>Follow a fight built outside the day loop (the playtest's lost-road scenario) on road <paramref name="road"/>.</summary>
+        public void Watch(ExpeditionWorld world, int road)
+        {
+            Unbind();
+            Bind(world, road);
+        }
+
+        private void Bind(ExpeditionWorld world, int road)
+        {
+            _world = world;
+            _road = road;
+            _slabPanel.gameObject.SetActive(false);
+            _title.gameObject.SetActive(false);
+            _titleFor = null;
+            _lastBanner = ""; _lastBossFill = -1f; _lastPip = -1;
+            _paused = false; _fast = false;
+            SetFast(SettingsService.DefaultExpeditionSpeed == 2);
+
+            _ai.Clear();
+            _throwerNames.Clear();
+            _cards.Clear();
+            foreach (var t in _toasts.Values) if (t != null) Destroy(t.gameObject);
+            _toasts.Clear();
+            _cardOrder.Clear();
+            BuildPartyDock();
+
+            BombProjectile2D.OnDetonatedGlobal += OnDetonated;
+            if (_world != null && _world.Expedition != null)
+                _world.Expedition.OnResultShown += OnFinished;
+
+            // The screen object is reused day to day, and Update does not run on the
+            // frame it is shown — so the first afternoon frame showed yesterday's
+            // banner ("Cinder Peaks — WAVE 3/3" on a Whispering Woods replay) and
+            // yesterday's last ticker line. Paint today's state now.
+            _ticker.text = "";
+            Refresh();
+        }
+
+        protected override void OnHide() => Unbind();
+
+        private void Unbind()
+        {
+            BombProjectile2D.OnDetonatedGlobal -= OnDetonated;
+            if (_world != null && _world.Expedition != null) _world.Expedition.OnResultShown -= OnFinished;
+            foreach (var ai in _ai) if (ai != null) ai.OnBombThrowRequested -= OnThrow;
+            _pauseHandle.Dispose();
+            _speedHandle.Dispose();
+        }
+
+        private void BuildPartyDock()
+        {
+            foreach (Transform c in _dock) Destroy(c.gameObject);
+            if (_world == null) return;
+            var row = UIFactory.HStack(_dock, 12f, new RectOffset(20, 20, 12, 12));
+            UIFactory.Stretch((RectTransform)row.transform);
+
+            for (int i = 0; i < _world.Party.Count; i++)
+            {
+                var body = _world.Party[i];
+                if (body == null) continue;
+
+                // Identity comes from the roster; the contract buyer is only the
+                // fallback for the bootstrap path, which has no roster.
+                HeroRecord record = i < _world.PartyRecords.Count ? _world.PartyRecords[i] : null;
+                string who = record != null ? record.displayName : (i == 0 ? _world.FighterName : "Rookie");
+                string whoId = record != null ? record.portraitId : (i == 0 ? _world.FighterId : "rookie");
+                _throwerNames[body] = who;
+
+                Image card = UIKit.Surface(row.transform, out Transform inner,
+                    UITheme.Alpha(UITheme.Surface, 0.92f), UITheme.Line, "Card");
+                UIFactory.Flex(card.gameObject, 1f, 1f, minWidth: 300f, minHeight: 108f);
+
+                var portrait = UIKit.Portrait(inner, Art.PixelSprites.Buyer(whoId), 78f);
+                var frame = (RectTransform)portrait.transform.parent.parent;
+                UIFactory.Place(frame, 0.02f, 0.08f, 0.26f, 0.92f);
+
+                var name = UIFactory.Label(inner, who.ToUpperInvariant(), UITheme.SizeSmall, UITheme.Candle,
+                    TextAlignmentOptions.Left, true);
+                name.characterSpacing = 3f;
+                UIFactory.Place(name.rectTransform, 0.29f, 0.68f, 0.70f, 0.95f);
+
+                // Who is doing the work: this fighter's damage so far, and a strip just
+                // above the card where each throw and each hit of theirs floats up.
+                var dmg = UIFactory.MonoLabel(inner, "DMG 0", UITheme.SizeSmall, UITheme.CandleHot,
+                    TextAlignmentOptions.Right);
+                UIFactory.Place(dmg.rectTransform, 0.66f, 0.68f, 0.98f, 0.95f);
+                var above = UIFactory.Root(card.transform, "Above");
+                UIFactory.Place(above, 0.05f, 1.0f, 0.95f, 1.55f);
+                _cards[body] = new FighterCard { Damage = dmg, Above = above };
+                if (body is Component c) _toasts[body] = WorldToast.For(c.transform);
+                _cardOrder.Add(body);
+
+                var hp = UIFactory.Bar(inner, UITheme.Ground, UITheme.Ok, out var hpFill);
+                UIFactory.Place(hp.rectTransform, 0.29f, 0.50f, 0.98f, 0.65f);
+
+                // Flasks left and the throw cooldown. Without these the fighter simply
+                // stops throwing when the belt runs dry or while a bomb is recharging,
+                // and there is nothing on screen that says why.
+                var flasks = UIFactory.MonoLabel(inner, "", UITheme.SizeSmall, UITheme.TextHi,
+                    TextAlignmentOptions.Left);
+                UIFactory.Place(flasks.rectTransform, 0.29f, 0.26f, 0.62f, 0.46f);
+
+                var flaskIcon = UIFactory.Icon(inner, Art.PixelSprites.Flask(ElementType.Nature), 22f);
+                UIFactory.Place(flaskIcon.rectTransform, 0.255f, 0.28f, 0.30f, 0.44f);
+
+                var cd = UIFactory.Bar(inner, UITheme.Ground, UITheme.Candle, out var cdFill);
+                UIFactory.Place(cd.rectTransform, 0.29f, 0.08f, 0.80f, 0.22f);
+                var cdText = UIFactory.MonoLabel(inner, "", UITheme.SizeTiny, UITheme.TextMid,
+                    TextAlignmentOptions.Left);
+                UIFactory.Place(cdText.rectTransform, 0.82f, 0.06f, 0.99f, 0.24f);
+
+                var ai = body.GetComponent<UtilityAI_CombatController>();
+                if (ai != null) { _ai.Add(ai); ai.OnBombThrowRequested += OnThrow; }
+
+                var tracker = card.gameObject.AddComponent<PortraitTracker>();
+                tracker.Init(body, hpFill, card, ai, flasks, cdFill, cdText, flaskIcon);
+            }
+        }
+
+        private string _lastBanner = "";
+        private float _lastBossFill = -1f;
+        private int _lastPip = -1;
+
+        private void Update() => Refresh();
+
+        private void Refresh()
+        {
+            if (_world == null || _world.Expedition == null) return;
+            var exp = _world.Expedition;
+
+            bool boss = exp.Phase == ExpeditionPhase.BossFight && exp.BossInstance != null;
+            if (_bossBar.gameObject.activeSelf != boss) _bossBar.gameObject.SetActive(boss);
+            if (_pips.gameObject.activeSelf != boss) _pips.gameObject.SetActive(boss);
+            if (_bossPhaseText != null && _bossPhaseText.gameObject.activeSelf != boss)
+                _bossPhaseText.gameObject.SetActive(boss);
+
+            string banner;
+            if (boss)
+            {
+                var bb = exp.BossInstance.GetComponent<CombatantBody>();
+                var bp = exp.BossInstance.GetComponent<BossPhaseManager>();
+                float f = bb != null && bb.MaxHP > 0 ? (float)bb.CurrentHP / bb.MaxHP : 0f;
+                if (!Mathf.Approximately(f, _lastBossFill)) { _bossFill.fillAmount = f; _lastBossFill = f; }
+                int pip = bp != null ? (int)bp.CurrentPhase : 0;
+                if (pip != _lastPip)
+                {
+                    SetPips(pip);
+                    if (_bossPhaseText != null) _bossPhaseText.text = DescribePhase(bp);
+                    _lastPip = pip;
+                }
+                banner = BossName();
+                ShowTitle(exp.BossInstance);
+            }
+            else
+            {
+                banner = exp.Phase == ExpeditionPhase.Warmup
+                    ? $"{BiomeName()} — GET READY"
+                    : $"{BiomeName()} — WAVE {Mathf.Max(1, exp.WaveNumber)} / {exp.TotalWaves}";
+            }
+
+            if (banner != _lastBanner) { _banner.text = banner; _lastBanner = banner; }
+        }
+
+        /// <summary>Put the guardian's name up when it arrives, then let it go.</summary>
+        private void ShowTitle(GameObject boss)
+        {
+            if (boss != _titleFor)
+            {
+                _titleFor = boss;
+                _titleT = 0f;
+                var manager = boss.GetComponent<BossPhaseManager>();
+                var def = manager != null ? manager.Definition : null;
+                _titleName.text = def != null ? def.DisplayName.ToUpperInvariant() : BossName();
+                _titleEpithet.text = def != null ? def.Epithet.ToUpperInvariant() : "";
+                _title.gameObject.SetActive(true);
+            }
+            if (!_title.gameObject.activeSelf) return;
+
+            _titleT += Time.deltaTime;
+            float a = Mathf.Min(Mathf.Clamp01(_titleT / 0.35f), Mathf.Clamp01((TitleSeconds - _titleT) / 0.6f));
+            _titleGroup.alpha = a;
+            // The name settles into place as it fades in.
+            float s = Mathf.Lerp(1.12f, 1f, Mathf.Clamp01(_titleT / 0.5f));
+            _titleName.rectTransform.localScale = new Vector3(s, s, 1f);
+            _titleName.characterSpacing = Mathf.Lerp(2f, 10f, Mathf.Clamp01(_titleT / TitleSeconds));
+            if (_titleT >= TitleSeconds) _title.gameObject.SetActive(false);
+        }
+
+        private string BiomeName() => GameLoopManager.Instance != null
+            ? BiomeLibrary.Name(GameLoopManager.Instance.TargetBiomeIndex) : "";
+
+        /// <summary>The guardian's own name. The banner used to read "THE BOSS" for both.</summary>
+        private static string BossName()
+        {
+            var biome = GameLoopManager.Instance != null
+                ? BiomeLibrary.Get(GameLoopManager.Instance.TargetBiomeIndex) : null;
+            return biome != null && biome.HasBoss ? biome.Boss.DisplayName.ToUpperInvariant() : "THE GUARDIAN";
+        }
+
+        private void SetPips(int active)
+        {
+            for (int i = 0; i < _pips.childCount; i++)
+            {
+                var img = _pips.GetChild(i).GetComponent<Image>();
+                if (img != null) img.color = i == active ? UITheme.Witch : UITheme.SurfaceHi;
+                if (i < _pipLabels.Count && _pipLabels[i] != null)
+                    _pipLabels[i].color = i == active ? UITheme.TextHi : UITheme.TextLow;
+            }
+        }
+
+        /// <summary>What the boss's current phase actually does to you, in one line.</summary>
+        private static string DescribePhase(BossPhaseManager bp)
+        {
+            if (bp == null) return "";
+            switch (bp.CurrentPhase)
+            {
+                case BossPhase.Enraged:
+                    return "ENRAGED — hurt, and hitting faster for it. Keep your distance.";
+                case BossPhase.ElementalWard:
+                    return $"ELEMENTAL WARD — shrugging off <b>{bp.WardElement}</b> " +
+                           $"(x{bp.WardMultiplier:0.00} damage). Throw something else.";
+                case BossPhase.Recovering:
+                    return "RECOVERING — the ward just dropped. This is the window.";
+                default:
+                    return "NEUTRAL — measured attacks, nothing resisted.";
+            }
+        }
+
+        private void OnThrow(BombThrowRequest r)
+        {
+            if (r.Bomb == null) return;
+            // Name the hero who actually threw. This used to be the contract's
+            // buyer (ExpeditionWorld.FighterName) for every throw, so a customer
+            // who never left the shop was credited with the whole party's work.
+            if (r.Thrower == null || !_throwerNames.TryGetValue(r.Thrower, out string who)) who = "The party";
+            _ticker.text = $"{who} throws <b>{r.Bomb.DisplayName}</b> — {r.Bomb.Element}";
+            if (r.Thrower != null && _cards.TryGetValue(r.Thrower, out FighterCard card))
+                FloatUp(card.Above, "THROW", UITheme.Element(r.Bomb.Element), UITheme.SizeTiny, 0.7f, 0f, 0.3f);
+        }
+
+        private void OnDetonated(DetonationInfo d)
+        {
+            string adv = d.HadElementalAdvantage ? "  <color=#f6d873>×2!</color>" : "";
+            string line = $"{d.Element} bomb — {d.TotalDamage} dmg to {d.HitCount}{adv}";
+            // Over the thrower's head; the ticker keeps it only when nobody can be named.
+            if (d.Thrower != null && _toasts.TryGetValue(d.Thrower, out WorldToast toast) && toast != null) toast.Set(line);
+            else _ticker.text = line;
+            if (d.Thrower == null || !_cards.TryGetValue(d.Thrower, out FighterCard card) || d.TotalDamage <= 0) return;
+            card.Total += d.TotalDamage;
+            card.Damage.text = $"DMG {card.Total}";
+            // Hits take the right of the strip, throws the left; each hit a step along from the last.
+            float x0 = 0.35f + (card.Hits++ % 4) * 0.15f;
+            FloatUp(card.Above, d.HadElementalAdvantage ? $"{d.TotalDamage} ×2" : d.TotalDamage.ToString(),
+                d.HadElementalAdvantage ? UITheme.CandleHot : UITheme.TextHi, UITheme.SizeBody, 1.1f, x0, x0 + 0.2f);
+        }
+
+        /// <summary>A word that rises out of <paramref name="strip"/> and fades.</summary>
+        private static void FloatUp(RectTransform strip, string text, Color color, int size, float seconds, float x0, float x1)
+        {
+            var label = UIFactory.Label(strip, text, size, color, TextAlignmentOptions.Center, true);
+            label.raycastTarget = false;
+            label.textWrappingMode = TextWrappingModes.NoWrap;
+            UIFactory.Place(label.rectTransform, x0, 0f, x1, 0.6f);
+            label.gameObject.AddComponent<Rise>().Init(seconds);
+        }
+
+        private sealed class Rise : MonoBehaviour
+        {
+            private float _t, _life;
+            private TextMeshProUGUI _label;
+            private Vector2 _from;
+
+            public void Init(float life)
+            {
+                _life = life;
+                _label = GetComponent<TextMeshProUGUI>();
+                _from = ((RectTransform)transform).anchoredPosition;
+            }
+
+            private void Update()
+            {
+                _t += Time.deltaTime;   // game time: held while paused, quicker at 2x, like the hits it reports
+                float k = Mathf.Clamp01(_t / _life);
+                ((RectTransform)transform).anchoredPosition = _from + new Vector2(0f, 34f * k);
+                Color c = _label.color;
+                c.a = 1f - k * k;
+                _label.color = c;
+                if (k >= 1f) Destroy(gameObject);
+            }
+        }
+
+        private void OnFinished(bool won)
+        {
+            _slabPanel.gameObject.SetActive(true);
+            _slab.text = won ? "VICTORY" : "DEFEAT";
+            _slab.color = won ? UITheme.Ok : UITheme.Danger;
+
+            ExpeditionReport report = _world != null && _world.Telemetry != null ? _world.Telemetry.Report : null;
+            _tips.gameObject.SetActive(!won && report != null);
+            // With tips under it the title moves up out of their way.
+            if (_tips.gameObject.activeSelf) UIFactory.Place(_slab.rectTransform, 0f, 0.54f, 1f, 0.72f);
+            else UIFactory.Stretch(_slab.rectTransform);
+            if (!_tips.gameObject.activeSelf) return;
+            var facts = DefeatTips.Facts.From(report, SaveSystem.Instance != null ? SaveSystem.Instance.State : null, _road);
+            var lines = new List<string>();
+            foreach (DefeatTips.Tip t in DefeatTips.For(facts)) lines.Add("• " + DefeatTips.Text(t, facts));
+            _tips.text = string.Join("\n", lines);
+        }
+
+        private void SetFast(bool fast)
+        {
+            // A speed is a way back into the fight: pressing 1x or 2x while paused plays.
+            if (_paused)
+            {
+                _paused = false;
+                _pauseHandle.Dispose();
+            }
+            _fast = fast;
+            _speedHandle.Dispose();
+            if (TimeControl.Instance != null && !_paused)
+                _speedHandle = TimeControl.Instance.Push(fast ? 2f : 1f, "expedition-speed");
+            Recolor();
+        }
+
+        private void TogglePause()
+        {
+            _paused = !_paused;
+            if (_paused)
+            {
+                _speedHandle.Dispose();
+                if (TimeControl.Instance != null) _pauseHandle = TimeControl.Instance.PushPause();
+            }
+            else
+            {
+                _pauseHandle.Dispose();
+                SetFast(_fast);
+            }
+            Recolor();
+        }
+
+        // Drawn, not typed: the display font has no pause glyph, and "II" was set in
+        // sentence case as "Ii". Two bars while playing, a play triangle while paused.
+        private GameObject _pauseBars, _playTri;
+        private static Sprite _triSprite;
+
+        private void BuildPauseIcons(Transform button)
+        {
+            _pauseBars = new GameObject("PauseIcon", typeof(RectTransform));
+            _pauseBars.transform.SetParent(button, false);
+            var bars = (RectTransform)_pauseBars.transform;
+            bars.anchorMin = bars.anchorMax = new Vector2(0.5f, 0.5f);
+            bars.sizeDelta = new Vector2(14f, 16f);
+            foreach (float x in new[] { -4f, 4f })
+            {
+                var bar = UIFactory.Panel(bars, UITheme.Parchment, "Bar");
+                bar.raycastTarget = false;
+                bar.rectTransform.anchorMin = bar.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+                bar.rectTransform.sizeDelta = new Vector2(4f, 16f);
+                bar.rectTransform.anchoredPosition = new Vector2(x, 0f);
+            }
+
+            var tri = UIFactory.Panel(button, UITheme.Ink900, "PlayIcon");
+            tri.raycastTarget = false;
+            tri.sprite = TriangleSprite();
+            tri.type = Image.Type.Simple;
+            tri.rectTransform.anchorMin = tri.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            tri.rectTransform.sizeDelta = new Vector2(16f, 16f);
+            tri.rectTransform.anchoredPosition = new Vector2(1.5f, 0f);
+            _playTri = tri.gameObject;
+            _playTri.SetActive(false);
+        }
+
+        private static Sprite TriangleSprite()
+        {
+            if (_triSprite != null) return _triSprite;
+            const int n = 16;
+            var tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
+            var px = new Color32[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    // Pointing right: the half-height shrinks as x moves to the tip.
+                    float halfH = (n - 1 - x) * 0.5f;
+                    bool inside = x >= 2 && Mathf.Abs(y - (n - 1) * 0.5f) <= halfH;
+                    px[y * n + x] = inside ? new Color32(255, 255, 255, 255) : new Color32(0, 0, 0, 0);
+                }
+            tex.SetPixels32(px);
+            tex.Apply(false, true);
+            _triSprite = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 100f);
+            return _triSprite;
+        }
+
+        private void Recolor()
+        {
+            if (_speed1 != null) _speed1.image.color = (!_fast && !_paused) ? UITheme.Candle : UITheme.Ink700;
+            if (_speed2 != null) _speed2.image.color = (_fast && !_paused) ? UITheme.Candle : UITheme.Ink700;
+            if (_pause != null) _pause.image.color = _paused ? UITheme.Candle : UITheme.Ink700;
+            if (_pauseBars != null) _pauseBars.SetActive(!_paused);
+            if (_playTri != null) _playTri.SetActive(_paused);
+        }
+
+        /// <summary>Per-card HP + death visuals.</summary>
+        private class PortraitTracker : MonoBehaviour
+        {
+            private CombatantBody _body;
+            private Image _hp, _card, _cdFill, _flaskIcon;
+            private UtilityAI_CombatController _ai;
+            private TextMeshProUGUI _flasks, _cdText;
+            private float _last = -1f;
+            private int _lastFlasks = -1;
+            private bool _dead;
+
+            public void Init(CombatantBody b, Image hp, Image card, UtilityAI_CombatController ai,
+                TextMeshProUGUI flasks, Image cdFill, TextMeshProUGUI cdText, Image flaskIcon)
+            {
+                _body = b; _hp = hp; _card = card; _ai = ai;
+                _flasks = flasks; _cdFill = cdFill; _cdText = cdText; _flaskIcon = flaskIcon;
+                Refresh(); // a new card has no Update before its first frame is drawn
+            }
+
+            private void Update() => Refresh();
+
+            private void Refresh()
+            {
+                if (_body == null) return;
+
+                float f = _body.MaxHP > 0 ? Mathf.Clamp01((float)_body.CurrentHP / _body.MaxHP) : 0f;
+                if (!Mathf.Approximately(f, _last))
+                {
+                    _hp.fillAmount = f;
+                    _hp.color = f > 0.5f ? UITheme.Ok : f > 0.25f ? UITheme.Candle : UITheme.Danger;
+                    _last = f;
+                }
+                if (!_dead && !_body.IsAlive && _card != null)
+                {
+                    _card.color = new Color(0.2f, 0.15f, 0.18f);
+                    _dead = true;
+                }
+                // Out of flasks and off the road: greyed, and the card says so.
+                if (_body.IsWithdrawn)
+                {
+                    if (!_dead && _card != null) { _card.color = new Color(0.17f, 0.17f, 0.2f); _dead = true; }
+                    if (_flasks != null) { _flasks.text = "WITHDREW"; _flasks.color = UITheme.TextLow; }
+                    if (_cdText != null) _cdText.text = "--";
+                    return;
+                }
+
+                if (_ai == null) return;
+
+                int left = _ai.FlasksLeft;
+                if (left != _lastFlasks)
+                {
+                    _lastFlasks = left;
+                    if (_flasks != null)
+                    {
+                        _flasks.text = left > 0 ? $"x{left} flasks" : "OUT OF FLASKS";
+                        _flasks.color = left > 3 ? UITheme.TextHi : left > 0 ? UITheme.Candle : UITheme.Danger;
+                    }
+                    if (_flaskIcon != null)
+                        _flaskIcon.color = left > 0 ? Color.white : UITheme.Alpha(Color.white, 0.3f);
+                }
+
+                float remaining = _ai.CooldownRemaining;
+                if (_cdFill != null)
+                {
+                    _cdFill.fillAmount = _ai.CooldownFraction;
+                    _cdFill.color = remaining <= 0f ? UITheme.Ok : UITheme.Candle;
+                }
+                if (_cdText != null)
+                    _cdText.text = left <= 0 ? "--" : remaining <= 0f ? "READY" : $"{remaining:0.0}s";
+            }
+        }
+    }
+}

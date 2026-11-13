@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a6ca8e90aa8c4e7db53e160ae17a4bde, type: 3}
+  m_Name: AdventurerLoadout_Default
+  m_EditorClassIdentifier: Assembly-CSharp::AlchemistsArsenal.Data.AdventurerLoadout
+  slots:
+  - bomb: {fileID: 11400000, guid: 1871ffe020c8a7b4f8d8b95a96d476bf, type: 2}
+    count: 3
+  - bomb: {fileID: 11400000, guid: 789e08efd5c8f7c48a21154f77d90071, type: 2}
+    count: 3
+  - bomb: {fileID: 11400000, guid: dea2271509d579f4bac600e83f6128fb, type: 2}
+    count: 3
+  - bomb: {fileID: 11400000, guid: 43f4f12e5f1fe754d8f1a61cba825f97, type: 2}
+    count: 3
