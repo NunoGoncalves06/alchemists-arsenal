@@ -110,6 +110,8 @@ namespace AlchemistsArsenal.Core
                 try { if (Directory.Exists(harnessSaves)) Directory.Delete(harnessSaves, true); } catch (Exception) { }
                 Directory.CreateDirectory(harnessSaves);
                 SaveSystem.DirectoryOverride = harnessSaves;
+                // Silent unless asked for (-playtestSound): the run plays the real game, music and all.
+                if (Array.IndexOf(Environment.GetCommandLineArgs(), "-playtestSound") < 0) AudioListener.volume = 0f;
                 SettingsService.ExpeditionSpeedOverride = 1;
                 CutsceneScreen.AutoAdvance = true;
                 StoryStage.SkipIntro = true;
