@@ -60,3 +60,7 @@ The game is played with the mouse.
 ## Building from source
 
 Open the project in Unity 6000.6 and build for Windows x64 from **File > Build Profiles**.
+
+## License
+
+All rights reserved. You can download and play the game, but the code, art and music may not be reused without permission. See [LICENSE](LICENSE).

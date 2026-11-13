@@ -1,0 +1,35 @@
+name: Bug report
+description: Something in the game doesn't work as it should.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Game version
+      description: The release you downloaded, for example 0.1.0.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      placeholder: |
+        1. Start a new game
+        2. ...
+  - type: textarea
+    id: log
+    attributes:
+      label: Screenshot or log
+      description: Paste a screenshot, or attach Player.log from %USERPROFILE%\AppData\LocalLow\Alchemists Arsenal Team\AlchemistsArsenal\
+  - type: input
+    id: system
+    attributes:
+      label: Windows version and graphics card
+      placeholder: Windows 11, GeForce GTX 1060
