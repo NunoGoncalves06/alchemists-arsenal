@@ -56,6 +56,27 @@ namespace AlchemistsArsenal.Core
             Add<AudioManager>("AudioManager");
             Add<TutorialManager>("TutorialManager");
             Add<UIManager>("UIManager");
+
+            // "-smoketest": reach the main menu, say so in the log, and quit (the release script's launch check).
+            if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-smoketest") >= 0) StartCoroutine(SmokeTest());
+        }
+
+        private System.Collections.IEnumerator SmokeTest()
+        {
+            float until = Time.realtimeSinceStartup + 60f;
+            while (Time.realtimeSinceStartup < until)
+            {
+                if (GameLoopManager.Instance != null && GameLoopManager.Instance.Phase == GamePhase.MainMenu)
+                {
+                    yield return new WaitForSecondsRealtime(2f);   // let the menu draw a few frames
+                    Debug.Log("SMOKE: main menu reached");
+                    Application.Quit(0);
+                    yield break;
+                }
+                yield return null;
+            }
+            Debug.LogError("SMOKE: main menu not reached in 60 s");
+            Application.Quit(1);
         }
 
         private T Add<T>(string name) where T : Component
