@@ -47,6 +47,7 @@ namespace AlchemistsArsenal.Crafting
 
         private const float KilnSeconds = 12f;
         public const float HeatLow = 0.42f, HeatHigh = 0.72f;
+        private const float HeatMid = (HeatLow + HeatHigh) * 0.5f, HeatHalf = (HeatHigh - HeatLow) * 0.5f;
         private const float LogBurnSeconds = 8f;
         private const int OrderKiln = 14, OrderFire = 15;
 
@@ -85,6 +86,7 @@ namespace AlchemistsArsenal.Crafting
         public static bool CoolChargeDue(bool reachedBand, float kilnFor, float coolFor) =>
             reachedBand && kilnFor > 4f && coolFor > 2f;
         private int _kilnChunksPaid, _kilnSpotSkip;
+        private float _kilnCredit;   // yellow chunks pay half: the fraction carried to the next
         /// <summary>The last batch, dried and cooling on the tray until it is swept off.</summary>
         private readonly List<Grain> _dried = new List<Grain>();
         private float _driedUntil;
@@ -201,6 +203,7 @@ namespace AlchemistsArsenal.Crafting
             // The instrument: a thermometer by the kiln.
             _thermo = BenchGauge.Create(transform, KP(MaltArt.KilnW + 5f, MaltArt.KilnH * 0.45f), 2.2f, true, 30, fillMode: true, name: "Thermometer");
             _thermo.SetBand(HeatLow, HeatHigh);
+            _thermo.SetPerfect(HeatMid - HeatHalf * QualityBudget.GreenShare(), HeatMid + HeatHalf * QualityBudget.GreenShare());
         }
 
         // The belt's two ends, in the world: from just left of the log pile into the arch's mouth.
@@ -411,6 +414,7 @@ namespace AlchemistsArsenal.Crafting
             KilnOrder = o;
             KilnProgress01 = 0f;
             _kilnChunksPaid = 0;
+            _kilnCredit = 0f;
             _kilnFor = 0f;
             _hotFor = _coolFor = 0f;
             _reachedBand = false;
@@ -552,7 +556,7 @@ namespace AlchemistsArsenal.Crafting
             // band, and a stoker that keeps two logs burning while there is malt in it.
             if (Draught && KilnOrder != null)
             {
-                target = Mathf.Min(target, HeatHigh - 0.05f);
+                target = Mathf.Min(target, HeatMid + 0.02f);   // the damper holds it on the green
                 // A log in its last two seconds is already fading (see burning, above): count
                 // it as gone, or the heat dips out of the band before the next one catches.
                 int strong = _flyingLogs.Count + _beltLogs.Count;
@@ -588,7 +592,11 @@ namespace AlchemistsArsenal.Crafting
                 while (_kilnChunksPaid < due)
                 {
                     _kilnChunksPaid++;
-                    Pay(o, 1, $"Kilned in the band ({Mathf.RoundToInt(Heat01 * 100)}°)");
+                    bool perfect = Draught || QualityBudget.InGreen(Mathf.Abs(Heat01 - HeatMid) / HeatHalf);   // the damper's promise
+                    _kilnCredit += perfect ? 1f : QualityBudget.YellowShare;
+                    int pts = Mathf.FloorToInt(_kilnCredit + 0.0001f);
+                    _kilnCredit -= pts;
+                    Pay(o, pts, perfect ? $"Kilned dead on ({Mathf.RoundToInt(Heat01 * 100)}°)" : $"Kilned in the band ({Mathf.RoundToInt(Heat01 * 100)}°)");
                 }
             }
             else if (hot)

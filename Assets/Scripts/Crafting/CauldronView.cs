@@ -311,8 +311,10 @@ namespace AlchemistsArsenal.Crafting
             if (_turnArrow != null) _turnArrow.enabled = show;
             if (!show) return;
             _stirGauge.SetBand(_pot.MinOptimalStir, _pot.MaxOptimalStir);
+            _stirGauge.SetPerfect(_pot.MinPerfectStir, _pot.MaxPerfectStir);
             Color c = _pot.StirringBackwards ? new Color(0.84f, 0.27f, 0.31f)
-                : _pot.InBand ? new Color(0.45f, 0.85f, 0.45f) : new Color(0.96f, 0.85f, 0.45f);
+                : _pot.InGreen ? new Color(0.45f, 0.85f, 0.45f)
+                : _pot.InBand ? new Color(0.98f, 0.82f, 0.30f) : new Color(0.95f, 0.91f, 0.81f);
             _stirGauge.SetValue(_pot.StirPower01, c);
             // Warn before it goes wrong: the swirl running down toward the bottom catching,
             // or heaving toward the rim. Otherwise the brew's progress.

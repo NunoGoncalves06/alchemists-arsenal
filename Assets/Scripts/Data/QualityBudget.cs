@@ -74,6 +74,26 @@ namespace AlchemistsArsenal.Data
         public const int LabelRight = 4;
         public const int LabelWrong = 14;
 
+        // ----------------------------------------------------------- perfect zone
+        /// <summary>
+        /// Every bench gauge has a narrow green zone in the middle of its band (perfect)
+        /// and yellow round it (fine, but no more). This is the green's share of the
+        /// half-band either side of the centre; it narrows from level 2 on.
+        /// </summary>
+        public static float GreenShare(int level) => level >= 1 ? 0.3f : 0.45f;
+        public static float GreenShare() => GreenShare(Complexity.Level());
+
+        /// <param name="off01">How far off the centre, as a share of the half-band (0 dead on, 1 the band's edge).</param>
+        public static bool InGreen(float off01, int level) => off01 <= GreenShare(level);
+        public static bool InGreen(float off01) => InGreen(off01, Complexity.Level());
+
+        /// <summary>A step inside the band pays its best in the green and its least in the yellow.</summary>
+        public static int ZonePay(float off01, int max, int min, int level) => InGreen(off01, level) ? max : min;
+        public static int ZonePay(float off01, int max, int min) => ZonePay(off01, max, min, Complexity.Level());
+
+        /// <summary>What a moment in the yellow earns against one in the green, where a bench pays as it goes (brew, kiln).</summary>
+        public const float YellowShare = 0.5f;
+
         // ----------------------------------------------------------------- totals
 
         public static int LeafOnCue(int potency, bool wilted) =>

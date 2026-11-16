@@ -340,6 +340,16 @@ namespace AlchemistsArsenal.Crafting
         private Vector2 DoserSpoutWorld => FlaskMouthWorld + new Vector2(0f, CorkRestAbove + 0.55f);
 
         /// <summary>Droplets for a flask of <paramref name="capacity"/> filled to the middle of the gold lines.</summary>
+        /// <summary>The flask stands in the green of its gauge (the playtest holds the doser to it).</summary>
+        public bool FillInGreen
+        {
+            get
+            {
+                float mid = (TargetLow + TargetHigh) * 0.5f, half = (TargetHigh - TargetLow) * 0.5f;
+                return QualityBudget.InGreen(Mathf.Abs(Fill01 - mid) / half);
+            }
+        }
+
         public static int DoseFor(int capacity) => Mathf.RoundToInt(capacity * (TargetLow + TargetHigh) * 0.5f);
 
         /// <summary>The doser is letting the brew out: a dose still to give.</summary>
@@ -577,6 +587,8 @@ namespace AlchemistsArsenal.Crafting
             }
             _fillGauge.SetVisible(show);
             if (!show) return;
+            float mid = (TargetLow + TargetHigh) * 0.5f, green = (TargetHigh - TargetLow) * 0.5f * QualityBudget.GreenShare();
+            _fillGauge.SetPerfect(mid - green, mid + green);
             float f = Fill01;
             Color c = f > TargetHigh ? new Color(0.84f, 0.27f, 0.31f)
                     : f >= TargetLow ? new Color(0.31f, 0.78f, 0.38f) : PixelArt.Element(Working != null ? Working.element : ElementType.Fire);
@@ -796,8 +808,9 @@ namespace AlchemistsArsenal.Crafting
             {
                 float centre = (TargetLow + TargetHigh) * 0.5f;
                 float off = Mathf.Abs(fill - centre) / ((TargetHigh - TargetLow) * 0.5f);
-                int gain = Mathf.RoundToInt(Mathf.Lerp(QualityBudget.PourMax, QualityBudget.PourMin, off));
-                order.ApplyBonus(gain, "Bottling", $"Poured to the line ({pct}%)");
+                bool perfect = QualityBudget.InGreen(off);
+                int gain = perfect ? QualityBudget.PourMax : QualityBudget.PourMin;
+                order.ApplyBonus(gain, "Bottling", perfect ? $"Poured dead on the line ({pct}%)" : $"Poured to the line ({pct}%)");
                 AudioManager.Play(Sfx.Confirm);
             }
             else if (fill < TargetLow)
@@ -844,8 +857,9 @@ namespace AlchemistsArsenal.Crafting
 
             if (hit)
             {
-                int gain = Mathf.RoundToInt(Mathf.Lerp(QualityBudget.SealMax, QualityBudget.SealMin, dist / Mathf.Max(0.001f, SealHalfWidth)));
-                order.ApplyBonus(gain, "Bottling", $"Sealed clean (+{gain})");
+                bool perfect = QualityBudget.InGreen(dist / Mathf.Max(0.001f, SealHalfWidth));
+                int gain = perfect ? QualityBudget.SealMax : QualityBudget.SealMin;
+                order.ApplyBonus(gain, "Bottling", perfect ? $"Sealed dead centre (+{gain})" : $"Sealed clean (+{gain})");
                 Current = Step.Label;
                 _corkTarget = CorkTarget.Seat;
             }

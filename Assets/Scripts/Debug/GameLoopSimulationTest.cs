@@ -25,6 +25,7 @@ namespace AlchemistsArsenal.DebugTools
             Debug.Log("<color=cyan><b>=== GAME LOOP / META SIMULATION ===</b></color>");
             TestQualityModel();
             TestQualityCeiling();
+            TestPerfectZones();
             TestLoadoutFloor();
             TestEconomy();
             TestSharedPurse();
@@ -78,6 +79,32 @@ namespace AlchemistsArsenal.DebugTools
         /// benches pay out of, so a retune at a bench is checked here automatically
         /// (they used to be transcribed by hand and silently went stale).
         /// </summary>
+        /// <summary>
+        /// Every bench gauge: a narrow green zone pays a step's best, the yellow round it
+        /// its least. The green narrows from level 2. A morning kept in the yellow
+        /// everywhere is still a good flask, but only a green morning reaches Perfect.
+        /// </summary>
+        private void TestPerfectZones()
+        {
+            Check(QualityBudget.ZonePay(0.4f, 9, 4, 0) == 9 && QualityBudget.ZonePay(0.4f, 9, 4, 1) == 4,
+                "a step 40 % off centre is green on level 1 and only yellow from level 2");
+            Check(QualityBudget.ZonePay(0f, 3, 2, 4) == 3 && QualityBudget.ZonePay(0.95f, 3, 2, 0) == 2,
+                "dead on pays the best on any level; the band's edge pays the least");
+
+            float keep = 1f - QualityBudget.YellowShare;
+            int yellow = QualityBudget.FlawlessMorning()
+                - QualityBudget.GrindStrikes * (QualityBudget.StrikeMax - QualityBudget.StrikeMin)
+                - (QualityBudget.PourMax - QualityBudget.PourMin) - (QualityBudget.SealMax - QualityBudget.SealMin)
+                - Mathf.RoundToInt(QualityBudget.BrewTotal * keep) - Mathf.RoundToInt(QualityBudget.KilnTotal * keep)
+                - (QualityBudget.MaltFill - QualityBudget.MaltFill / 2) - (QualityBudget.MaltTurn - QualityBudget.MaltTurn / 2);
+            PotionGrade g = CombatQuality.GradeFor(Mathf.Min(100, yellow));
+            Check(g > PotionGrade.Perfect && g <= PotionGrade.Okay,   // the enum runs best first
+                $"a morning kept in the yellow at every gauge is worth {yellow} ({g}): a good flask, never Perfect");
+            Check(QualityBudget.FlawlessMorning() >= 100, "a morning on the green at every gauge still reaches 100");
+            Check(Crafting.PhysicsCauldronManager.ClockworkShare > QualityBudget.YellowShare && Crafting.PhysicsCauldronManager.ClockworkShare < 1f,
+                "the clockwork paddle brews better than a hand in the yellow, a little under a hand on the green");
+        }
+
         private void TestQualityCeiling()
         {
             const int start = ActiveOrder.StartingQuality;

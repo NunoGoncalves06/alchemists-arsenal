@@ -16,9 +16,12 @@ namespace AlchemistsArsenal.Crafting
         private static readonly Color Brass = new Color(0.72f, 0.56f, 0.28f);
         private static readonly Color Slot = new Color(0.10f, 0.07f, 0.09f);
         private static readonly Color BandColor = new Color(0.31f, 0.68f, 0.35f, 0.75f);
+        private static readonly Color YellowColor = new Color(0.96f, 0.80f, 0.32f, 0.75f);
+        private static readonly Color GreenColor = new Color(0.31f, 0.78f, 0.38f, 0.95f);
 
         private Transform _root;
-        private SpriteRenderer _band, _needle, _fill;
+        private SpriteRenderer _band, _needle, _fill, _green;
+        private int _order;
         private TextMeshPro _text;
         private float _len;
         private bool _vertical, _fillMode;
@@ -66,7 +69,7 @@ namespace AlchemistsArsenal.Crafting
         public static BenchGauge Create(Transform parent, Vector2 world, float length, bool vertical, int order,
             bool fillMode = false, string name = "Gauge")
         {
-            var g = new BenchGauge { _len = length, _vertical = vertical, _fillMode = fillMode };
+            var g = new BenchGauge { _len = length, _vertical = vertical, _fillMode = fillMode, _order = order };
             var root = new GameObject(name);
             root.transform.SetParent(parent, false);
             root.transform.position = world;
@@ -113,6 +116,29 @@ namespace AlchemistsArsenal.Crafting
             _band.transform.localPosition = At((a + b) * 0.5f);
             _band.transform.localScale = Size(b - a, 0.22f);
         }
+
+        /// <summary>
+        /// The perfect zone inside the band: green, with the rest of the band turned yellow.
+        /// A gauge that never calls this keeps a plain green band.
+        /// </summary>
+        public void SetPerfect(float min01, float max01)
+        {
+            if (_band == null) return;
+            if (_green == null)
+            {
+                _green = Part(_root, "Perfect", GreenColor, _order + 2, Size(0f, 0.22f), Vector2.zero);
+                _band.color = YellowColor;
+            }
+            min01 = Mathf.Clamp01(min01); max01 = Mathf.Clamp01(Mathf.Max(min01, max01));
+            PerfectMin = min01; PerfectMax = max01;
+            float a = (min01 - 0.5f) * _len, b = (max01 - 0.5f) * _len;
+            _green.transform.localPosition = At((a + b) * 0.5f) + new Vector3(0f, 0f, -0.01f);   // over the yellow
+            _green.transform.localScale = Size(b - a, 0.22f);
+        }
+
+        /// <summary>Where the green zone is now (0 when the gauge has none).</summary>
+        public float PerfectMin { get; private set; }
+        public float PerfectMax { get; private set; }
 
         /// <summary>Where the needle (or the top of the fill) is, 0..1, and its colour.</summary>
         public void SetValue(float value01, Color? color = null)

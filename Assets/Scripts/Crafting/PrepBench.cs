@@ -139,6 +139,8 @@ namespace AlchemistsArsenal.Crafting
             if (!show) return;
             float band = CurrentBand;
             _strikeDial.SetBand((IdealStrike - band) / DialMax, (IdealStrike + band) / DialMax);
+            float green = band * QualityBudget.GreenShare();
+            _strikeDial.SetPerfect((IdealStrike - green) / DialMax, (IdealStrike + green) / DialMax);
             // Empty, at the bottom, until the pestle is resting on the mix and rising:
             // every stroke reads up from nothing. The last blow is told in words.
             float v = LiftReady ? PredictedStrikeSpeed : 0f;
@@ -987,9 +989,10 @@ namespace AlchemistsArsenal.Crafting
 
             if (clean)
             {
-                int gain = Mathf.RoundToInt(Mathf.Lerp(QualityBudget.StrikeMax, QualityBudget.StrikeMin, off / band));
-                order.ApplyBonus(gain, "Prep", $"Clean strike at {Mps(speed)} (+{gain})");
-                SetReaction($"Clean strike — {Mps(speed)}.", UI.UITheme.Ok);
+                bool perfect = QualityBudget.InGreen(off / band);
+                int gain = perfect ? QualityBudget.StrikeMax : QualityBudget.StrikeMin;
+                order.ApplyBonus(gain, "Prep", $"{(perfect ? "Perfect" : "Clean")} strike at {Mps(speed)} (+{gain})");
+                SetReaction(perfect ? $"Perfect strike — {Mps(speed)}." : $"Clean strike — {Mps(speed)}. Dead on the green pays more.", UI.UITheme.Ok);
                 AudioManager.Play(Sfx.Seal);
                 CrushBurst(hit.Point, 12);
                 CameraRig.Shake(0.08f);

@@ -87,7 +87,7 @@ namespace AlchemistsArsenal.Data
                 "A brass ram on a frame over the mortar: it strikes the leaves itself, clean every time. You only put the leaves in.",
                 358, "Prep"),
             new UpgradeDefinition(ClockworkStirrer, "Clockwork Stirrer",
-                "A wind-up paddle over a copper pot stirs the whole brew, the right way round. No spoon: a little less than a perfect hand, but you are free.",
+                "A wind-up paddle over a copper pot stirs the whole brew, the right way round. No spoon: better than a hand that keeps only the yellow, and you are free.",
                 360, "Cauldron"),
             new UpgradeDefinition(DraughtKiln, "Draught Kiln",
                 "A damper and a stoker: the kiln keeps its own fire in the band, and dries a quarter faster.",

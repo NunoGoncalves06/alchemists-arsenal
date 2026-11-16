@@ -49,6 +49,7 @@ namespace AlchemistsArsenal.Crafting
         /// <summary>How long the grain sprouts, in seconds: the bed can be turned from <see cref="TurnFrom"/> and mats at <see cref="TurnBy"/> of it.</summary>
         public const float GerminateSeconds = 10f;
         public const float TurnFrom = 0.40f, TurnBy = 0.85f;
+        private const float TurnMid = (TurnFrom + TurnBy) * 0.5f, TurnHalf = (TurnBy - TurnFrom) * 0.5f;
         private const float GreenGrace = 10f, OverModifiedEvery = 4f;
         private const int OrderBack = 9, OrderWater = 12, OrderFront = 16;
 
@@ -473,6 +474,8 @@ namespace AlchemistsArsenal.Crafting
                 float target = QualityBudget.GrainTarget, slack = QualityBudget.GrainSlack;
                 var (full, lo, hi) = FillGauge(Vat);
                 _jarGauge.SetBand(lo, hi);
+                // Dead on the line, give or take a grain; the vat's whole box is its line.
+                if (Vat) _jarGauge.SetPerfect(lo, hi); else _jarGauge.SetPerfect((target - 1f) / full, (target + 1f) / full);
                 // The vat is done at the end of its bar; a bare jar is right anywhere in its band.
                 bool inBand = Vat ? GoodInJar >= target : GoodInJar >= target - slack && GoodInJar <= target + slack * 2f;
                 _jarGauge.SetValue(Mathf.Clamp01(GoodInJar / full), inBand ? new Color(0.45f, 0.85f, 0.45f) : new Color(0.96f, 0.85f, 0.45f));
@@ -484,6 +487,8 @@ namespace AlchemistsArsenal.Crafting
                 // Sprouting: the green box is when to turn the bed (while it still needs a hand).
                 bool window = step == SteepStep.Germinating && TurnPending && !Vat && Data.Complexity.TurningOn(Data.Complexity.Level());
                 if (window) _jarGauge.SetBand(TurnFrom, TurnBy); else _jarGauge.SetBand(0f, 0f);
+                float turnGreen = window ? TurnHalf * QualityBudget.GreenShare() : 0f;
+                _jarGauge.SetPerfect(TurnMid - turnGreen, TurnMid + turnGreen);
                 _jarGauge.SetValue(t, window && t >= TurnFrom && t <= TurnBy ? new Color(0.45f, 0.85f, 0.45f) : new Color(0.96f, 0.85f, 0.45f));
                 _jarGauge.SetText(step == SteepStep.Soaking ? "soaking" : step == SteepStep.Germinating ? "sprouting" : "sprouted");
             }
@@ -637,7 +642,11 @@ namespace AlchemistsArsenal.Crafting
             else if (good > target + slack * 2)
                 Charge(o, QualityBudget.MaltOver, $"Crowded the steep ({good} for {target})");
             else
-                Pay(o, QualityBudget.MaltFill, $"Steeped to the line ({good} grains)");
+            {
+                bool perfect = Vat || Mathf.Abs(good - target) <= 1;   // the vat seals at the line itself
+                Pay(o, perfect ? QualityBudget.MaltFill : QualityBudget.MaltFill / 2,
+                    perfect ? $"Steeped dead on the line ({good} grains)" : $"Steeped near the line ({good} grains)");
+            }
             LidOn(true);
             AudioManager.Play(Sfx.Confirm);
             Changed?.Invoke();
@@ -710,7 +719,9 @@ namespace AlchemistsArsenal.Crafting
                 g.Body.AddForce(new Vector2(k * 0.9f, 0.9f + Mathf.Abs(k) * 0.6f) * g.Body.mass, ForceMode2D.Impulse);
                 g.Body.AddTorque(k * 0.02f, ForceMode2D.Impulse);
             }
-            Pay(o, QualityBudget.MaltTurn, "Turned the bed before the rootlets matted");
+            bool turnPerfect = QualityBudget.InGreen(Mathf.Abs(GerminateProgress01 - TurnMid) / TurnHalf);
+            Pay(o, turnPerfect ? QualityBudget.MaltTurn : QualityBudget.MaltTurn / 2,
+                turnPerfect ? "Turned the bed right on time" : "Turned the bed before the rootlets matted");
             CameraRig.Shake(0.05f);
             AudioManager.Play(Sfx.Tab);
             Changed?.Invoke();

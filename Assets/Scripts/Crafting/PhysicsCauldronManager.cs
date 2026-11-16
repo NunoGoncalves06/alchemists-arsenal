@@ -128,6 +128,11 @@ namespace AlchemistsArsenal.Crafting
         public bool TooSlow => StirRate < MinOptimalStir;
         public bool TooFast => StirRate > MaxOptimalStir;
 
+        /// <summary>The green (perfect) zone in the middle of the band: a brew held here pays in full, the yellow round it half.</summary>
+        public float MinPerfectStir => bandCenter - EffectiveBandHalfWidth * QualityBudget.GreenShare();
+        public float MaxPerfectStir => bandCenter + EffectiveBandHalfWidth * QualityBudget.GreenShare();
+        public bool InGreen => StirRate >= MinPerfectStir && StirRate <= MaxPerfectStir;
+
         /// <summary>0..1: how badly the brew has caught on the bottom of the pot.</summary>
         public float Scorch01 => _scorch;
 
@@ -161,11 +166,11 @@ namespace AlchemistsArsenal.Crafting
         /// <summary>How fast the paddle brews, against a good hand in the band.</summary>
         private const float ClockworkPace = 0.8f;
         /// <summary>
-        /// What the paddle's brew is worth against a good hand's: it never errs, but it
-        /// never works the herbs as well either. Owned-and-ignored is a fine flask; the
-        /// best one is still stirred.
+        /// What the paddle's brew is worth against a hand held on the green: it never errs,
+        /// and it beats a hand that only keeps the yellow, but a perfect hand is still a
+        /// little better.
         /// </summary>
-        public const float ClockworkShare = 0.75f;
+        public const float ClockworkShare = 0.9f;
         private float _paddleCredit;
 
         /// <summary>
@@ -621,7 +626,9 @@ namespace AlchemistsArsenal.Crafting
                 float pace = Mathf.Lerp(undissolvedPace, 1f, DissolvedFraction);
                 BrewProgress01 = Mathf.Clamp01(BrewProgress01 + Time.deltaTime / Mathf.Max(1f, brewSeconds) * pace);
 
-                PayChunks(activeOrder, $"Held the band at {Mathf.RoundToInt(StirRate * 100)}%");
+                bool perfect = InGreen;
+                PayChunks(activeOrder, perfect ? $"Held the green at {Mathf.RoundToInt(StirRate * 100)}%" : $"Held the band at {Mathf.RoundToInt(StirRate * 100)}%",
+                    perfect ? 1f : QualityBudget.YellowShare);
                 return;
             }
 

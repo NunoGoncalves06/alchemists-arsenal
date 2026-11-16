@@ -951,7 +951,7 @@ namespace AlchemistsArsenal.Core
                         foreach (var d in o.deductions)
                         {
                             if (d.station != Crafting.KilnBench.Station) continue;
-                            if (d.reason.StartsWith("Kilned in the band")) warm = true;
+                            if (d.reason.StartsWith("Kilned")) warm = true;
                             else if (d.reason.Contains("gone cool") && !warm)
                                 Fail($"Kiln: {o.heroName}'s malt was charged '{d.reason}' before the kiln was ever in the band.");
                         }
@@ -1289,8 +1289,9 @@ namespace AlchemistsArsenal.Core
                     if (!mix.Ground)
                         Fail($"Prep: the crusher struck {QualityBudget.GrindStrikes - bench.StrikesLeft} of {QualityBudget.GrindStrikes} in 20 s - no action possible, the player is stuck.");
                     int clean = 0;
-                    foreach (var d in order.deductions) if (d.station == "Prep" && d.reason.StartsWith("Clean strike")) clean++;
-                    Log($"Prep: the crusher struck {clean} clean of {QualityBudget.GrindStrikes} by itself, last at {bench.LastStrikeSpeed:0.00} m/s.");
+                    // The machine's promise: every strike dead on the green.
+                    foreach (var d in order.deductions) if (d.station == "Prep" && d.reason.StartsWith("Perfect strike")) clean++;
+                    Log($"Prep: the crusher struck {clean} perfect of {QualityBudget.GrindStrikes} by itself, last at {bench.LastStrikeSpeed:0.00} m/s.");
                     if (clean < QualityBudget.GrindStrikes)
                     {
                         var lines = new List<string>();
@@ -1368,7 +1369,7 @@ namespace AlchemistsArsenal.Core
                         Log($"Prep strike {s + 1}: a leaf moved under the pestle (expected fall {bench.ReleaseDrop:0.00} m, real {bench.LastStrikeFall:0.00} m), so it hit at {measured:0.00} m/s, not the dial's {predicted:0.00}.");
                     if (Mathf.Abs(logged - measured) > 0.051f)
                         Fail($"Prep strike {s + 1}: the pestle hit at {measured:0.00} m/s but the ledger says {logged:0.0} ({ledger}).");
-                    if (!ledger.StartsWith("Clean strike"))
+                    if (!ledger.StartsWith("Clean strike") && !ledger.StartsWith("Perfect strike"))
                         Fail($"Prep strike {s + 1}: let go at {predicted:0.00} m/s, inside the green ({want:0.00}), and was penalised: {ledger}");
                     foreach (var f in Frames(25)) yield return f;
                 }
@@ -1562,11 +1563,13 @@ namespace AlchemistsArsenal.Core
                 bool captured = false;
                 while (!pot.IsBrewComplete && elapsed < 60f)
                 {
-                    // Aim the stir at the middle of the band and correct toward it: too
-                    // slow and it sticks, too fast and it slops.
+                    // Aim the stir round the middle of the band and correct toward it: too
+                    // slow and it sticks, too fast and it slops. A good hand, not a machine:
+                    // it drifts in and out of the green, so the yellow costs it a little.
+                    float half = (pot.MaxOptimalStir - pot.MinOptimalStir) * 0.5f;
                     float power = pot.TooSlow ? pot.MaxOptimalStir
                         : pot.TooFast ? pot.MinOptimalStir
-                        : pot.StirBandCentre;
+                        : pot.StirBandCentre + half * 0.6f * Mathf.Sin(elapsed * 0.9f);
                     angle += dir * power * pot.FullStirDegPerSec * Time.deltaTime * Mathf.Deg2Rad;
                     _pointer.World = pot.ToWorld(new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * R * 0.6f);
                     elapsed += Time.deltaTime;
@@ -1629,6 +1632,8 @@ namespace AlchemistsArsenal.Core
                     if (bench.Fill01 < Crafting.BottlingBench.TargetLow || bench.Fill01 > Crafting.BottlingBench.TargetHigh)
                         Fail($"Bottling: the doser filled the flask to {bench.Fill01:P0}, outside the gold lines.");
                     Log($"Bottling: the doser measured it to {bench.Fill01:P0} by itself.");
+                    if (Crafting.BottlingBench.Funnel && !bench.FillInGreen)
+                        Fail($"Bottling: the doser filled the flask to {bench.Fill01:P0}, off the green: a machine must pour dead on the line.");
                 }
                 bench.PourHeld = !Crafting.BottlingBench.Funnel;
                 // Let go a little early: what is already in the air still lands. One
