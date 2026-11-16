@@ -3319,6 +3319,15 @@ namespace AlchemistsArsenal.Core
                 DiaryScreen.FromOpeningCinematic = false;
                 UIManager.Instance.Show(ScreenId.Diary);
                 foreach (var step in Settle("after_ending_diary")) yield return step;
+                // The road pages carry a picture of the people in them, not an empty scene.
+                foreach (string page in new[] { "diary_ww", "diary_cinder", "diary_swamp" })
+                {
+                    if (!s.unlockedDiary.Contains(page)) continue;
+                    UIManager.Instance.Show(ScreenId.BiomeMap);
+                    DiaryScreen.OpenEntryId = page;
+                    UIManager.Instance.Show(ScreenId.Diary);
+                    foreach (var step in Settle($"after_ending_{page}")) yield return step;
+                }
                 UIManager.Instance.Show(ScreenId.BiomeMap);
                 foreach (var step in Settle("after_ending_map")) yield return step;
                 UIManager.Instance.Show(ScreenId.MainMenu);
