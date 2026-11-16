@@ -197,7 +197,7 @@ namespace AlchemistsArsenal.Crafting
             f.Body.simulated = false;
             f.Body.transform.SetParent(f.To.Belt, true);
             f.Body.transform.localPosition = Vector3.zero;
-            f.Body.transform.localScale = Vector3.one * 0.6f;
+            f.Body.transform.localScale = Vector3.one * (0.6f / Mathf.Max(0.01f, f.To.Belt.lossyScale.x));   // 0.6 of its size, whatever the art's scale
             f.To.BobUntil = Time.unscaledTime + 0.35f;
             if (VfxWorld.Active != null) VfxWorld.Active.Burst(f.To.Belt.position, new Color(1f, 0.9f, 0.55f), 10, 1.4f, 0.06f, 0.4f);
             AudioManager.Play(Sfx.Chime);
@@ -225,7 +225,7 @@ namespace AlchemistsArsenal.Crafting
                 sr.transform.localPosition = Vector3.zero;
                 var belt = new GameObject("Belt");
                 belt.transform.SetParent(art.transform, false);
-                belt.transform.localPosition = new Vector3(0.35f, 0.75f, 0f);
+                belt.transform.localPosition = new Vector3(0.3f, -0.1f, 0f);   // the art is centred: just below the middle is the waist
                 _fighters.Add(new Fighter { HeroId = o.heroId, Name = o.heroName, Root = root.transform, Belt = belt.transform });
             }
         }

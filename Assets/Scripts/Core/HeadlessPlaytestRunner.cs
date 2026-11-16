@@ -391,6 +391,26 @@ namespace AlchemistsArsenal.Core
 
                     // Then Delivery: every sealed flask handed to the fighter who ordered it.
                     SwitchMorningTab(morningScreen, "Delivery");
+                    if (day == 1)
+                    {
+                        // A player who wanders off mid-lesson: to Prep and back. The lesson waits for
+                        // them (pointing at the bench on the rail) and is there again on return.
+                        foreach (var step in WaitUntil(() => TutorialManager.CurrentLessonId == "deliver", 4f, "the deliver lesson")) yield return step;
+                        if (_errorCount > 0) yield break;
+                        foreach (string away in new[] { "Prep", "Cauldron", "Bottling" })
+                        {
+                            SwitchMorningTab(morningScreen, away);
+                            foreach (var step in WaitRealtime(0.8f)) yield return step;
+                            if (TutorialManager.CurrentLessonId != "deliver")
+                                Fail($"Tutorial: going to {away} mid-lesson dropped the deliver lesson (now {TutorialManager.CurrentLessonId ?? "none"}).");
+                            SwitchMorningTab(morningScreen, "Delivery");
+                            foreach (var step in WaitRealtime(0.5f)) yield return step;
+                        }
+                        if (TutorialManager.CurrentLessonId != "deliver")
+                            Fail($"Tutorial: back at Delivery after hopping benches, the lesson is {TutorialManager.CurrentLessonId ?? "none"}, not deliver.");
+                        else Log("Tutorial: hopped to Prep, Cauldron and Bottling mid-lesson; the deliver lesson waited and came back.");
+                        if (_errorCount > 0) yield break;
+                    }
                     foreach (var step in DriveDelivery(orders, day)) { if (_errorCount > 0) break; yield return step; }
                     if (_errorCount > 0) yield break;
 
@@ -1023,6 +1043,13 @@ namespace AlchemistsArsenal.Core
                 }
                 if (_errorCount > 0) yield break;
                 Log($"Delivery: {orders.Count} flask(s) handed over, each to the fighter who ordered it.");
+                if (day == 1)
+                {
+                    foreach (var step in WaitUntil(() => TutorialManager.CurrentLessonId == "send", 4f,
+                                 "the tutorial's send lesson once every flask was handed over")) yield return step;
+                    if (_errorCount > 0) yield break;
+                    Log("Tutorial: with every flask handed over, the send lesson came up.");
+                }
                 foreach (var step in Settle($"day{day}_morning_delivery_done")) yield return step;
             }
 
@@ -1670,6 +1697,31 @@ namespace AlchemistsArsenal.Core
 
                 if (day == 1)
                 {
+                    // A player who grabs the cork as soon as the bench lets them and drops it off the
+                    // middle of the neck: it glances off and waits over the neck. The cork lesson must
+                    // light it there (clicks only go through the light), or the player is stuck.
+                    Vector2 dish = bench.CorkWorld, wide = bench.FlaskMouthWorld + new Vector2(0.5f, 1.1f);
+                    int sealsBefore = bench.SealsLeft;
+                    PhysicsKit.Pointer.Scripted = _pointer;
+                    _pointer.World = dish;
+                    foreach (var f in Frames(2)) yield return f;
+                    _pointer.Press();
+                    for (int i = 0; i <= 20; i++) { _pointer.World = Vector2.Lerp(dish, wide, i / 20f); yield return null; }
+                    _pointer.Release();
+                    foreach (var f in Frames(2)) yield return f;
+                    PhysicsKit.Pointer.Scripted = null;
+                    foreach (var step in WaitRealtime(1.0f)) yield return step;
+                    if (bench.CorkSeated || bench.SealsLeft != sealsBefore - 1)
+                        Fail($"Bottling: a cork dropped 0.5 off the neck should glance off (seated={bench.CorkSeated}, seals {sealsBefore} -> {bench.SealsLeft}).");
+                    foreach (var step in WaitUntil(() => TutorialManager.CurrentLessonId == "cork", 3f, "the cork lesson after a missed seal")) yield return step;
+                    if (_errorCount > 0) yield break;
+                    LessonTarget? lit = null;
+                    foreach (var l in TutorialScript.Lessons) if (l.Id == "cork") lit = l.Where();
+                    if (!lit.HasValue || Vector2.Distance(lit.Value.World, bench.CorkWorld) > lit.Value.WorldRadius)
+                        Fail($"Tutorial: after a missed seal the cork is at {bench.CorkWorld} but the lesson lights {lit?.World} (r {lit?.WorldRadius}): the player cannot click it.");
+                    else Log($"Tutorial: after a missed seal the cork lesson lights the cork where it waits, over the neck ({bench.CorkWorld}).");
+                    Capture("day1_morning_bottling_missed_seal_lesson");
+
                     // The old call still works (the needle runs on real time).
                     for (int guard = 0; guard < 200000 && Mathf.Abs(Crafting.BottlingBench.SealNeedle01() - 0.5f) > 0.02f; guard++)
                         yield return null;

@@ -213,7 +213,9 @@ namespace AlchemistsArsenal.UI
                 Id = "cork", MinLevel = 0, Station = 5,
                 Ready = () => Bottle != null && Bottle.Working != null && Bottle.Current == BottlingBench.Step.Seal,
                 Done = () => Bottle == null || Bottle.Working == null || Bottle.CorkSeated || Bottle.Current != BottlingBench.Step.Seal,
-                Where = () => Bottle.CorkCarried ? LessonTarget.At(Bottle.FlaskMouthWorld, 1.0f) : LessonTarget.At(Bottle.CorkDishWorld, 0.8f),
+                // The cork itself, wherever it is: after a missed seal it waits over the neck, not in
+                // its dish, and the dark only lets clicks through its light.
+                Where = () => Bottle.CorkCarried ? LessonTarget.At(Bottle.FlaskMouthWorld, 1.0f) : LessonTarget.At(Bottle.CorkWorld, 0.8f),
                 Say = () => Bottle.CorkCarried ? "Let go over the neck." : "Pick up the cork.",
             },
             new Lesson
