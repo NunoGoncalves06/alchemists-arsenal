@@ -227,6 +227,40 @@ namespace AlchemistsArsenal.Art
             return c.Bake(key, n / 2f, new Vector2(0.5f, 0.5f));   // 2 world units across at scale 1
         }
 
+        /// <summary>A white ring-arrow turning anticlockwise (flip it on X for clockwise): the way the recipe stirs.</summary>
+        public static Sprite TurnArrow()
+        {
+            const string key = "turn_arrow";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int n = 20;
+            const float headA = 5.2f;   // where the arc ends and the head points on (radians)
+            var c = new PixelCanvas(n, n);
+            c.Fill((x, y) =>
+            {
+                float dx = x + 0.5f - n / 2f, dy = y + 0.5f - n / 2f;
+                float r = Mathf.Sqrt(dx * dx + dy * dy) / (n / 2f);
+                float a = Mathf.Atan2(dy, dx);
+                if (a < 0f) a += Mathf.PI * 2f;
+                if (r > 0.55f && r < 0.8f && a > 0.9f && a < headA) return true;   // the arc
+                // The head: a triangle at the arc's end, pointing on round (anticlockwise).
+                Vector2 tip = new Vector2(Mathf.Cos(headA + 0.55f), Mathf.Sin(headA + 0.55f)) * 0.68f;
+                Vector2 b1 = new Vector2(Mathf.Cos(headA), Mathf.Sin(headA)) * 0.36f;
+                Vector2 b2 = new Vector2(Mathf.Cos(headA), Mathf.Sin(headA)) * 1.0f;
+                Vector2 p = new Vector2(dx, dy) / (n / 2f);
+                return Inside(p, tip, b1, b2);
+            }, (x, y) => new Color32(255, 255, 255, 255));
+            return c.Bake(key, n / 1.2f, new Vector2(0.5f, 0.5f));   // 1.2 world units across at scale 1
+        }
+
+        private static bool Inside(Vector2 p, Vector2 a, Vector2 b, Vector2 c)
+        {
+            float d1 = (p.x - b.x) * (a.y - b.y) - (a.x - b.x) * (p.y - b.y);
+            float d2 = (p.x - c.x) * (b.y - c.y) - (b.x - c.x) * (p.y - c.y);
+            float d3 = (p.x - a.x) * (c.y - a.y) - (c.x - a.x) * (p.y - a.y);
+            bool neg = d1 < 0 || d2 < 0 || d3 < 0, pos = d1 > 0 || d2 > 0 || d3 > 0;
+            return !(neg && pos);
+        }
+
         /// <summary>One of three flame frames for under the pot.</summary>
         public static Sprite Fire(int frame)
         {

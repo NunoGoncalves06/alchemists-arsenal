@@ -1453,11 +1453,12 @@ namespace AlchemistsArsenal.Core
                     Capture($"day{day}{_orderTag}_morning_cauldron_spill");
                     foreach (var f in Frames(40)) yield return f;
 
-                    // Now stop, with the spoon still over the brew: the bottom catches.
+                    // Now stop, with the spoon still over the brew: the swirl coasts down
+                    // from that frantic shove, and then the bottom catches.
                     int before = order.deductions.Count;
-                    for (float t = 0f; t < 6f && !pot.Burning; t += Time.deltaTime) yield return null;
+                    for (float t = 0f; t < 20f && !pot.Burning; t += Time.deltaTime) yield return null;
                     if (!pot.Burning)
-                        Fail($"Six seconds of not stirring never got the bottom burning (scorch {pot.Scorch01:0.00}).");
+                        Fail($"Twenty seconds of not stirring never got the bottom burning (scorch {pot.Scorch01:0.00}).");
                     else
                     {
                         bool charged = false;
@@ -1525,6 +1526,36 @@ namespace AlchemistsArsenal.Core
                     else _clockworkBrews++;
                     if (pot.IsBrewComplete) Log($"Cauldron: the clockwork paddle brewed {order.heroName}'s flask alone in {waited:0.0}s, {pot.DissolvedFraction:P0} dissolved, quality {order.qualityScore}");
                     yield break;
+                }
+
+                // Day 1: the brew has momentum. Shove it into the band, take the spoon out of
+                // the pot, and it must keep turning (and brewing) on its own for a while, then
+                // run down: it never finishes the brew alone.
+                if (day == 1 && order.queueIndex == 0)
+                {
+                    for (float t = 0f; t < 1.2f; t += Time.deltaTime)
+                    {
+                        angle += dir * pot.StirBandCentre * 1.1f * pot.FullStirDegPerSec * Time.deltaTime * Mathf.Deg2Rad;
+                        _pointer.World = pot.ToWorld(new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * R * 0.6f);
+                        yield return null;
+                    }
+                    float atRelease = pot.StirRate, progressAtRelease = pot.BrewProgress01, inBandFor = 0f, coast = 0f;
+                    _pointer.World = pot.ToWorld(new Vector2(R * 4f, R * 3f));
+                    bool shotCoast = false;
+                    for (; coast < 12f && pot.StirRate * pot.FullStirDegPerSec > 20f; coast += Time.deltaTime)
+                    {
+                        if (pot.InBand && pot.StirringCorrectly) inBandFor += Time.deltaTime;
+                        if (!shotCoast && coast > 0.6f) { shotCoast = true; Capture($"day{day}{_orderTag}_morning_cauldron_coasting"); }
+                        yield return null;
+                    }
+                    if (inBandFor < 1f)
+                        Fail($"Cauldron: a shove into the band ({atRelease:P0}) coasted in it for only {inBandFor:0.0}s once the spoon was out.");
+                    else if (pot.BrewProgress01 <= progressAtRelease)
+                        Fail("Cauldron: the coasting swirl was in the band but the brew did not advance.");
+                    else if (coast >= 12f)
+                        Fail($"Cauldron: the swirl was still turning ({pot.StirRate:P0}) 12 s after the spoon came out; it must run down.");
+                    else
+                        Log($"Cauldron momentum: shoved to {atRelease:P0}, coasted {inBandFor:0.0}s in the band (brew {progressAtRelease:P0} -> {pot.BrewProgress01:P0}), stopped after {coast:0.0}s.");
                 }
 
                 float elapsed = 0f;

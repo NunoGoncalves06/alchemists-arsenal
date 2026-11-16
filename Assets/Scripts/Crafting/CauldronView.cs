@@ -295,6 +295,7 @@ namespace AlchemistsArsenal.Crafting
         private ElementType BrewElement() => _pot != null ? _pot.BrewElement : ElementType.Nature;
 
         private BenchGauge _stirGauge;
+        private SpriteRenderer _turnArrow;
 
         /// <summary>
         /// The stir gauge on the bench beside the pot: the band of good stir speeds
@@ -307,12 +308,36 @@ namespace AlchemistsArsenal.Crafting
                 _stirGauge = BenchGauge.Create(transform, MouthCentre + new Vector2(3.15f, -1.5f), 2.4f, true, 40, name: "StirGauge");
             bool show = _pot.Working != null && _pot.MixtureReady && !_pot.IsBrewComplete;
             _stirGauge.SetVisible(show);
+            if (_turnArrow != null) _turnArrow.enabled = show;
             if (!show) return;
             _stirGauge.SetBand(_pot.MinOptimalStir, _pot.MaxOptimalStir);
             Color c = _pot.StirringBackwards ? new Color(0.84f, 0.27f, 0.31f)
                 : _pot.InBand ? new Color(0.45f, 0.85f, 0.45f) : new Color(0.96f, 0.85f, 0.45f);
             _stirGauge.SetValue(_pot.StirPower01, c);
-            _stirGauge.SetText($"brew {Mathf.RoundToInt(_pot.BrewProgress01 * 100f)}%");
+            // Warn before it goes wrong: the swirl running down toward the bottom catching,
+            // or heaving toward the rim. Otherwise the brew's progress.
+            bool hand = !_pot.ClockworkTurning;
+            string chalk = hand && (_pot.Slosh01 > 0.15f || _pot.TooFast) ? "ease off!"
+                : hand && _pot.EverStirred && _pot.StirRate < _pot.MinOptimalStir + 0.06f ? "push!"
+                : $"brew {Mathf.RoundToInt(_pot.BrewProgress01 * 100f)}%";
+            _stirGauge.SetText(chalk);
+            DrawTurnArrow(c);
+        }
+
+        /// <summary>A ring-arrow over the gauge: the way this recipe turns. It pulses while the brew wants a push.</summary>
+        private void DrawTurnArrow(Color c)
+        {
+            if (_turnArrow == null)
+            {
+                var go = new GameObject("TurnArrow");
+                go.transform.SetParent(transform, false);
+                go.transform.position = MouthCentre + new Vector2(3.9f, -0.75f);   // beside the gauge's top, clear of its chalk
+                _turnArrow = PixelArt.AddSprite(go, ShopArt.TurnArrow(), 41, 0.6f);
+            }
+            _turnArrow.flipX = _pot.RequiredClockwise;
+            bool wantsPush = !_pot.ClockworkTurning && _pot.EverStirred && _pot.TooSlow;
+            float pulse = wantsPush ? 0.75f + 0.25f * Mathf.Sin(Time.time * 10f) : 1f;
+            _turnArrow.color = new Color(c.r, c.g, c.b, pulse);
         }
 
         private void LateUpdate()
@@ -469,6 +494,8 @@ namespace AlchemistsArsenal.Crafting
             }
         }
 
+        private float _nextPushRipple;
+
         private void MoveSpoon(float dt)
         {
             if (_spoonT == null) return;
@@ -477,10 +504,15 @@ namespace AlchemistsArsenal.Crafting
                 ? (Vector3)_pot.ToWorld(Vector2.ClampMagnitude(_pot.ToSurface(Pointer.World(_cam)), (_pot.Liquid != null ? _pot.Liquid.Radius : 1f) * 0.95f)) + new Vector3(0f, 0.35f, 0f)
                 : RestSpoon();
             _spoonT.position = Vector3.Lerp(_spoonT.position, target, 1f - Mathf.Exp(-18f * dt));
-            float wanted = over ? -_pot.Spin01 * 28f : -18f;
+            float wanted = over ? -_pot.Spin01 * 28f - (_pot.SpoonPushing ? Mathf.Sign(_pot.Spin01) * 14f : 0f) : -18f;
             _spoonTilt = Mathf.Lerp(_spoonTilt, wanted, 1f - Mathf.Exp(-10f * dt));
             _spoonT.rotation = Quaternion.Euler(0f, 0f, _spoonTilt);
             _spoon.color = new Color(1f, 1f, 1f, over ? 1f : 0.85f);
+            if (_pot.SpoonPushing && VfxWorld.Active != null && Time.time >= _nextPushRipple)
+            {
+                _nextPushRipple = Time.time + 0.18f;   // a ripple off the spoon while it shoves the brew round
+                VfxWorld.Active.Flash(_spoonT.position + new Vector3(0f, -0.35f, 0f), new Color(1f, 1f, 1f, 0.35f), 0.35f, 0.2f);
+            }
         }
     }
 }

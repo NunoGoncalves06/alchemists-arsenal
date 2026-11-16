@@ -23,6 +23,7 @@ namespace AlchemistsArsenal.DebugTools
             Scenario_CleanBrewClimbs();
             Scenario_BurningPenalises();
             Scenario_UntouchedStaysPoor();
+            Scenario_SpoonOnlyPushes();
             Done = true;
             Debug.Log("<color=cyan><b>=== SIMULATION SUITE COMPLETE ===</b></color>");
         }
@@ -77,6 +78,18 @@ namespace AlchemistsArsenal.DebugTools
             Debug.Log($"Result: quality {order.qualityScore}/100 | grade {order.GetGrade()}");
             Report(order.qualityScore == ActiveOrder.StartingQuality && order.GetGrade() == PotionGrade.Poor,
                    "Untouched order is a fixed-floor Poor potion, never empty.");
+        }
+
+        private void Scenario_SpoonOnlyPushes()
+        {
+            Debug.Log("\n<b>[4: Momentum]</b> The spoon pushes the swirl when faster or against it, and slides through otherwise.");
+            bool faster = Crafting.PhysicsCauldronManager.SpoonPushes(400f, 200f, 45f);
+            bool against = Crafting.PhysicsCauldronManager.SpoonPushes(-200f, 300f, 45f);
+            bool slower = Crafting.PhysicsCauldronManager.SpoonPushes(150f, 300f, 45f);
+            bool resting = Crafting.PhysicsCauldronManager.SpoonPushes(10f, 300f, 45f);
+            bool fromStill = Crafting.PhysicsCauldronManager.SpoonPushes(-90f, 0f, 45f);
+            Report(faster && against && !slower && !resting && fromStill,
+                   "A faster or opposing spoon pushes; a slower or resting one lets the brew coast.");
         }
 
         private static void Report(bool ok, string what)

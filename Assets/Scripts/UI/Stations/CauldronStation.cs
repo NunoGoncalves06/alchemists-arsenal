@@ -89,10 +89,14 @@ namespace AlchemistsArsenal.UI.Stations
             if (pot.Burning) return "It's burning on the bottom. Stir faster.";
             if (pot.ClockworkTurning) return "The clockwork paddle is stirring it. Go work another bench.";
             if (!pot.MouseOverCauldron)
-                return pot.Sticking ? "It's catching. Get the spoon back in." : "Bring the spoon over the brew and stir.";
+            {
+                if (pot.Sticking) return "It's catching. Get the spoon back in.";
+                if (pot.InBand && pot.StirringCorrectly) return "It's turning by itself. Push again before it slows.";
+                return "Bring the spoon to the brew and push it round.";
+            }
             if (pot.StirringBackwards) return pot.RequiredClockwise ? "Wrong way. Stir clockwise." : "Wrong way. Stir anticlockwise.";
             if (pot.TooFast) return pot.Slosh01 > 0.5f ? "It's about to slop over. Ease off." : "A little fast. Ease off.";
-            if (pot.TooSlow) return pot.Sticking ? "It's sticking. Stir faster." : "Too slow. Stir faster.";
+            if (pot.TooSlow) return pot.Sticking ? "It's sticking. Push it round faster." : "It's slowing. Push it round again.";
             return "Good. Keep it in the green.";
         }
     }

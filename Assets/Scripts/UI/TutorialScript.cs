@@ -184,8 +184,8 @@ namespace AlchemistsArsenal.UI
                 Ready = () => Pot != null && Pot.Working != null && !Pot.IsBrewComplete && !PhysicsCauldronManager.AutoStir,
                 Done = () => Pot == null || Pot.Working == null || Pot.BrewProgress01 >= 0.2f,
                 Where = () => LessonTarget.At(Pot.MouthCentre, Pot.MouthRadiusX + 0.8f),
-                Say = () => Pot.RequiredClockwise ? "Circle over the pot, clockwise. Keep the needle green."
-                                                  : "Circle over the pot, counter-clockwise. Keep the needle green.",
+                Say = () => Pot.RequiredClockwise ? "Push the brew round, clockwise. Let it coast, then push again. Keep the needle green."
+                                                  : "Push the brew round, counter-clockwise. Let it coast, then push again. Keep the needle green.",
             },
             new Lesson
             {

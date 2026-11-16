@@ -250,12 +250,15 @@ namespace AlchemistsArsenal.Crafting
         /// <summary>Unsigned stir reading, 0..1 — what the meter shows.</summary>
         public float StirPower01 => Mathf.Abs(Spin01);
 
+        // The vortex counts while it turns, with or without the spoon in it: it coasts.
+        private bool BrewActive => Attended && MixtureReady && !AutoStir || ClockworkTurning;
+
         public bool StirringCorrectly =>
-            mouseOverPot && Mathf.Abs(smoothedSpinDegPerSec) >= spinDeadZone &&
+            BrewActive && Mathf.Abs(smoothedSpinDegPerSec) >= spinDeadZone &&
             (smoothedSpinDegPerSec < 0f) == RequiredClockwise;
 
         public bool StirringBackwards =>
-            mouseOverPot && Mathf.Abs(smoothedSpinDegPerSec) >= spinDeadZone &&
+            BrewActive && Mathf.Abs(smoothedSpinDegPerSec) >= spinDeadZone &&
             (smoothedSpinDegPerSec < 0f) != RequiredClockwise;
 
         /// <summary>How many Prep ingredients have gone into the pot today.</summary>
@@ -359,6 +362,7 @@ namespace AlchemistsArsenal.Crafting
             everStirred = false;
             wasInBand = true;
             smoothedSpinDegPerSec = _handSpin = 0f;
+            if (_vortex != null) _vortex.angularVelocity = 0f;
             hasLastAngle = false;
             IngredientCount = 0;
             SplashCount = 0;
@@ -385,17 +389,13 @@ namespace AlchemistsArsenal.Crafting
             mouseOverPot = !AutoStir && Attended && MixtureReady && surface.sqrMagnitude <= (R * 1.15f) * (R * 1.15f);
 
             TrackSpin(surface);
-            if (ClockworkTurning)
-            {
-                float want = (RequiredClockwise ? -1f : 1f) * bandCenter * spinForFullPower;
-                smoothedSpinDegPerSec = Mathf.Lerp(smoothedSpinDegPerSec, want, Damp(3f));
-                everStirred = true;
-            }
-            else smoothedSpinDegPerSec = _handSpin;
+            if (ClockworkTurning) everStirred = true;
+            EnsureVortex();
+            smoothedSpinDegPerSec = _vortex.angularVelocity;   // the brew's own spin: pushed by the spoon, slowed by its drag
 
             if (_liquid != null)
             {
-                _liquid.SpinDegPerSec = mouseOverPot || ClockworkTurning ? smoothedSpinDegPerSec : 0f;
+                _liquid.SpinDegPerSec = smoothedSpinDegPerSec;
                 _liquid.StirringCorrectly = StirringCorrectly || ClockworkTurning;
                 _liquid.Spoon = mouseOverPot ? Vector2.ClampMagnitude(surface, R * 0.95f) : (Vector2?)null;
             }
@@ -453,7 +453,7 @@ namespace AlchemistsArsenal.Crafting
             // goes) and quickly for a frantic one.
             _spillCooldownLeft -= dt;
             float sloshFrom = MaxOptimalStir + sloshMargin;
-            if (mouseOverPot && !IsBrewComplete && rate > sloshFrom)
+            if (live && Attended && rate > sloshFrom)   // the swirl's own speed: a hard shove keeps heaving after the hand lets go
             {
                 float over = Mathf.Clamp((rate - sloshFrom) / Mathf.Max(0.05f, EffectiveBandHalfWidth), 0f, 3f);
                 _slosh = Mathf.Min(1f, _slosh + dt * sloshRate * (1f + 1.6f * over));
@@ -516,7 +516,79 @@ namespace AlchemistsArsenal.Crafting
 
         private static float Damp(float rate) => 1f - Mathf.Exp(-rate * Time.deltaTime);
 
-        private void FixedUpdate() => PhysicsStepCount++;
+        // ---------------------------------------------------------------- the vortex
+        //
+        // The brew has momentum. Its swirl is a real Rigidbody2D turning in place: the spoon
+        // drives it toward the hand's own speed with torque when the hand is faster or turning
+        // against it, and its drag slows it to a stop once nothing pushes. So a push in an arc keeps it turning for a while, and the work is to
+        // push again before it falls out of the band, not to circle the mouse without rest.
+
+        [Header("Vortex (momentum)")]
+        [Tooltip("How quickly the spoon brings the swirl to its own speed, per second.")]
+        [SerializeField] private float spoonGrip = 4f;
+        [Tooltip("Angular drag of the swirl: from the middle of the band to its lower edge in about 2 s.")]
+        [SerializeField] private float vortexDrag = 0.18f;
+        [Tooltip("A steady drag on top of the angular one (deg/s each second), so a left swirl comes to rest instead of creeping on.")]
+        [SerializeField] private float stillFriction = 30f;
+        [Tooltip("The clockwork paddle pushes when the swirl falls below this share of the band's middle...")]
+        [SerializeField] private float clockworkPushBelow = 0.8f;
+        [Tooltip("...and lets it coast once it is past this share.")]
+        [SerializeField] private float clockworkCoastAbove = 1.05f;
+
+        private Rigidbody2D _vortex;
+        private bool _paddlePushing;
+
+        /// <summary>The spoon is shoving the brew round this frame (the view leans it in and ripples).</summary>
+        public bool SpoonPushing => mouseOverPot && SpoonPushes(_handSpin, smoothedSpinDegPerSec, spinDeadZone);
+
+        /// <summary>Somebody has stirred this brew (the gauge's warnings wait for it).</summary>
+        public bool EverStirred => everStirred;
+
+        /// <summary>
+        /// The spoon acts on the swirl only when it pushes: moving faster than the brew the
+        /// same way, or against it. A slower or resting spoon slides through, so the brew
+        /// coasts between strokes; the hand never has to keep circling.
+        /// </summary>
+        public static bool SpoonPushes(float handDegPerSec, float swirlDegPerSec, float deadZone) =>
+            Mathf.Abs(handDegPerSec) >= deadZone &&
+            (Mathf.Sign(handDegPerSec) != Mathf.Sign(swirlDegPerSec) || Mathf.Abs(handDegPerSec) > Mathf.Abs(swirlDegPerSec));
+
+        private void EnsureVortex()
+        {
+            if (_vortex != null) return;
+            var go = new GameObject("Vortex");
+            go.transform.SetParent(transform, false);
+            _vortex = go.AddComponent<Rigidbody2D>();
+            _vortex.gravityScale = 0f;
+            _vortex.constraints = RigidbodyConstraints2D.FreezePosition;
+            _vortex.useAutoMass = false;
+            _vortex.mass = 1f;
+            _vortex.inertia = 1f;
+            _vortex.angularDamping = vortexDrag;
+        }
+
+        private void FixedUpdate()
+        {
+            PhysicsStepCount++;
+            EnsureVortex();
+            float w = _vortex.angularVelocity;
+            float target = float.NaN;
+            if (mouseOverPot && SpoonPushes(_handSpin, w, spinDeadZone)) target = _handSpin;
+            else if (ClockworkTurning)
+            {
+                // Pushes in strokes, like a hand: shove past the middle, coast down, shove again.
+                float want = (RequiredClockwise ? -1f : 1f) * bandCenter * spinForFullPower;
+                float along = w * Mathf.Sign(want);
+                if (along < Mathf.Abs(want) * clockworkPushBelow) _paddlePushing = true;
+                else if (along > Mathf.Abs(want) * clockworkCoastAbove) _paddlePushing = false;
+                if (_paddlePushing) target = want * (clockworkCoastAbove + 0.15f);
+            }
+            else _paddlePushing = false;
+            if (!float.IsNaN(target))
+                _vortex.AddTorque((target - w) * spoonGrip * Mathf.Deg2Rad * _vortex.inertia);
+            else if (w != 0f)   // nothing pushing: the brew's thickness brings it to a stop, never past it
+                _vortex.AddTorque(-Mathf.Sign(w) * Mathf.Min(stillFriction, Mathf.Abs(w) / Time.fixedDeltaTime) * Mathf.Deg2Rad * _vortex.inertia);
+        }
 
         private void CheckStirQualityImpact()
         {
