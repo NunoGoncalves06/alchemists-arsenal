@@ -179,31 +179,38 @@ namespace AlchemistsArsenal.UI
             if (_keyArt != null) _keyArt.Play(after ? KeyArtAfter : KeyArtBefore, seed: 5);
         }
 
-        private static readonly Story.Shot KeyArtBefore = new Story.Shot
+        // Built when shown, not at type load: it reads StoryScript, whose cutscenes are assets.
+        private static Story.Shot KeyArtBefore => new Story.Shot
         {
             Scene = "shop_night", Fx = Story.ShotFx.Rain, ZoomFrom = 1f, ZoomTo = 1.06f,
             Actors = new[]
             {
-                new Story.CutsceneActor { Id = "kettle_glow", At = new Vector2(0.52f, 0.26f), Motion = Story.ActorMotion.Still },
-                new Story.CutsceneActor { Id = "nell", At = new Vector2(0.62f, 0.111f) },
-                new Story.CutsceneActor { Id = "tam_asleep", At = new Vector2(0.86f, 0.333f) },
-                new Story.CutsceneActor { Id = "hero_rookie", At = new Vector2(0.72f, 0.111f), Flip = true, Motion = Story.ActorMotion.Bob },
-                new Story.CutsceneActor { Id = "hero_herbalist", At = new Vector2(0.79f, 0.111f), Flip = true },
+                new Story.CutsceneActor { Id = "kettle_glow", At = new Vector2(0.46f, 0.26f), Motion = Story.ActorMotion.Still },
+                new Story.CutsceneActor { Id = "nell", At = new Vector2(0.555f, 0.111f) },
+                new Story.CutsceneActor { Id = "tam_asleep", At = new Vector2(0.95f, 0.333f) },
+                Fighter("rookie", 0.665f, Story.ActorMotion.Bob), Fighter("herbalist", 0.755f), Fighter("merchant", 0.845f),
             },
         };
 
-        private static readonly Story.Shot KeyArtAfter = new Story.Shot
+        private static Story.Shot KeyArtAfter => new Story.Shot
         {
             Scene = "shop_dawn", ZoomFrom = 1f, ZoomTo = 1.06f,
             Actors = new[]
             {
-                new Story.CutsceneActor { Id = "kettle", At = new Vector2(0.52f, 0.26f), Motion = Story.ActorMotion.Still },
-                new Story.CutsceneActor { Id = "nell", At = new Vector2(0.62f, 0.111f) },
-                new Story.CutsceneActor { Id = "tam", At = new Vector2(0.82f, 0.111f), Flip = true, Motion = Story.ActorMotion.Bob },
-                new Story.CutsceneActor { Id = "hero_rookie", At = new Vector2(0.72f, 0.111f), Flip = true },
-                new Story.CutsceneActor { Id = "hero_merchant", At = new Vector2(0.91f, 0.111f), Flip = true },
+                new Story.CutsceneActor { Id = "kettle", At = new Vector2(0.46f, 0.26f), Motion = Story.ActorMotion.Still },
+                new Story.CutsceneActor { Id = "nell", At = new Vector2(0.555f, 0.111f) },
+                new Story.CutsceneActor { Id = "tam", At = new Vector2(0.95f, 0.111f), Flip = true, Motion = Story.ActorMotion.Bob },
+                Fighter("rookie", 0.665f), Fighter("herbalist", 0.755f), Fighter("merchant", 0.845f),
             },
         };
+
+        /// <summary>A fighter on the title's floor, at Nell's scale, facing her.</summary>
+        private static Story.CutsceneActor Fighter(string id, float x, Story.ActorMotion motion = Story.ActorMotion.Breathe) =>
+            new Story.CutsceneActor
+            {
+                Id = "hero_" + id, At = new Vector2(x, Story.StoryScript.FighterFeet(0.111f)), From = new Vector2(x, Story.StoryScript.FighterFeet(0.111f)),
+                Flip = true, Motion = motion, Scale = Story.StoryScript.FighterScale, Tint = Color.white,
+            };
 
         private static void Quit()
         {

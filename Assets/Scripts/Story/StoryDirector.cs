@@ -72,7 +72,7 @@ namespace AlchemistsArsenal.Story
             {
                 if (!Has(s, EndingWatched))
                 {
-                    list.Add(StoryScript.Reveal);
+                    list.Add(StoryScript.RevealFor(s));
                     list.Add(StoryScript.EndingFor(s));
                 }
                 list.Add(StoryScript.Credits);

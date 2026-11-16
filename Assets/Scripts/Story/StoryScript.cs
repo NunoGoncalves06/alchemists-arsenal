@@ -166,17 +166,25 @@ namespace AlchemistsArsenal.Story
 
         // -------------------------------------------------------------- reveal
 
-        public static readonly Cutscene Reveal = Cutscene.Create("reveal", "Behind the Mask", StoryMusic.Reveal, new[]
+        private static Cutscene _reveal;
+        private static string _revealFor;
+
+        /// <summary>The reveal, with the fighters this run hired climbing ahead of Nell (built once per roster).</summary>
+        public static Cutscene RevealFor(Core.RunState s)
+        {
+            string key = string.Join(";", PartyIds(s));
+            if (_reveal != null && _revealFor == key) return _reveal;
+            _revealFor = key;
+            return _reveal = Cutscene.Create("reveal", "Behind the Mask", StoryMusic.Reveal, new[]
             {
                 // How Nell is on the summit at all: she climbed behind her fighters for the last road.
                 Tell("summit", "I could not wait at the counter for the last road.",
-                    A("hero_rookie", 0.5f, 0.12f, fromX: 0.18f), A("hero_herbalist", 0.38f, 0.12f, fromX: 0.06f, delay: 0.2f),
-                    A("hero_merchant", 0.26f, 0.12f, fromX: -0.06f, delay: 0.4f), A("nell_flask", 0.12f, 0.12f, fromX: -0.18f, delay: 0.7f))
+                    With(Party(s, 0.12f, 0.52f, -0.1f, ActorMotion.Breathe, enterBy: 0.32f, delayStep: 0.2f),
+                        A("nell_flask", 0.16f, 0.12f, fromX: -0.18f, delay: 0.7f)))
                     .WithFx(ShotFx.Motes).Pan(-0.06f, 0.02f, 1.04f, 1.1f),
                 Tell("summit", "I climbed behind my fighters with the cure in my arms, and reached the top as she fell.",
-                    A("matriarch_crown", 0.72f, 0.2f, ActorMotion.Tremble, rotation: -12f),
-                    A("hero_rookie", 0.52f, 0.12f, ActorMotion.Still), A("hero_herbalist", 0.42f, 0.12f, ActorMotion.Still),
-                    A("hero_merchant", 0.32f, 0.12f, ActorMotion.Still), A("nell_flask", 0.18f, 0.12f, fromX: 0.1f))
+                    With(Party(s, 0.12f, 0.54f, -0.1f, ActorMotion.Still),
+                        A("matriarch_crown", 0.76f, 0.2f, ActorMotion.Tremble, rotation: -12f), A("nell_flask", 0.2f, 0.12f, fromX: 0.1f)))
                     .WithFx(ShotFx.Flash).Pan(0.02f, 0.06f, 1.08f, 1.16f),
                 Tell("summit", "Her mask broke along the old crack. The face behind it was one I had watched grow old.",
                     A("matriarch_crown", 0.68f, 0.13f, ActorMotion.Still, rotation: -28f), A("mask_l", 0.4f, 0.14f, ActorMotion.Still, rotation: 18f),
@@ -206,6 +214,7 @@ namespace AlchemistsArsenal.Story
                     A("ysolde", 0.56f, 0.22f, ActorMotion.FadeOut), A("nell_flask", 0.3f, 0.12f))
                     .WithFx(ShotFx.Motes).Pan(0.03f, 0.03f, 1.1f, 1.04f),
             });
+        }
 
         // -------------------------------------------------------------- ending
 
@@ -215,17 +224,49 @@ namespace AlchemistsArsenal.Story
         /// </summary>
         public static CutsceneActor[] RosterHeroes(Core.RunState s, bool staggered)
         {
-            var ids = new System.Collections.Generic.List<string> { "rookie" };
-            if (s != null && s.roster != null)
-                foreach (var h in s.roster)
-                    if (h != null && (h.portraitId == "herbalist" || h.portraitId == "merchant") && !ids.Contains(h.portraitId))
-                        ids.Add(h.portraitId);
+            var ids = PartyIds(s);
             var actors = new CutsceneActor[ids.Count];
             for (int i = 0; i < ids.Count; i++)
                 actors[i] = A("hero_" + ids[i], 0.62f - 0.08f * i, HeroFloor, ActorMotion.Still, scale: 2f, tint: Backlit,
                     delay: staggered ? 0.15f * (ids.Count - 1 - i) : 0f);
             return actors;
         }
+
+        /// <summary>The fighters this run has: the Rookie always, then each hire the art knows.</summary>
+        public static System.Collections.Generic.List<string> PartyIds(Core.RunState s)
+        {
+            var ids = new System.Collections.Generic.List<string> { "rookie" };
+            if (s != null && s.roster != null)
+                foreach (var h in s.roster)
+                    if (h != null && (h.portraitId == "herbalist" || h.portraitId == "merchant") && !ids.Contains(h.portraitId))
+                        ids.Add(h.portraitId);
+            return ids;
+        }
+
+        /// <summary>
+        /// A fighter's sprite is 18 px tall against Nell's 48, and centred, not standing on
+        /// its feet: at twice its size and lifted by half its height it stands beside her
+        /// at her size, on the same floor.
+        /// </summary>
+        public const float FighterScale = 2f;
+        public static float FighterFeet(float floor) => floor + 20f / 108f;
+
+        /// <summary>This run's fighters in a row on <paramref name="floor"/>, the first at <paramref name="x"/>.</summary>
+        private static CutsceneActor[] Party(Core.RunState s, float floor, float x, float step, ActorMotion motion,
+            bool flip = false, float? enterBy = null, float delayStep = 0f)
+        {
+            var ids = PartyIds(s);
+            var actors = new CutsceneActor[ids.Count];
+            for (int i = 0; i < ids.Count; i++)
+            {
+                float at = x + step * i;
+                actors[i] = A("hero_" + ids[i], at, FighterFeet(floor), motion, flip,
+                    fromX: enterBy.HasValue ? at - enterBy.Value : (float?)null, scale: FighterScale, delay: delayStep * i);
+            }
+            return actors;
+        }
+
+        private static Core.RunState Live => Core.SaveSystem.Instance != null ? Core.SaveSystem.Instance.State : null;
 
         private static CutsceneActor[] With(CutsceneActor[] heroes, params CutsceneActor[] others)
         {
@@ -292,12 +333,11 @@ namespace AlchemistsArsenal.Story
         {
             "diary_00" => Picture("shop_night", ShotFx.Motes,
                 A("kettle_glow", 0.26f, 0.26f, ActorMotion.Still), A("nell", 0.4f, ShopFloor, ActorMotion.Still), A("tam_asleep", 0.66f, 0.333f)),
-            "diary_ww" => Picture("woods", ShotFx.Fireflies,
-                A("hero_rookie", 0.42f, 0.12f, ActorMotion.Bob), A("hero_herbalist", 0.56f, 0.12f, flip: true)),
+            "diary_ww" => Picture("woods", ShotFx.Fireflies, Party(Live, 0.12f, 0.36f, 0.12f, ActorMotion.Breathe)),
             "diary_perfect" => Picture("shop_dawn", ShotFx.None,
                 A("kettle", 0.26f, 0.26f, ActorMotion.Still), A("nell_flask", 0.44f, ShopFloor)),
             "diary_woodwose" => Picture("woods", ShotFx.Fireflies, FallenWoodwose(ActorMotion.Still)),
-            "diary_cinder" => Picture("peak", ShotFx.Embers, A("hero_rookie", 0.46f, 0.12f, ActorMotion.Still)),
+            "diary_cinder" => Picture("peak", ShotFx.Embers, Party(Live, 0.12f, 0.36f, 0.12f, ActorMotion.Still)),
             "diary_frost" => Picture("bedroom", ShotFx.Motes, A("nell", 0.36f, BedFloor, ActorMotion.Still)),
             "diary_swamp" => Picture("shop_night", ShotFx.None,
                 A("kettle_glow", 0.26f, 0.26f, ActorMotion.Tremble), A("nell", 0.42f, ShopFloor, ActorMotion.Still)),
@@ -319,7 +359,7 @@ namespace AlchemistsArsenal.Story
             "opening" => Opening,
             "woodwose" => Woodwose,
             "woodwose_return" => WoodwoseReturn,
-            "reveal" => Reveal,
+            "reveal" => RevealFor(Live),
             "ending" => EndingFor(Core.SaveSystem.Instance != null ? Core.SaveSystem.Instance.State : null),
             "credits" => Credits,
             _ => null,
