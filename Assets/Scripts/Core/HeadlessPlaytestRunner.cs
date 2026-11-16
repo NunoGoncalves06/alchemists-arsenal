@@ -2083,6 +2083,11 @@ namespace AlchemistsArsenal.Core
                 if (onDisk == null || onDisk.day != day || onDisk.gold != gold || onDisk.contracts.Count != 0)
                     Fail($"Pause: MAIN MENU did not save the run as it was (day {onDisk?.day}, gold {onDisk?.gold}, jobs {onDisk?.contracts.Count}).");
                 if (!ContinueButtonLit()) Fail("Title: CONTINUE stays dark with a save in a slot.");
+                var titleScreen = UIManager.Instance.ScreenOf(ScreenId.MainMenu) as MainMenuScreen;
+                string summary = titleScreen != null ? titleScreen.ContinueSummary : "";
+                if (!summary.StartsWith($"Day {day} ") || !summary.Contains($"{gold} g"))
+                    Fail($"Title: the Continue card reads '{summary}', not day {day} with {gold} g.");
+                else Log($"Title: the Continue card reads '{summary}'.");
 
                 SlotScreen.Open(newGame: false);
                 foreach (var step in Settle("slots_continue")) yield return step;

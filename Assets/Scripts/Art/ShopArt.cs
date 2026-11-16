@@ -227,6 +227,27 @@ namespace AlchemistsArsenal.Art
             return c.Bake(key, n / 2f, new Vector2(0.5f, 0.5f));   // 2 world units across at scale 1
         }
 
+        /// <summary>A small wooden door, ajar: the title's Quit.</summary>
+        public static Sprite Door()
+        {
+            const string key = "door_icon";
+            if (PixelCanvas.TryGet(key, out Sprite s)) return s;
+            const int w = 12, h = 16;
+            var c = new PixelCanvas(w, h);
+            var frame = new Color32(74, 52, 38, 255);
+            var wood = new Color32(150, 104, 62, 255);
+            var dark = new Color32(28, 20, 24, 255);
+            var brass = new Color32(232, 190, 92, 255);
+            c.Fill((x, y) => true, (x, y) =>
+            {
+                if (x == 0 || x == w - 1 || y == h - 1) return frame;
+                if (x >= 8) return dark;                                   // the gap of the open door
+                if (x == 6 && y == 7) return brass;                        // the knob
+                return (x == 3 && y > 1 && y < h - 2) ? frame : wood;      // a plank seam
+            });
+            return c.Bake(key, h, new Vector2(0.5f, 0.5f));
+        }
+
         /// <summary>A white ring-arrow turning anticlockwise (flip it on X for clockwise): the way the recipe stirs.</summary>
         public static Sprite TurnArrow()
         {

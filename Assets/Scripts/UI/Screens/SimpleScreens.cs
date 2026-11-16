@@ -49,53 +49,123 @@ namespace AlchemistsArsenal.UI
 
     public class MainMenuScreen : GameScreen
     {
-        private Button _continue;
-        private TextMeshProUGUI _warn, _sub;
+        private Button _continue, _otherSaves;
+        private TextMeshProUGUI _warn, _sub, _summary, _slotLine;
+        private GameObject _card;
         private StoryStage _keyArt;
+        private int _recent = -1;
+
+        /// <summary>The Continue card's summary line ("Day 7 · Cinder Peaks · 245 g"); empty with nothing to continue.</summary>
+        public string ContinueSummary => _card != null && _card.activeSelf && _summary != null ? _summary.text : "";
 
         protected override void Build()
         {
             UIFactory.Box(transform, UITheme.Ground, Rt);
 
-            var title = UIFactory.Title(transform, "Alchemist's Arsenal", UITheme.SizeDisplay, UITheme.Candle);
-            UIFactory.Place(title.rectTransform, 0.06f, 0.74f, 0.66f, 0.88f);
-            _sub = UIFactory.Heading(transform, "brew in the morning · fight in the afternoon · pay the rent at night",
-                UITheme.TextLow);
-            UIFactory.Place(_sub.rectTransform, 0.062f, 0.69f, 0.70f, 0.74f);
-
-            // Key art: the shop at night, from the story's own illustrations.
+            // The shop itself fills the screen, with the people in it: Nell, Tam, the fighters.
             var art = UIFactory.Root(transform, "KeyArt");
-            UIFactory.Place(art, 0.38f, 0.12f, 0.97f, 0.66f);
+            UIFactory.Stretch(art);
             _keyArt = StoryStage.Create(art);
 
-            var col = UIFactory.VStack(transform, 12f);
-            var rt = (RectTransform)col.transform;
-            rt.anchorMin = new Vector2(0.06f, 0.28f);
-            rt.anchorMax = new Vector2(0.34f, 0.68f);
-            rt.offsetMin = rt.offsetMax = Vector2.zero;
+            // A dusk over the left, so the words stand clear of the picture.
+            var shade = UIFactory.Panel(transform, UITheme.Alpha(UITheme.Ground, 0.86f), "Shade");
+            shade.raycastTarget = false;
+            UIFactory.Place(shade.rectTransform, 0f, 0f, 0.40f, 1f);
+            var fade = UIFactory.Panel(transform, UITheme.Alpha(UITheme.Ground, 0.45f), "ShadeEdge");
+            fade.raycastTarget = false;
+            UIFactory.Place(fade.rectTransform, 0.40f, 0f, 0.46f, 1f);
 
-            _continue = UIFactory.Button(col.transform, "CONTINUE", () => SlotScreen.Open(newGame: false));
-            Fix(_continue, 56);
-            Fix(UIFactory.Button(col.transform, "NEW GAME", () => SlotScreen.Open(newGame: true), primary: false), 56);
-            Fix(UIFactory.Button(col.transform, "SETTINGS", () => UIManager.Instance.Show(ScreenId.Settings), primary: false), 56);
-            Fix(UIFactory.Button(col.transform, "CREDITS", () => UIManager.Instance.Show(ScreenId.Credits), primary: false), 56);
-            Fix(UIFactory.Button(col.transform, "QUIT", Quit, primary: false), 56);
+            var title = UIFactory.Title(transform, "Alchemist's Arsenal", UITheme.SizeDisplay, UITheme.Candle);
+            UIFactory.Place(title.rectTransform, 0.05f, 0.80f, 0.62f, 0.93f);
+            _sub = UIFactory.Heading(transform, "brew in the morning · fight in the afternoon · pay the rent at night",
+                UITheme.TextLow);
+            UIFactory.Place(_sub.rectTransform, 0.052f, 0.75f, 0.62f, 0.80f);
 
-            _warn = UIFactory.Label(col.transform, "", 14, UITheme.Danger);
-            _warn.gameObject.AddComponent<LayoutElement>().minHeight = 40;
+            // The Continue card: where the last run stands, and one click back into it.
+            var card = UIFactory.FramedPanel(transform, "ContinueCard");
+            _card = card.gameObject;
+            UIFactory.Place(card.rectTransform, 0.05f, 0.52f, 0.36f, 0.72f);
+            var inCard = UIFactory.VStack(card.transform, 8f, new RectOffset(22, 22, 18, 18));
+            UIFactory.Stretch((RectTransform)inCard.transform);
+            UIFactory.Flex(UIFactory.Heading(inCard.transform, "Your shop", UITheme.TextLow).gameObject, 1f, 0f);
+            _summary = UIFactory.Label(inCard.transform, "", UITheme.SizeHeading, UITheme.Parchment, font: UITheme.Display);
+            UIFactory.Flex(_summary.gameObject, 1f, 0f);
+            _slotLine = UIFactory.Label(inCard.transform, "", UITheme.SizeSmall, UITheme.TextLow);
+            UIFactory.Flex(_slotLine.gameObject, 1f, 0f);
+            _continue = UIFactory.Button(inCard.transform, "CONTINUE", ContinueLatest);
+            UIFactory.FixedHeight(_continue.gameObject, 52f);
+            _otherSaves = LightButton(inCard.transform, null, "Other saves", () => SlotScreen.Open(newGame: false), 30f);
+
+            // The rest: light rows, an icon and a word each.
+            var col = UIFactory.VStack(transform, 6f);
+            UIFactory.Place((RectTransform)col.transform, 0.05f, 0.16f, 0.30f, 0.45f);
+            LightButton(col.transform, Art.PixelSprites.Cauldron(), "New game", () => SlotScreen.Open(newGame: true));
+            LightButton(col.transform, Art.ShopArt.Gear(), "Settings", () => UIManager.Instance.Show(ScreenId.Settings));
+            LightButton(col.transform, Art.PixelSprites.Star(), "Credits", () => UIManager.Instance.Show(ScreenId.Credits));
+            LightButton(col.transform, Art.ShopArt.Door(), "Quit", Quit);
+
+            _warn = UIFactory.Label(transform, "", 14, UITheme.Danger);
+            UIFactory.Place(_warn.rectTransform, 0.05f, 0.08f, 0.38f, 0.14f);
+        }
+
+        /// <summary>
+        /// A menu row with no slab behind it: an icon and a word, lit by a candle-coloured
+        /// wash only under the pointer.
+        /// </summary>
+        private static Button LightButton(Transform parent, Sprite icon, string text, System.Action onClick, float height = 44f)
+        {
+            var img = UIFactory.Panel(parent, UITheme.Alpha(UITheme.Candle, 0.22f), "LightButton");
+            var btn = img.gameObject.AddComponent<Button>();
+            btn.targetGraphic = img;
+            var c = btn.colors;
+            c.normalColor = new Color(1f, 1f, 1f, 0f);
+            c.highlightedColor = Color.white;
+            c.selectedColor = new Color(1f, 1f, 1f, 0f);
+            c.pressedColor = new Color(1f, 1f, 1f, 1.6f);
+            c.fadeDuration = 0.08f;
+            btn.colors = c;
+            btn.onClick.AddListener(() => onClick());
+            UIFactory.FixedHeight(img.gameObject, height);
+
+            var row = UIFactory.HStack(img.transform, 14f, new RectOffset(10, 10, 0, 0));
+            row.childAlignment = TextAnchor.MiddleLeft;
+            UIFactory.Stretch((RectTransform)row.transform);
+            if (icon != null)
+            {
+                var ic = UIFactory.Icon(row.transform, icon, 28f);
+                var le = ic.gameObject.AddComponent<LayoutElement>();
+                le.minWidth = le.preferredWidth = 28f; le.minHeight = le.preferredHeight = 28f;
+            }
+            var label = UIFactory.Label(row.transform, text, icon != null ? UITheme.SizeHeading : UITheme.SizeSmall + 1,
+                icon != null ? UITheme.Parchment : UITheme.TextLow, TextAlignmentOptions.MidlineLeft, font: UITheme.Display);
+            UIFactory.Flex(label.gameObject, 1f, 0f);
+            return btn;
+        }
+
+        private void ContinueLatest()
+        {
+            if (_recent < 0 || GameLoopManager.Instance == null) { SlotScreen.Open(newGame: false); return; }
+            GameLoopManager.Instance.Continue(_recent);
         }
 
         protected override void OnShow()
         {
             if (SaveSystem.Instance == null) return;
             bool any = SaveSystem.Instance.AnyContinuable();
-            if (_continue != null)
+            _recent = any ? SaveSlots.MostRecent(SaveSystem.Instance) : -1;
+            RunState latest = _recent >= 0 ? SaveSystem.Instance.Peek(_recent) : null;
+            // Nothing to continue: no card at all, and New game is the first thing on the page.
+            if (_card != null) _card.SetActive(latest != null);
+            if (_continue != null) _continue.interactable = latest != null;
+            if (latest != null)
             {
-                // Nothing to continue: the button goes dark and does nothing.
-                _continue.interactable = any;
-                if (any) UIFactory.TintButton(_continue, UITheme.Candle, UITheme.CandleHot, UITheme.Ink900);
-                else UIFactory.TintButton(_continue, UITheme.SurfaceHi, UITheme.SurfaceHi, UITheme.TextLow);
-                if (!any) { var c = _continue.colors; c.disabledColor = Color.white; _continue.colors = c; }
+                _summary.text = $"Day {latest.day}  ·  {BiomeLibrary.Name(latest.TargetBiomeIndex)}  ·  {latest.gold} g";
+                _slotLine.text = $"Saved in slot {_recent + 1}";
+                int saves = 0;
+                for (int i = 0; i < SaveSystem.Slots; i++) if (SaveSystem.Instance.Peek(i) != null) saves++;
+                _otherSaves.gameObject.SetActive(saves > 1);
+                // The card fits what it holds: a row taller when it offers the other saves.
+                UIFactory.Place((RectTransform)_card.transform, 0.05f, saves > 1 ? 0.49f : 0.52f, 0.36f, 0.72f);
             }
             bool corrupt = false;
             for (int i = 0; i < SaveSystem.Slots; i++) corrupt |= SaveSystem.Instance.SlotCorrupt(i);
@@ -114,9 +184,11 @@ namespace AlchemistsArsenal.UI
             Scene = "shop_night", Fx = Story.ShotFx.Rain, ZoomFrom = 1f, ZoomTo = 1.06f,
             Actors = new[]
             {
-                new Story.CutsceneActor { Id = "kettle_glow", At = new Vector2(0.26f, 0.26f), Motion = Story.ActorMotion.Still },
-                new Story.CutsceneActor { Id = "nell", At = new Vector2(0.42f, 0.111f) },
-                new Story.CutsceneActor { Id = "tam_asleep", At = new Vector2(0.66f, 0.333f) },
+                new Story.CutsceneActor { Id = "kettle_glow", At = new Vector2(0.52f, 0.26f), Motion = Story.ActorMotion.Still },
+                new Story.CutsceneActor { Id = "nell", At = new Vector2(0.62f, 0.111f) },
+                new Story.CutsceneActor { Id = "tam_asleep", At = new Vector2(0.86f, 0.333f) },
+                new Story.CutsceneActor { Id = "hero_rookie", At = new Vector2(0.72f, 0.111f), Flip = true, Motion = Story.ActorMotion.Bob },
+                new Story.CutsceneActor { Id = "hero_herbalist", At = new Vector2(0.79f, 0.111f), Flip = true },
             },
         };
 
@@ -125,13 +197,13 @@ namespace AlchemistsArsenal.UI
             Scene = "shop_dawn", ZoomFrom = 1f, ZoomTo = 1.06f,
             Actors = new[]
             {
-                new Story.CutsceneActor { Id = "kettle", At = new Vector2(0.26f, 0.26f), Motion = Story.ActorMotion.Still },
-                new Story.CutsceneActor { Id = "nell", At = new Vector2(0.42f, 0.111f) },
-                new Story.CutsceneActor { Id = "tam", At = new Vector2(0.62f, 0.111f), Flip = true, Motion = Story.ActorMotion.Bob },
+                new Story.CutsceneActor { Id = "kettle", At = new Vector2(0.52f, 0.26f), Motion = Story.ActorMotion.Still },
+                new Story.CutsceneActor { Id = "nell", At = new Vector2(0.62f, 0.111f) },
+                new Story.CutsceneActor { Id = "tam", At = new Vector2(0.82f, 0.111f), Flip = true, Motion = Story.ActorMotion.Bob },
+                new Story.CutsceneActor { Id = "hero_rookie", At = new Vector2(0.72f, 0.111f), Flip = true },
+                new Story.CutsceneActor { Id = "hero_merchant", At = new Vector2(0.91f, 0.111f), Flip = true },
             },
         };
-
-        private static void Fix(Button b, float h) => b.gameObject.AddComponent<LayoutElement>().minHeight = h;
 
         private static void Quit()
         {
