@@ -193,8 +193,8 @@ namespace AlchemistsArsenal.UI
             Scene = "shop_night", Fx = Story.ShotFx.Rain, ZoomFrom = 1f, ZoomTo = 1.06f,
             Actors = new[]
             {
-                new Story.CutsceneActor { Id = "nell", At = new Vector2(0.58f, 0.111f) },
-                Fighter("rookie", 0.7f, Story.ActorMotion.Bob), Fighter("herbalist", 0.79f), Fighter("merchant", 0.88f),
+                new Story.CutsceneActor { Id = "nell", At = new Vector2(0.6f, 0.111f), Scale = MenuNell },
+                Fighter("rookie", 0.7f, Story.ActorMotion.Bob), Fighter("herbalist", 0.775f), Fighter("merchant", 0.85f),
             },
         };
 
@@ -203,20 +203,24 @@ namespace AlchemistsArsenal.UI
             Scene = "shop_dawn", ZoomFrom = 1f, ZoomTo = 1.06f,
             Actors = new[]
             {
-                new Story.CutsceneActor { Id = "nell", At = new Vector2(0.58f, 0.111f) },
-                Fighter("rookie", 0.7f), Fighter("herbalist", 0.79f), Fighter("merchant", 0.88f),
+                new Story.CutsceneActor { Id = "nell", At = new Vector2(0.6f, 0.111f), Scale = MenuNell },
+                Fighter("rookie", 0.7f), Fighter("herbalist", 0.775f), Fighter("merchant", 0.85f),
             },
         };
 
         /// <summary>
-        /// A fighter on the title's floor, facing Nell. The title is a close shot of the shop
-        /// (Nell at full size), so they stand at twice their fighting size: the same head
-        /// shorter than her as in the story's wide shots.
+        /// The title's people take about 38 % of the screen's height: Nell at this scale,
+        /// and each fighter sized so she stands <see cref="Story.StoryScript.NellOverFighter"/>
+        /// times as tall, as everywhere in the story.
         /// </summary>
+        private const float MenuNell = 0.85f;
+        private const float MenuFighter = MenuNell * 48f / (18f * Story.StoryScript.NellOverFighter);
+
+        /// <summary>A fighter on the title's floor, facing Nell.</summary>
         private static Story.CutsceneActor Fighter(string id, float x, Story.ActorMotion motion = Story.ActorMotion.Breathe)
         {
-            var feet = new Vector2(x, Story.StoryScript.FighterFeet(0.111f, 2f));
-            return new Story.CutsceneActor { Id = "hero_" + id, At = feet, From = feet, Flip = true, Motion = motion, Scale = 2f, Tint = Color.white };
+            var feet = new Vector2(x, Story.StoryScript.FighterFeet(0.111f, MenuFighter));
+            return new Story.CutsceneActor { Id = "hero_" + id, At = feet, From = feet, Flip = true, Motion = motion, Scale = MenuFighter, Tint = Color.white };
         }
 
         private static void Quit()

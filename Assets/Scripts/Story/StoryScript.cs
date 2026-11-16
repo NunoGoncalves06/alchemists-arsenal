@@ -246,13 +246,17 @@ namespace AlchemistsArsenal.Story
 
         /// <summary>
         /// A fighter sprite is 18 px tall and centred (its feet on its last row), so it
-        /// stands on a floor when lifted by half its height times its scale. In the story
-        /// fighters keep the size they fight at (scale 1); beside Nell the shot is a wide
-        /// one, with her and the Matriarch at <see cref="WideShot"/>, so she stays the
-        /// same head taller than them as on the title.
+        /// stands on a floor when lifted by half its height times its scale. Everywhere,
+        /// Nell (48 px with her hat) stands <see cref="NellOverFighter"/> times a fighter.
+        /// In a cutscene a fighter at scale 1 is the size it fights at (about 12 % of the
+        /// screen's height), so where Nell climbs with them she is drawn at
+        /// <see cref="WideShot"/>; the diary's smaller picture draws them at
+        /// <see cref="DiaryFighter"/> to keep that size on screen.
         /// </summary>
         public static float FighterFeet(float floor, float scale) => floor + 9f * scale / 108f;
-        private const float WideShot = 0.5f;
+        public const float NellOverFighter = 1.25f;
+        private const float WideShot = 18f * NellOverFighter / 48f;
+        private const float DiaryFighter = 1.25f;
 
         /// <summary>This run's fighters in a row on <paramref name="floor"/>, the first at <paramref name="x"/>.</summary>
         private static CutsceneActor[] Party(Core.RunState s, float floor, float x, float step, ActorMotion motion,
@@ -336,11 +340,11 @@ namespace AlchemistsArsenal.Story
         {
             "diary_00" => Picture("shop_night", ShotFx.Motes,
                 A("kettle_glow", 0.26f, 0.26f, ActorMotion.Still), A("nell", 0.4f, ShopFloor, ActorMotion.Still), A("tam_asleep", 0.66f, 0.333f)),
-            "diary_ww" => Picture("woods", ShotFx.Fireflies, Party(Live, 0.12f, 0.36f, 0.12f, ActorMotion.Breathe)),
+            "diary_ww" => Picture("woods", ShotFx.Fireflies, Party(Live, 0.12f, 0.36f, 0.13f, ActorMotion.Breathe, scale: DiaryFighter)),
             "diary_perfect" => Picture("shop_dawn", ShotFx.None,
                 A("kettle", 0.26f, 0.26f, ActorMotion.Still), A("nell_flask", 0.44f, ShopFloor)),
             "diary_woodwose" => Picture("woods", ShotFx.Fireflies, FallenWoodwose(ActorMotion.Still)),
-            "diary_cinder" => Picture("peak", ShotFx.Embers, Party(Live, 0.12f, 0.36f, 0.12f, ActorMotion.Still)),
+            "diary_cinder" => Picture("peak", ShotFx.Embers, Party(Live, 0.12f, 0.36f, 0.13f, ActorMotion.Still, scale: DiaryFighter)),
             "diary_frost" => Picture("bedroom", ShotFx.Motes, A("nell", 0.36f, BedFloor, ActorMotion.Still)),
             "diary_swamp" => Picture("shop_night", ShotFx.None,
                 A("kettle_glow", 0.26f, 0.26f, ActorMotion.Tremble), A("nell", 0.42f, ShopFloor, ActorMotion.Still)),
