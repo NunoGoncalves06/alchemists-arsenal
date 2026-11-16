@@ -168,6 +168,16 @@ namespace AlchemistsArsenal.Story
 
         public static readonly Cutscene Reveal = Cutscene.Create("reveal", "Behind the Mask", StoryMusic.Reveal, new[]
             {
+                // How Nell is on the summit at all: she climbed behind her fighters for the last road.
+                Tell("summit", "I could not wait at the counter for the last road.",
+                    A("hero_rookie", 0.5f, 0.12f, fromX: 0.18f), A("hero_herbalist", 0.38f, 0.12f, fromX: 0.06f, delay: 0.2f),
+                    A("hero_merchant", 0.26f, 0.12f, fromX: -0.06f, delay: 0.4f), A("nell_flask", 0.12f, 0.12f, fromX: -0.18f, delay: 0.7f))
+                    .WithFx(ShotFx.Motes).Pan(-0.06f, 0.02f, 1.04f, 1.1f),
+                Tell("summit", "I climbed behind my fighters with the cure in my arms, and reached the top as she fell.",
+                    A("matriarch_crown", 0.72f, 0.2f, ActorMotion.Tremble, rotation: -12f),
+                    A("hero_rookie", 0.52f, 0.12f, ActorMotion.Still), A("hero_herbalist", 0.42f, 0.12f, ActorMotion.Still),
+                    A("hero_merchant", 0.32f, 0.12f, ActorMotion.Still), A("nell_flask", 0.18f, 0.12f, fromX: 0.1f))
+                    .WithFx(ShotFx.Flash).Pan(0.02f, 0.06f, 1.08f, 1.16f),
                 Tell("summit", "Her mask broke along the old crack. The face behind it was one I had watched grow old.",
                     A("matriarch_crown", 0.68f, 0.13f, ActorMotion.Still, rotation: -28f), A("mask_l", 0.4f, 0.14f, ActorMotion.Still, rotation: 18f),
                     A("mask_r", 0.6f, 0.16f, ActorMotion.Still, rotation: -12f), A("mask_chin", 0.51f, 0.1f, ActorMotion.Still, rotation: 70f),

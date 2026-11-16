@@ -50,6 +50,8 @@ The game isn't signed, so Windows may say it protected your PC. Click **More inf
 1. Download `AlchemistsArsenal-Linux.tar.gz` and unpack it: `tar -xzf AlchemistsArsenal-Linux.tar.gz`
 2. Run `./AlchemistsArsenal/AlchemistsArsenal.x86_64`
 
+Your saves are kept in `~/.config/unity3d/Alchemists Arsenal Team/AlchemistsArsenal`.
+
 You don't need to install anything else on either system.
 
 ## Controls
