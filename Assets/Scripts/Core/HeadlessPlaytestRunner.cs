@@ -946,6 +946,15 @@ namespace AlchemistsArsenal.Core
                         foreach (var d in o.deductions)
                             if (d.station == Crafting.SteepBench.Station || d.station == Crafting.KilnBench.Station)
                                 lines.Add($"{d.station} {(d.pointsDelta >= 0 ? "+" : "")}{d.pointsDelta} {d.reason}");
+                        // A kiln still heating up from cold has not "gone cool".
+                        bool warm = false;
+                        foreach (var d in o.deductions)
+                        {
+                            if (d.station != Crafting.KilnBench.Station) continue;
+                            if (d.reason.StartsWith("Kilned in the band")) warm = true;
+                            else if (d.reason.Contains("gone cool") && !warm)
+                                Fail($"Kiln: {o.heroName}'s malt was charged '{d.reason}' before the kiln was ever in the band.");
+                        }
                         Log($"Malting: {o.heroName}'s malt done — quality {o.MaltQuality01:P0} ({o.maltPoints} of {QualityBudget.MaltMax}), flask at {o.qualityScore}. Lines: {string.Join("; ", lines)}");
                     }
                 }

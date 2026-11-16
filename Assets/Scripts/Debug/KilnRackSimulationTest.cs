@@ -47,6 +47,11 @@ namespace AlchemistsArsenal.DebugTools
             Check(DrawnHeight(small) <= DrawnHeight(basket) * 0.6f,
                 $"art: the small basket stands at most 60 % of the tall basket's height ({DrawnHeight(small)} px against {DrawnHeight(basket)})");
 
+            // The kiln charges "gone cool" only after it has been warm.
+            Check(!KilnBench.CoolChargeDue(false, 10f, 5f), "kiln: still heating from cold is not 'gone cool'");
+            Check(KilnBench.CoolChargeDue(true, 10f, 5f), "kiln: cooling after it was warm still costs");
+            Check(!KilnBench.CoolChargeDue(true, 3f, 5f), "kiln: nothing is charged in the first 4 s");
+
             Done = true;
             Debug.Log($"<color=cyan><b>=== DONE — {_pass} pass, {_fail} fail ===</b></color>");
         }

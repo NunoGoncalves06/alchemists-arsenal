@@ -75,6 +75,15 @@ namespace AlchemistsArsenal.Crafting
         private int _fireFrame, _toDrop;
         private float _launchDebt, _nextKilnCharge, _hotFor, _coolFor, _kilnFor, _fireClock;
         private float _autoStokeAt;
+        /// <summary>The kiln has been in the band at least once for this order: only then can it "go cool".</summary>
+        private bool _reachedBand;
+
+        /// <summary>
+        /// Whether a kiln below the band costs a point: only once it has been warm (a kiln still
+        /// heating up from cold has not "gone cool"), after 4 s of drying and 2 s below the band.
+        /// </summary>
+        public static bool CoolChargeDue(bool reachedBand, float kilnFor, float coolFor) =>
+            reachedBand && kilnFor > 4f && coolFor > 2f;
         private int _kilnChunksPaid, _kilnSpotSkip;
         /// <summary>The last batch, dried and cooling on the tray until it is swept off.</summary>
         private readonly List<Grain> _dried = new List<Grain>();
@@ -404,6 +413,7 @@ namespace AlchemistsArsenal.Crafting
             _kilnChunksPaid = 0;
             _kilnFor = 0f;
             _hotFor = _coolFor = 0f;
+            _reachedBand = false;
             _nextKilnCharge = 0f;
             _toDrop = Mathf.Max(1, o.steepedGrains);
             _launchDebt = 0f;
@@ -571,6 +581,7 @@ namespace AlchemistsArsenal.Crafting
             bool hot = Heat01 > HeatHigh, cool = Heat01 < HeatLow;
             if (!hot && !cool)
             {
+                _reachedBand = true;
                 _hotFor = _coolFor = 0f;
                 KilnProgress01 = Mathf.Min(1f, KilnProgress01 + dt * speed);
                 int due = Mathf.FloorToInt(KilnProgress01 * QualityBudget.KilnTotal + 0.0001f);
@@ -595,7 +606,7 @@ namespace AlchemistsArsenal.Crafting
             {
                 _coolFor += dt;
                 _hotFor = 0f;
-                if (_kilnFor > 4f && _coolFor > 2f && Time.time >= _nextKilnCharge)
+                if (CoolChargeDue(_reachedBand, _kilnFor, _coolFor) && Time.time >= _nextKilnCharge)
                 {
                     _nextKilnCharge = Time.time + 2f;
                     Charge(o, QualityBudget.KilnCool, "The kiln has gone cool — it is still sprouting");
