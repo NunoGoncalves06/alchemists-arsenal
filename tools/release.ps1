@@ -3,6 +3,7 @@
 #
 #   pwsh tools/release.ps1                 # the version in Project Settings (Player > Version)
 #   pwsh tools/release.ps1 -Version 0.2.0
+#   pwsh tools/release.ps1 -Beta           # a pre-release built from dev, for testers
 #
 # Before running: close the Unity Editor (one Unity per project), set the version in
 # Project Settings, and write the release notes in docs/releases/v<version>.md.
@@ -13,7 +14,9 @@ param(
     [string]$Version,
     [string]$Unity = "C:\Program Files\Unity\Hub\Editor\6000.6.0f1\Editor\Unity.exe",
     [string]$Project = (Resolve-Path "$PSScriptRoot\..").Path,
-    [string]$WslDistro = "Ubuntu"
+    [string]$WslDistro = "Ubuntu",
+    # A test build: marked as a pre-release on GitHub and tagged on dev, not main.
+    [switch]$Beta
 )
 $ErrorActionPreference = "Stop"
 
@@ -74,4 +77,8 @@ if ($LASTEXITCODE -eq 0 -and $wslStage) {
 foreach ($f in $winZip, $linuxTar) { "{0}: {1:N1} MB" -f (Split-Path $f -Leaf), ((Get-Item $f).Length / 1MB) }
 
 Write-Host "Publishing $tag..."
-gh release create $tag $winZip $linuxTar --title "Alchemist's Arsenal $Version" --notes-file $notes --target main
+if ($Beta) {
+    gh release create $tag $winZip $linuxTar --title "Alchemist's Arsenal $($Version -replace '-beta', ' beta')" --notes-file $notes --target dev --prerelease
+} else {
+    gh release create $tag $winZip $linuxTar --title "Alchemist's Arsenal $Version" --notes-file $notes --target main
+}
