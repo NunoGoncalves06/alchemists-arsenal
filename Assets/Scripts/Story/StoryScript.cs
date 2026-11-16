@@ -179,12 +179,13 @@ namespace AlchemistsArsenal.Story
             {
                 // How Nell is on the summit at all: she climbed behind her fighters for the last road.
                 Tell("summit", "I could not wait at the counter for the last road.",
-                    With(Party(s, 0.12f, 0.52f, -0.1f, ActorMotion.Breathe, enterBy: 0.32f, delayStep: 0.2f),
-                        A("nell_flask", 0.16f, 0.12f, fromX: -0.18f, delay: 0.7f)))
+                    With(Party(s, 0.12f, 0.5f, -0.08f, ActorMotion.Breathe, enterBy: 0.32f, delayStep: 0.2f),
+                        A("nell_flask", 0.24f, 0.12f, fromX: -0.1f, delay: 0.7f, scale: WideShot)))
                     .WithFx(ShotFx.Motes).Pan(-0.06f, 0.02f, 1.04f, 1.1f),
                 Tell("summit", "I climbed behind my fighters with the cure in my arms, and reached the top as she fell.",
-                    With(Party(s, 0.12f, 0.54f, -0.1f, ActorMotion.Still),
-                        A("matriarch_crown", 0.76f, 0.2f, ActorMotion.Tremble, rotation: -12f), A("nell_flask", 0.2f, 0.12f, fromX: 0.1f)))
+                    With(Party(s, 0.12f, 0.52f, -0.08f, ActorMotion.Still),
+                        A("matriarch_crown", 0.72f, 0.16f, ActorMotion.Tremble, rotation: -12f, scale: WideShot),
+                        A("nell_flask", 0.28f, 0.12f, fromX: 0.18f, scale: WideShot)))
                     .WithFx(ShotFx.Flash).Pan(0.02f, 0.06f, 1.08f, 1.16f),
                 Tell("summit", "Her mask broke along the old crack. The face behind it was one I had watched grow old.",
                     A("matriarch_crown", 0.68f, 0.13f, ActorMotion.Still, rotation: -28f), A("mask_l", 0.4f, 0.14f, ActorMotion.Still, rotation: 18f),
@@ -244,24 +245,26 @@ namespace AlchemistsArsenal.Story
         }
 
         /// <summary>
-        /// A fighter's sprite is 18 px tall against Nell's 48, and centred, not standing on
-        /// its feet: at twice its size and lifted by half its height it stands beside her
-        /// at her size, on the same floor.
+        /// A fighter sprite is 18 px tall and centred (its feet on its last row), so it
+        /// stands on a floor when lifted by half its height times its scale. In the story
+        /// fighters keep the size they fight at (scale 1); beside Nell the shot is a wide
+        /// one, with her and the Matriarch at <see cref="WideShot"/>, so she stays the
+        /// same head taller than them as on the title.
         /// </summary>
-        public const float FighterScale = 2f;
-        public static float FighterFeet(float floor) => floor + 20f / 108f;
+        public static float FighterFeet(float floor, float scale) => floor + 9f * scale / 108f;
+        private const float WideShot = 0.5f;
 
         /// <summary>This run's fighters in a row on <paramref name="floor"/>, the first at <paramref name="x"/>.</summary>
         private static CutsceneActor[] Party(Core.RunState s, float floor, float x, float step, ActorMotion motion,
-            bool flip = false, float? enterBy = null, float delayStep = 0f)
+            bool flip = false, float? enterBy = null, float delayStep = 0f, float scale = 1f)
         {
             var ids = PartyIds(s);
             var actors = new CutsceneActor[ids.Count];
             for (int i = 0; i < ids.Count; i++)
             {
                 float at = x + step * i;
-                actors[i] = A("hero_" + ids[i], at, FighterFeet(floor), motion, flip,
-                    fromX: enterBy.HasValue ? at - enterBy.Value : (float?)null, scale: FighterScale, delay: delayStep * i);
+                actors[i] = A("hero_" + ids[i], at, FighterFeet(floor, scale), motion, flip,
+                    fromX: enterBy.HasValue ? at - enterBy.Value : (float?)null, scale: scale, delay: delayStep * i);
             }
             return actors;
         }

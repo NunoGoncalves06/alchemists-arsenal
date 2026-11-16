@@ -68,10 +68,10 @@ namespace AlchemistsArsenal.UI
             _keyArt = StoryStage.Create(art);
 
             // A dusk over the left, so the words stand clear of the picture.
-            var shade = UIFactory.Panel(transform, UITheme.Alpha(UITheme.Ground, 0.86f), "Shade");
+            var shade = UIFactory.Panel(transform, UITheme.Alpha(UITheme.Ground, 0.95f), "Shade");
             shade.raycastTarget = false;
             UIFactory.Place(shade.rectTransform, 0f, 0f, 0.40f, 1f);
-            var fade = UIFactory.Panel(transform, UITheme.Alpha(UITheme.Ground, 0.45f), "ShadeEdge");
+            var fade = UIFactory.Panel(transform, UITheme.Alpha(UITheme.Ground, 0.6f), "ShadeEdge");
             fade.raycastTarget = false;
             UIFactory.Place(fade.rectTransform, 0.40f, 0f, 0.46f, 1f);
 
@@ -82,9 +82,17 @@ namespace AlchemistsArsenal.UI
             UIFactory.Place(_sub.rectTransform, 0.052f, 0.75f, 0.62f, 0.80f);
 
             // The Continue card: where the last run stands, and one click back into it.
-            var card = UIFactory.FramedPanel(transform, "ContinueCard");
+            var card = UIFactory.Panel(transform, UITheme.Alpha(UITheme.Ink900, 0.9f), "ContinueCard");
             _card = card.gameObject;
-            UIFactory.Place(card.rectTransform, 0.05f, 0.52f, 0.36f, 0.72f);
+            var rim = card.gameObject.AddComponent<Outline>();
+            rim.effectColor = UITheme.Alpha(UITheme.Candle, 0.35f);
+            rim.effectDistance = new Vector2(1f, -1f);
+            var edge = UIFactory.Panel(card.transform, UITheme.Candle, "Edge");
+            edge.raycastTarget = false;
+            edge.rectTransform.anchorMin = new Vector2(0f, 0f); edge.rectTransform.anchorMax = new Vector2(0f, 1f);
+            edge.rectTransform.pivot = new Vector2(0f, 0.5f);
+            edge.rectTransform.sizeDelta = new Vector2(4f, 0f); edge.rectTransform.anchoredPosition = Vector2.zero;
+            UIFactory.Place(card.rectTransform, 0.05f, 0.56f, 0.36f, 0.72f);
             var inCard = UIFactory.VStack(card.transform, 8f, new RectOffset(22, 22, 18, 18));
             UIFactory.Stretch((RectTransform)inCard.transform);
             UIFactory.Flex(UIFactory.Heading(inCard.transform, "Your shop", UITheme.TextLow).gameObject, 1f, 0f);
@@ -165,7 +173,7 @@ namespace AlchemistsArsenal.UI
                 for (int i = 0; i < SaveSystem.Slots; i++) if (SaveSystem.Instance.Peek(i) != null) saves++;
                 _otherSaves.gameObject.SetActive(saves > 1);
                 // The card fits what it holds: a row taller when it offers the other saves.
-                UIFactory.Place((RectTransform)_card.transform, 0.05f, saves > 1 ? 0.49f : 0.52f, 0.36f, 0.72f);
+                UIFactory.Place((RectTransform)_card.transform, 0.05f, saves > 1 ? 0.525f : 0.56f, 0.36f, 0.72f);
             }
             bool corrupt = false;
             for (int i = 0; i < SaveSystem.Slots; i++) corrupt |= SaveSystem.Instance.SlotCorrupt(i);
@@ -185,10 +193,8 @@ namespace AlchemistsArsenal.UI
             Scene = "shop_night", Fx = Story.ShotFx.Rain, ZoomFrom = 1f, ZoomTo = 1.06f,
             Actors = new[]
             {
-                new Story.CutsceneActor { Id = "kettle_glow", At = new Vector2(0.46f, 0.26f), Motion = Story.ActorMotion.Still },
-                new Story.CutsceneActor { Id = "nell", At = new Vector2(0.555f, 0.111f) },
-                new Story.CutsceneActor { Id = "tam_asleep", At = new Vector2(0.95f, 0.333f) },
-                Fighter("rookie", 0.665f, Story.ActorMotion.Bob), Fighter("herbalist", 0.755f), Fighter("merchant", 0.845f),
+                new Story.CutsceneActor { Id = "nell", At = new Vector2(0.58f, 0.111f) },
+                Fighter("rookie", 0.7f, Story.ActorMotion.Bob), Fighter("herbalist", 0.79f), Fighter("merchant", 0.88f),
             },
         };
 
@@ -197,20 +203,21 @@ namespace AlchemistsArsenal.UI
             Scene = "shop_dawn", ZoomFrom = 1f, ZoomTo = 1.06f,
             Actors = new[]
             {
-                new Story.CutsceneActor { Id = "kettle", At = new Vector2(0.46f, 0.26f), Motion = Story.ActorMotion.Still },
-                new Story.CutsceneActor { Id = "nell", At = new Vector2(0.555f, 0.111f) },
-                new Story.CutsceneActor { Id = "tam", At = new Vector2(0.95f, 0.111f), Flip = true, Motion = Story.ActorMotion.Bob },
-                Fighter("rookie", 0.665f), Fighter("herbalist", 0.755f), Fighter("merchant", 0.845f),
+                new Story.CutsceneActor { Id = "nell", At = new Vector2(0.58f, 0.111f) },
+                Fighter("rookie", 0.7f), Fighter("herbalist", 0.79f), Fighter("merchant", 0.88f),
             },
         };
 
-        /// <summary>A fighter on the title's floor, at Nell's scale, facing her.</summary>
-        private static Story.CutsceneActor Fighter(string id, float x, Story.ActorMotion motion = Story.ActorMotion.Breathe) =>
-            new Story.CutsceneActor
-            {
-                Id = "hero_" + id, At = new Vector2(x, Story.StoryScript.FighterFeet(0.111f)), From = new Vector2(x, Story.StoryScript.FighterFeet(0.111f)),
-                Flip = true, Motion = motion, Scale = Story.StoryScript.FighterScale, Tint = Color.white,
-            };
+        /// <summary>
+        /// A fighter on the title's floor, facing Nell. The title is a close shot of the shop
+        /// (Nell at full size), so they stand at twice their fighting size: the same head
+        /// shorter than her as in the story's wide shots.
+        /// </summary>
+        private static Story.CutsceneActor Fighter(string id, float x, Story.ActorMotion motion = Story.ActorMotion.Breathe)
+        {
+            var feet = new Vector2(x, Story.StoryScript.FighterFeet(0.111f, 2f));
+            return new Story.CutsceneActor { Id = "hero_" + id, At = feet, From = feet, Flip = true, Motion = motion, Scale = 2f, Tint = Color.white };
+        }
 
         private static void Quit()
         {
